@@ -41,6 +41,7 @@ coverage/
 .cache/
 runtime/
 tests/
+.worktrees/
 
 # Temporary files
 tmp/
