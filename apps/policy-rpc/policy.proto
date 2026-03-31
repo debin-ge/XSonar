@@ -1,0 +1,49 @@
+syntax = "proto3";
+
+package xsonar.policy.v1;
+
+option go_package = "xsonar/pkg/proto/policypb";
+
+service PolicyService {
+  rpc ResolvePolicy(ResolvePolicyRequest) returns (JsonResponse);
+  rpc CheckAppPolicyAccess(CheckAppPolicyAccessRequest) returns (JsonResponse);
+  rpc ListPolicies(ListPoliciesRequest) returns (JsonResponse);
+  rpc PublishPolicyConfig(PublishPolicyConfigRequest) returns (JsonResponse);
+  rpc BindAppPolicies(BindAppPoliciesRequest) returns (JsonResponse);
+}
+
+message JsonResponse {
+  int32 code = 1;
+  string message = 2;
+  string data_json = 3;
+}
+
+message ResolvePolicyRequest {
+  string path = 1;
+  string method = 2;
+}
+
+message CheckAppPolicyAccessRequest {
+  string app_id = 1;
+  string policy_key = 2;
+}
+
+message ListPoliciesRequest {}
+
+message PublishPolicyConfigRequest {
+  string policy_key = 1;
+  string display_name = 2;
+  string public_method = 3;
+  string public_path = 4;
+  string upstream_method = 5;
+  string upstream_path = 6;
+  repeated string allowed_params = 7;
+  repeated string denied_params = 8;
+  map<string, string> default_params = 9;
+  string provider_credential_id = 10;
+}
+
+message BindAppPoliciesRequest {
+  string app_id = 1;
+  repeated string policy_keys = 2;
+}

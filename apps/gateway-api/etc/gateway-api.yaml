@@ -1,0 +1,17 @@
+Name: gateway-api
+Host: 0.0.0.0
+Port: 8080
+Mode: dev
+Timeout: 10000
+AccessRPC:
+  Endpoints:
+    - access-rpc:9001
+  Timeout: 5000
+PolicyRPC:
+  Endpoints:
+    - policy-rpc:9002
+  Timeout: 5000
+ProviderRPC:
+  Endpoints:
+    - provider-rpc:9003
+  Timeout: 10000

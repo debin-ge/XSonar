@@ -1,0 +1,49 @@
+# OS-generated files
+.DS_Store
+Thumbs.db
+
+# Editor and IDE settings
+.idea/
+.vscode/
+.fleet/
+*.swp
+*.swo
+*~
+
+# Local environment and shell tooling
+.env
+.env.local
+.env.*.local
+.envrc
+.direnv/
+deploy/xsonar/.env
+!deploy/xsonar/.env.example
+
+# Go build and test artifacts
+*.test
+*.prof
+*.pprof
+*.coverprofile
+coverage.out
+cover.out
+bin/
+build/
+dist/
+coverage/
+/gateway-api
+/console-api
+/access-rpc
+/policy-rpc
+/provider-rpc
+*.exe
+
+# Runtime data and generated load-test artifacts
+.cache/
+runtime/
+tests/
+
+# Temporary files
+tmp/
+.tmp/
+*.tmp
+*.pid

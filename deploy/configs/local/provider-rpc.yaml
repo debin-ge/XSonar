@@ -1,0 +1,9 @@
+Name: provider-rpc
+ListenOn: 0.0.0.0:9003
+Mode: dev
+Timeout: 10000
+ProviderBaseURL: https://fapi.uk/api
+ProviderHealthPath: /
+ProviderAPIKeyHeader: apiKey
+ProviderTimeoutMS: 8000
+ProviderRetryCount: 1

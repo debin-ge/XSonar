@@ -1,0 +1,43 @@
+syntax = "v1"
+
+type EmptyReq {}
+
+type Envelope {
+	Code      int64       `json:"code"`
+	Message   string      `json:"message"`
+	Data      interface{} `json:"data,optional"`
+	RequestID string      `json:"request_id,optional"`
+}
+
+service gateway-api {
+	@handler UsersByIDs
+	get /v1/users/by-ids returns (Envelope)
+
+	@handler UserByID
+	get /v1/users/by-id returns (Envelope)
+
+	@handler UserByUsername
+	get /v1/users/by-username returns (Envelope)
+
+	@handler TweetsByIDs
+	get /v1/tweets/by-ids returns (Envelope)
+
+	@handler TweetsTimeline
+	get /v1/tweets/timeline returns (Envelope)
+
+	@handler TweetsReplies
+	get /v1/tweets/replies returns (Envelope)
+
+	@handler TweetsDetail
+	get /v1/tweets/detail returns (Envelope)
+
+	@handler SearchTweets
+	get /v1/search/tweets returns (Envelope)
+
+	@handler SearchTrending
+	get /v1/search/trending returns (Envelope)
+
+	@handler SearchTrends
+	get /v1/search/trends returns (Envelope)
+}
+

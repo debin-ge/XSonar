@@ -1,0 +1,90 @@
+syntax = "v1"
+
+type LoginReq {
+	Username string `json:"username"`
+	Password string `json:"password"`
+}
+
+type CreateTenantReq {
+	Name string `json:"name"`
+}
+
+type CreateTenantAppReq {
+	Name       string `json:"name"`
+	DailyQuota int64  `json:"daily_quota"`
+	QpsLimit   int    `json:"qps_limit"`
+}
+
+type UpdateAppStatusReq {
+	Status string `json:"status"`
+}
+
+type UpdateAppQuotaReq {
+	DailyQuota int64 `json:"daily_quota"`
+	QpsLimit   int   `json:"qps_limit"`
+}
+
+type PublishPolicyConfigReq {
+	PolicyKey            string            `json:"policy_key"`
+	DisplayName          string            `json:"display_name"`
+	PublicMethod         string            `json:"public_method"`
+	PublicPath           string            `json:"public_path"`
+	UpstreamMethod       string            `json:"upstream_method"`
+	UpstreamPath         string            `json:"upstream_path"`
+	AllowedParams        []string          `json:"allowed_params,optional"`
+	DeniedParams         []string          `json:"denied_params,optional"`
+	DefaultParams        map[string]string `json:"default_params,optional"`
+	ProviderCredentialID string            `json:"provider_credential_id"`
+}
+
+type BindAppPoliciesReq {
+	PolicyKeys []string `json:"policy_keys"`
+}
+
+type Envelope {
+	Code      int64       `json:"code"`
+	Message   string      `json:"message"`
+	Data      interface{} `json:"data,optional"`
+	RequestID string      `json:"request_id,optional"`
+}
+
+service console-api {
+	@handler Login
+	post /admin/v1/auth/login (LoginReq) returns (Envelope)
+
+	@handler ListTenants
+	get /admin/v1/tenants returns (Envelope)
+
+	@handler CreateTenant
+	post /admin/v1/tenants (CreateTenantReq) returns (Envelope)
+
+	@handler GetTenantDetail
+	get /admin/v1/tenants/:id returns (Envelope)
+
+	@handler CreateTenantApp
+	post /admin/v1/tenants/:id/apps (CreateTenantAppReq) returns (Envelope)
+
+	@handler RotateAppSecret
+	post /admin/v1/apps/:id/secret:rotate returns (Envelope)
+
+	@handler UpdateAppStatus
+	put /admin/v1/apps/:id/status (UpdateAppStatusReq) returns (Envelope)
+
+	@handler UpdateAppQuota
+	put /admin/v1/apps/:id/quota (UpdateAppQuotaReq) returns (Envelope)
+
+	@handler ListPolicies
+	get /admin/v1/policies returns (Envelope)
+
+	@handler PublishPolicyConfig
+	post /admin/v1/policies (PublishPolicyConfigReq) returns (Envelope)
+
+	@handler BindAppPolicies
+	put /admin/v1/apps/:id/policies (BindAppPoliciesReq) returns (Envelope)
+
+	@handler UsageReport
+	get /admin/v1/reports/usage returns (Envelope)
+
+	@handler ServiceHealth
+	get /admin/v1/health/services returns (Envelope)
+}

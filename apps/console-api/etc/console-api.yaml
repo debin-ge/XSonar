@@ -1,0 +1,17 @@
+Name: console-api
+Host: 0.0.0.0
+Port: 8081
+Mode: dev
+Timeout: 5000
+JWTSecret: xsonar-console-dev-secret
+JWTIssuer: xsonar-console
+JWTTTLMinutes: 120
+AccessRPC:
+  Endpoints:
+    - access-rpc:9001
+PolicyRPC:
+  Endpoints:
+    - policy-rpc:9002
+ProviderRPC:
+  Endpoints:
+    - provider-rpc:9003

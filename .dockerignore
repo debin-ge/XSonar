@@ -1,0 +1,9 @@
+.git
+.gitignore
+.cache
+runtime
+docs
+tests
+migrations
+deploy/xsonar
+*.log

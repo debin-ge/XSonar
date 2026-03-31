@@ -1,0 +1,704 @@
+package internal
+
+import (
+	"context"
+	"crypto/sha256"
+	"crypto/subtle"
+	"encoding/hex"
+	"encoding/json"
+	"net"
+	"net/http"
+	"net/url"
+	"slices"
+	"strings"
+	"time"
+
+	"xsonar/apps/access-rpc/accessservice"
+	"xsonar/apps/policy-rpc/policyservice"
+	"xsonar/apps/provider-rpc/providerservice"
+	"xsonar/pkg/clients"
+	"xsonar/pkg/model"
+	"xsonar/pkg/shared"
+	"xsonar/pkg/xlog"
+)
+
+type gatewayAccessClient interface {
+	CheckIpBan(ctx context.Context, req *accessservice.CheckIpBanRequest) (*clients.EnvelopeResponse, error)
+	GetAppAuthContext(ctx context.Context, req *accessservice.GetAppAuthContextRequest) (*clients.EnvelopeResponse, error)
+	CheckReplay(ctx context.Context, req *accessservice.CheckReplayRequest) (*clients.EnvelopeResponse, error)
+	CheckAndReserveQuota(ctx context.Context, req *accessservice.CheckAndReserveQuotaRequest) (*clients.EnvelopeResponse, error)
+	ReleaseQuotaOnFailure(ctx context.Context, req *accessservice.ReleaseQuotaOnFailureRequest) (*clients.EnvelopeResponse, error)
+	RecordUsageStat(ctx context.Context, req *accessservice.RecordUsageStatRequest) (*clients.EnvelopeResponse, error)
+}
+
+type gatewayPolicyClient interface {
+	ResolvePolicy(ctx context.Context, req *policyservice.ResolvePolicyRequest) (*clients.EnvelopeResponse, error)
+	CheckAppPolicyAccess(ctx context.Context, req *policyservice.CheckAppPolicyAccessRequest) (*clients.EnvelopeResponse, error)
+}
+
+type gatewayProviderClient interface {
+	ExecutePolicy(ctx context.Context, req *providerservice.ExecutePolicyRequest) (*clients.EnvelopeResponse, error)
+}
+
+type gatewayService struct {
+	logger          *xlog.Logger
+	accessClient    gatewayAccessClient
+	policyClient    gatewayPolicyClient
+	providerClient  gatewayProviderClient
+	developmentAuth bool
+}
+
+type providerExecutionPayload struct {
+	StatusCode         int             `json:"status_code"`
+	ResultCode         string          `json:"result_code"`
+	Body               json.RawMessage `json:"body"`
+	UpstreamDurationMS int64           `json:"upstream_duration_ms"`
+}
+
+func newGatewayServiceWithClients(logger *xlog.Logger, accessClient gatewayAccessClient, policyClient gatewayPolicyClient, providerClient gatewayProviderClient) *gatewayService {
+	return newGatewayServiceWithMode(logger, accessClient, policyClient, providerClient, "")
+}
+
+func newGatewayServiceWithMode(logger *xlog.Logger, accessClient gatewayAccessClient, policyClient gatewayPolicyClient, providerClient gatewayProviderClient, mode string) *gatewayService {
+	return &gatewayService{
+		logger:          logger,
+		accessClient:    accessClient,
+		policyClient:    policyClient,
+		providerClient:  providerClient,
+		developmentAuth: isDevelopmentMode(mode),
+	}
+}
+
+func (s *gatewayService) handleProxy(w http.ResponseWriter, r *http.Request) {
+	requestID := shared.EnsureRequestID(w, r)
+	start := time.Now().UTC()
+	clientIP := requestIP(r)
+	tenantID := ""
+	appID := ""
+	policyKey := ""
+
+	writeGatewayError := func(statusCode, code int, message, resultCode, errorSummary string) {
+		s.logGatewayError(r, requestID, start, clientIP, tenantID, appID, policyKey, statusCode, resultCode, errorSummary)
+		shared.WriteError(w, statusCode, code, message, requestID)
+	}
+
+	appKey := firstNonEmpty(
+		r.Header.Get("AppKey"),
+		r.Header.Get("X-App-Key"),
+		r.URL.Query().Get("AppKey"),
+		r.URL.Query().Get("appKey"),
+		r.URL.Query().Get("app_key"),
+	)
+	providedAppSecret := firstNonEmpty(
+		r.Header.Get("AppSecret"),
+		r.Header.Get("X-App-Secret"),
+		r.URL.Query().Get("AppSecret"),
+		r.URL.Query().Get("appSecret"),
+		r.URL.Query().Get("app_secret"),
+	)
+	providedAppSecret = strings.TrimSpace(providedAppSecret)
+	timestampValue := firstNonEmpty(r.Header.Get("Timestamp"), r.URL.Query().Get("Timestamp"), r.URL.Query().Get("timestamp"))
+	nonce := firstNonEmpty(r.Header.Get("Nonce"), r.URL.Query().Get("Nonce"), r.URL.Query().Get("nonce"))
+	signature := firstNonEmpty(r.Header.Get("Signature"), r.Header.Get("X-Signature"), r.URL.Query().Get("Signature"), r.URL.Query().Get("signature"))
+
+	var timestampUnix int64
+	if s.developmentAuth {
+		if appKey == "" || strings.TrimSpace(providedAppSecret) == "" {
+			writeGatewayError(http.StatusUnauthorized, model.CodeUnauthorized, "AppKey and AppSecret are required", "AUTH_FIELDS_MISSING", "missing AppKey or AppSecret")
+			return
+		}
+	} else {
+		if appKey == "" || timestampValue == "" || nonce == "" || signature == "" {
+			writeGatewayError(http.StatusUnauthorized, model.CodeUnauthorized, "AppKey, Timestamp, Nonce and Signature are required", "AUTH_FIELDS_MISSING", "missing AppKey, Timestamp, Nonce or Signature")
+			return
+		}
+		if err := shared.ValidateTimestamp(timestampValue, 60*time.Second); err != nil {
+			writeGatewayError(http.StatusUnauthorized, model.CodeUnauthorized, err.Error(), "TIMESTAMP_INVALID", err.Error())
+			return
+		}
+
+		parsedTimestamp, err := shared.ParseUnixTimestamp(timestampValue)
+		if err != nil {
+			writeGatewayError(http.StatusUnauthorized, model.CodeUnauthorized, "timestamp must be unix seconds", "TIMESTAMP_PARSE_INVALID", err.Error())
+			return
+		}
+		timestampUnix = parsedTimestamp
+	}
+
+	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
+	defer cancel()
+
+	if clientIP != "" {
+		ipBanResp, ipBanErr := s.accessClient.CheckIpBan(ctx, &accessservice.CheckIpBanRequest{Ip: clientIP})
+		if ipBanErr != nil {
+			s.writeGatewayDownstreamError(w, r, requestID, start, clientIP, tenantID, appID, policyKey, "CheckIpBan", ipBanResp, ipBanErr)
+			return
+		}
+		ipBanData, decodeErr := decodeObject(ipBanResp.Data)
+		if decodeErr != nil {
+			writeGatewayError(http.StatusBadGateway, model.CodeInternalError, "decode ip ban response failed", "ACCESS_IP_BAN_DECODE_ERROR", decodeErr.Error())
+			return
+		}
+		if blocked, _ := ipBanData["blocked"].(bool); blocked {
+			writeGatewayError(http.StatusForbidden, model.CodeForbidden, "client ip is blocked", "CLIENT_IP_BLOCKED", "client ip is blocked")
+			return
+		}
+	}
+
+	authResp, authErr := s.accessClient.GetAppAuthContext(ctx, &accessservice.GetAppAuthContextRequest{AppKey: appKey})
+	if authErr != nil {
+		s.writeGatewayDownstreamError(w, r, requestID, start, clientIP, tenantID, appID, policyKey, "GetAppAuthContext", authResp, authErr)
+		return
+	}
+
+	authData, authDecodeErr := decodeObject(authResp.Data)
+	if authDecodeErr != nil {
+		writeGatewayError(http.StatusBadGateway, model.CodeInternalError, "decode auth context failed", "ACCESS_AUTH_CONTEXT_DECODE_ERROR", authDecodeErr.Error())
+		return
+	}
+
+	appID = stringValue(authData["app_id"])
+	tenantID = stringValue(authData["tenant_id"])
+	appSecret := strings.TrimSpace(stringValue(authData["app_secret"]))
+	appStatus := stringValue(authData["status"])
+	if appStatus != "active" {
+		writeGatewayError(http.StatusForbidden, model.CodeForbidden, "app is not active", "APP_INACTIVE", "app is not active")
+		return
+	}
+
+	var replayResp *clients.EnvelopeResponse
+	if s.developmentAuth {
+		if !secureStringEqual(appSecret, providedAppSecret) {
+			s.logger.Error("gateway dev auth secret mismatch", map[string]any{
+				"request_id":                  requestID,
+				"app_id":                      appID,
+				"app_key":                     appKey,
+				"expected_secret_fingerprint": secretFingerprint(appSecret),
+				"provided_secret_fingerprint": secretFingerprint(providedAppSecret),
+				"expected_secret_length":      len(appSecret),
+				"provided_secret_length":      len(providedAppSecret),
+			})
+			writeGatewayError(http.StatusUnauthorized, model.CodeUnauthorized, "app secret verification failed", "APP_SECRET_INVALID", "app secret verification failed")
+			return
+		}
+	} else {
+		expectedSignature := shared.ComputeSignature(appSecret, r.Method, r.URL.Path, r.URL.Query(), timestampValue, nonce)
+		if !shared.SignaturesEqual(expectedSignature, signature) {
+			writeGatewayError(http.StatusUnauthorized, model.CodeUnauthorized, "signature verification failed", "SIGNATURE_INVALID", "signature verification failed")
+			return
+		}
+
+		replayResp, replayErr := s.accessClient.CheckReplay(ctx, &accessservice.CheckReplayRequest{
+			AppId:     appID,
+			Nonce:     nonce,
+			Timestamp: timestampUnix,
+		})
+		if replayErr != nil {
+			s.writeGatewayDownstreamError(w, r, requestID, start, clientIP, tenantID, appID, policyKey, "CheckReplay", replayResp, replayErr)
+			return
+		}
+	}
+
+	policyResp, policyErr := s.policyClient.ResolvePolicy(ctx, &policyservice.ResolvePolicyRequest{
+		Path:   r.URL.Path,
+		Method: r.Method,
+	})
+	if policyErr != nil {
+		s.writeGatewayDownstreamError(w, r, requestID, start, clientIP, tenantID, appID, policyKey, "ResolvePolicy", policyResp, policyErr)
+		return
+	}
+
+	policyData, policyDecodeErr := decodeObject(policyResp.Data)
+	if policyDecodeErr != nil {
+		writeGatewayError(http.StatusBadGateway, model.CodeInternalError, "decode policy response failed", "POLICY_RESOLVE_DECODE_ERROR", policyDecodeErr.Error())
+		return
+	}
+
+	policyKey = stringValue(policyData["policy_key"])
+
+	quotaResp, quotaErr := s.accessClient.CheckAndReserveQuota(ctx, &accessservice.CheckAndReserveQuotaRequest{
+		AppId:     appID,
+		PolicyKey: policyKey,
+		RequestId: requestID,
+	})
+	if quotaErr != nil {
+		s.writeGatewayDownstreamError(w, r, requestID, start, clientIP, tenantID, appID, policyKey, "CheckAndReserveQuota", quotaResp, quotaErr)
+		return
+	}
+
+	accessResp, accessErr := s.policyClient.CheckAppPolicyAccess(ctx, &policyservice.CheckAppPolicyAccessRequest{
+		AppId:     appID,
+		PolicyKey: policyKey,
+	})
+	if accessErr != nil {
+		_ = s.releaseQuota(ctx, appID, requestID)
+		s.writeGatewayDownstreamError(w, r, requestID, start, clientIP, tenantID, appID, policyKey, "CheckAppPolicyAccess", accessResp, accessErr)
+		return
+	}
+
+	accessData, accessDecodeErr := decodeObject(accessResp.Data)
+	if accessDecodeErr != nil {
+		_ = s.releaseQuota(ctx, appID, requestID)
+		writeGatewayError(http.StatusBadGateway, model.CodeInternalError, "decode policy access response failed", "POLICY_ACCESS_DECODE_ERROR", accessDecodeErr.Error())
+		return
+	}
+	if allowed, _ := accessData["allowed"].(bool); !allowed {
+		_ = s.releaseQuota(ctx, appID, requestID)
+		writeGatewayError(http.StatusForbidden, model.CodeForbidden, "policy access denied", "POLICY_ACCESS_DENIED", "policy access denied")
+		return
+	}
+
+	providerQuery, sanitizeErr := sanitizeUpstreamQuery(r.URL.Query(), stringSlice(policyData["allowed_params"]), stringSlice(policyData["denied_params"]), stringMap(policyData["default_params"]))
+	if sanitizeErr != nil {
+		_ = s.releaseQuota(ctx, appID, requestID)
+		writeGatewayError(http.StatusBadRequest, model.CodeInvalidRequest, sanitizeErr.Error(), "PARAM_VALIDATION_FAILED", sanitizeErr.Error())
+		return
+	}
+	if validationErr := validateRequiredQuery(providerQuery, stringSlice(policyData["required_params"])); validationErr != nil {
+		_ = s.releaseQuota(ctx, appID, requestID)
+		writeGatewayError(http.StatusBadRequest, model.CodeInvalidRequest, validationErr.Error(), "PARAM_VALIDATION_FAILED", validationErr.Error())
+		return
+	}
+	providerQuery = normalizeProviderQuery(policyKey, stringValue(policyData["upstream_path"]), providerQuery)
+
+	queryJSON, marshalErr := json.Marshal(providerQuery)
+	if marshalErr != nil {
+		_ = s.releaseQuota(ctx, appID, requestID)
+		writeGatewayError(http.StatusInternalServerError, model.CodeInternalError, "encode provider query failed", "PROVIDER_QUERY_ENCODE_ERROR", marshalErr.Error())
+		return
+	}
+
+	providerResp, providerErr := s.providerClient.ExecutePolicy(ctx, &providerservice.ExecutePolicyRequest{
+		RequestId:      requestID,
+		PolicyKey:      policyKey,
+		UpstreamMethod: stringValue(policyData["upstream_method"]),
+		UpstreamPath:   stringValue(policyData["upstream_path"]),
+		QueryJson:      string(queryJSON),
+		ProviderName:   stringValue(policyData["provider_name"]),
+		ProviderApiKey: stringValue(policyData["provider_api_key"]),
+	})
+	if providerErr != nil {
+		_ = s.releaseQuota(ctx, appID, requestID)
+		s.writeGatewayDownstreamError(w, r, requestID, start, clientIP, tenantID, appID, policyKey, "ExecutePolicy", providerResp, providerErr)
+		return
+	}
+
+	providerData, providerDecodeErr := decodeProviderExecutionPayload(providerResp.Data)
+	if providerDecodeErr != nil {
+		_ = s.releaseQuota(ctx, appID, requestID)
+		writeGatewayError(http.StatusBadGateway, model.CodeInternalError, "decode provider response failed", "PROVIDER_RESPONSE_DECODE_ERROR", providerDecodeErr.Error())
+		return
+	}
+
+	statusCode := providerData.StatusCode
+	if statusCode == 0 {
+		statusCode = http.StatusBadGateway
+	}
+	resultCode := providerData.ResultCode
+	body := providerData.Body
+
+	success := statusCode >= 200 && statusCode < 300
+	if !success {
+		_ = s.releaseQuota(ctx, appID, requestID)
+	}
+
+	_, _ = s.accessClient.RecordUsageStat(ctx, &accessservice.RecordUsageStatRequest{
+		TenantId:           tenantID,
+		AppId:              appID,
+		PolicyKey:          policyKey,
+		RequestId:          requestID,
+		Success:            success,
+		DurationMs:         time.Since(start).Milliseconds(),
+		UpstreamDurationMs: providerData.UpstreamDurationMS,
+		StatusCode:         int32(statusCode),
+		ResultCode:         resultCode,
+	})
+
+	if !success {
+		s.logGatewayError(r, requestID, start, clientIP, tenantID, appID, policyKey, statusCode, firstNonEmpty(resultCode, "UPSTREAM_REQUEST_FAILED"), "upstream request failed")
+		shared.WriteRawEnvelope(w, http.StatusBadGateway, model.CodeInternalError, "upstream request failed", body, requestID)
+		return
+	}
+
+	shared.LogRequestInfo(s.logger, "gateway request completed", requestID, start, gatewayLogFields(r, clientIP, tenantID, appID, policyKey, statusCode, resultCode, ""))
+
+	shared.WriteRawOK(w, body, requestID)
+
+	_ = replayResp
+	_ = quotaResp
+}
+
+func (s *gatewayService) releaseQuota(ctx context.Context, appID, requestID string) error {
+	_, err := s.accessClient.ReleaseQuotaOnFailure(ctx, &accessservice.ReleaseQuotaOnFailureRequest{
+		AppId:     appID,
+		RequestId: requestID,
+	})
+	return err
+}
+
+func (s *gatewayService) writeGatewayDownstreamError(w http.ResponseWriter, r *http.Request, requestID string, startedAt time.Time, clientIP, tenantID, appID, policyKey, downstreamPath string, response *clients.EnvelopeResponse, err error) {
+	if response == nil {
+		s.logGatewayError(r, requestID, startedAt, clientIP, tenantID, appID, policyKey, http.StatusBadGateway, "DOWNSTREAM_UNAVAILABLE", err.Error())
+		shared.WriteError(w, http.StatusBadGateway, model.CodeInternalError, err.Error(), requestID)
+		return
+	}
+
+	statusCode := statusFromCode(response.Code)
+	fields := gatewayLogFields(r, clientIP, tenantID, appID, policyKey, statusCode, "DOWNSTREAM_ERROR", err.Error())
+	fields["downstream_path"] = downstreamPath
+	fields["downstream_code"] = response.Code
+	fields["downstream_message"] = response.Message
+	shared.LogRequestError(s.logger, "gateway downstream request failed", requestID, startedAt, fields)
+	shared.WriteEnvelope(w, statusCode, response.Code, response.Message, rawGatewayData(response.Data), requestID)
+}
+
+func rawGatewayData(data json.RawMessage) any {
+	if len(data) == 0 {
+		return nil
+	}
+
+	var decoded any
+	if err := json.Unmarshal(data, &decoded); err != nil {
+		return string(data)
+	}
+	return decoded
+}
+
+func statusFromCode(code int) int {
+	switch code {
+	case model.CodeInvalidRequest:
+		return http.StatusBadRequest
+	case model.CodeUnauthorized:
+		return http.StatusUnauthorized
+	case model.CodeForbidden:
+		return http.StatusForbidden
+	case model.CodeNotFound:
+		return http.StatusNotFound
+	case model.CodeConflict:
+		return http.StatusConflict
+	case model.CodeRateLimited:
+		return http.StatusTooManyRequests
+	default:
+		return http.StatusBadGateway
+	}
+}
+
+func decodeObject(data json.RawMessage) (map[string]any, error) {
+	var result map[string]any
+	if err := json.Unmarshal(data, &result); err != nil {
+		return nil, err
+	}
+	return result, nil
+}
+
+func decodeProviderExecutionPayload(data json.RawMessage) (providerExecutionPayload, error) {
+	var result providerExecutionPayload
+	if err := json.Unmarshal(data, &result); err != nil {
+		return providerExecutionPayload{}, err
+	}
+	return result, nil
+}
+
+func stringValue(value any) string {
+	switch typed := value.(type) {
+	case string:
+		return typed
+	case json.Number:
+		return typed.String()
+	default:
+		return ""
+	}
+}
+
+func intValue(value any, fallback int) int {
+	switch typed := value.(type) {
+	case float64:
+		return int(typed)
+	case int:
+		return typed
+	case int64:
+		return int(typed)
+	case json.Number:
+		number, err := typed.Int64()
+		if err == nil {
+			return int(number)
+		}
+	}
+	return fallback
+}
+
+func stringSlice(value any) []string {
+	switch typed := value.(type) {
+	case []string:
+		return typed
+	case []any:
+		result := make([]string, 0, len(typed))
+		for _, item := range typed {
+			if text, ok := item.(string); ok {
+				result = append(result, text)
+			}
+		}
+		return result
+	default:
+		return nil
+	}
+}
+
+func stringMap(value any) map[string]string {
+	result := make(map[string]string)
+	typed, ok := value.(map[string]any)
+	if !ok {
+		return result
+	}
+
+	for key, item := range typed {
+		if text, ok := item.(string); ok {
+			result[key] = text
+		}
+	}
+	return result
+}
+
+func sanitizeUpstreamQuery(query url.Values, allowedParams, deniedParams []string, defaultParams map[string]string) (map[string]any, error) {
+	result := make(map[string]any)
+	allowedSet := normalizedPolicyParamKeys(allowedParams)
+	deniedSet := normalizedPolicyParamKeys(append(append([]string(nil), deniedParams...), "proxyUrl", "auth_token"))
+	defaultSet := normalizedDefaultParams(defaultParams)
+	seenKeys := make(map[string]string, len(query))
+
+	for key, values := range query {
+		if sharedIsAuthField(key) {
+			continue
+		}
+		normalizedKey := normalizePolicyParamKey(key)
+		if previous, exists := seenKeys[normalizedKey]; exists {
+			return nil, &sanitizeError{message: "duplicate parameter: " + previous}
+		}
+		seenKeys[normalizedKey] = strings.TrimSpace(key)
+
+		if _, denied := deniedSet[normalizedKey]; denied {
+			return nil, &sanitizeError{message: "parameter is denied: " + key}
+		}
+		canonicalKey := strings.TrimSpace(key)
+		if len(allowedSet) > 0 {
+			resolvedKey, allowed := allowedSet[normalizedKey]
+			if !allowed {
+				return nil, &sanitizeError{message: "parameter is not allowed: " + key}
+			}
+			canonicalKey = resolvedKey
+		}
+		if len(values) == 1 {
+			result[canonicalKey] = values[0]
+			continue
+		}
+		result[canonicalKey] = slices.Clone(values)
+	}
+
+	for normalizedKey, item := range defaultSet {
+		if _, exists := seenKeys[normalizedKey]; !exists {
+			result[item.key] = item.value
+		}
+	}
+
+	return result, nil
+}
+
+func normalizePolicyParamKey(key string) string {
+	return strings.ToLower(strings.TrimSpace(key))
+}
+
+func normalizedPolicyParamKeys(keys []string) map[string]string {
+	result := make(map[string]string, len(keys))
+	for _, key := range keys {
+		canonical := strings.TrimSpace(key)
+		normalized := normalizePolicyParamKey(canonical)
+		if normalized == "" {
+			continue
+		}
+		if _, exists := result[normalized]; !exists {
+			result[normalized] = canonical
+		}
+	}
+	return result
+}
+
+func normalizedDefaultParams(values map[string]string) map[string]struct {
+	key   string
+	value string
+} {
+	result := make(map[string]struct {
+		key   string
+		value string
+	}, len(values))
+	for key, value := range values {
+		canonical := strings.TrimSpace(key)
+		normalized := normalizePolicyParamKey(canonical)
+		if normalized == "" {
+			continue
+		}
+		if _, exists := result[normalized]; !exists {
+			result[normalized] = struct {
+				key   string
+				value string
+			}{
+				key:   canonical,
+				value: value,
+			}
+		}
+	}
+	return result
+}
+
+func normalizeProviderQuery(policyKey, upstreamPath string, query map[string]any) map[string]any {
+	if len(query) == 0 {
+		return query
+	}
+
+	switch {
+	case policyKey == "tweets_detail_v1", upstreamPath == "/base/apitools/tweetTimeline":
+		if _, exists := query["id"]; exists {
+			return query
+		}
+		if tweetID, exists := query["tweetId"]; exists {
+			query["id"] = tweetID
+			delete(query, "tweetId")
+		}
+	}
+
+	return query
+}
+
+func validateRequiredQuery(query map[string]any, requiredParams []string) error {
+	for _, key := range requiredParams {
+		name := strings.TrimSpace(key)
+		if name == "" {
+			continue
+		}
+		if !hasNonEmptyQueryValue(query[name]) {
+			return &sanitizeError{message: "parameter is required: " + name}
+		}
+	}
+	return nil
+}
+
+func hasNonEmptyQueryValue(value any) bool {
+	switch typed := value.(type) {
+	case nil:
+		return false
+	case string:
+		return strings.TrimSpace(typed) != ""
+	case []string:
+		for _, item := range typed {
+			if strings.TrimSpace(item) != "" {
+				return true
+			}
+		}
+		return false
+	case []any:
+		for _, item := range typed {
+			if hasNonEmptyQueryValue(item) {
+				return true
+			}
+		}
+		return false
+	default:
+		return true
+	}
+}
+
+type sanitizeError struct {
+	message string
+}
+
+func (e *sanitizeError) Error() string {
+	return e.message
+}
+
+func firstNonEmpty(values ...string) string {
+	for _, value := range values {
+		if strings.TrimSpace(value) != "" {
+			return value
+		}
+	}
+	return ""
+}
+
+func sharedIsAuthField(key string) bool {
+	switch strings.ToLower(strings.TrimSpace(key)) {
+	case "appkey", "app_key", "appsecret", "app_secret", "timestamp", "nonce", "signature":
+		return true
+	default:
+		return false
+	}
+}
+
+func isDevelopmentMode(mode string) bool {
+	switch strings.ToLower(strings.TrimSpace(mode)) {
+	case "dev", "test":
+		return true
+	default:
+		return false
+	}
+}
+
+func secureStringEqual(expected, provided string) bool {
+	if len(expected) != len(provided) {
+		return false
+	}
+	return subtle.ConstantTimeCompare([]byte(expected), []byte(provided)) == 1
+}
+
+func secretFingerprint(value string) string {
+	normalized := strings.TrimSpace(value)
+	if normalized == "" {
+		return ""
+	}
+	sum := sha256.Sum256([]byte(normalized))
+	return hex.EncodeToString(sum[:6])
+}
+
+func loggedQuery(query url.Values) string {
+	if len(query) == 0 {
+		return ""
+	}
+
+	filtered := url.Values{}
+	for key, values := range query {
+		if sharedIsAuthField(key) {
+			continue
+		}
+		filtered[key] = slices.Clone(values)
+	}
+	return filtered.Encode()
+}
+
+func requestIP(r *http.Request) string {
+	forwarded := strings.TrimSpace(strings.Split(r.Header.Get("X-Forwarded-For"), ",")[0])
+	if forwarded != "" {
+		return forwarded
+	}
+	host, _, err := net.SplitHostPort(strings.TrimSpace(r.RemoteAddr))
+	if err == nil {
+		return host
+	}
+	return strings.TrimSpace(r.RemoteAddr)
+}
+
+func (s *gatewayService) logGatewayError(r *http.Request, requestID string, startedAt time.Time, clientIP, tenantID, appID, policyKey string, statusCode int, resultCode, errorSummary string) {
+	shared.LogRequestError(s.logger, "gateway request failed", requestID, startedAt, gatewayLogFields(r, clientIP, tenantID, appID, policyKey, statusCode, resultCode, errorSummary))
+}
+
+func gatewayLogFields(r *http.Request, clientIP, tenantID, appID, policyKey string, statusCode int, resultCode, errorSummary string) map[string]any {
+	return map[string]any{
+		"tenant_id":     tenantID,
+		"app_id":        appID,
+		"policy_key":    policyKey,
+		"status_code":   statusCode,
+		"result_code":   resultCode,
+		"error_summary": errorSummary,
+		"client_ip":     clientIP,
+		"method":        r.Method,
+		"path":          r.URL.Path,
+		"query":         loggedQuery(r.URL.Query()),
+	}
+}

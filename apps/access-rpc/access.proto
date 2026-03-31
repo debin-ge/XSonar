@@ -1,0 +1,111 @@
+syntax = "proto3";
+
+package xsonar.access.v1;
+
+option go_package = "xsonar/pkg/proto/accesspb";
+
+service AccessService {
+  rpc GetAppAuthContext(GetAppAuthContextRequest) returns (JsonResponse);
+  rpc CheckReplay(CheckReplayRequest) returns (JsonResponse);
+  rpc CheckAndReserveQuota(CheckAndReserveQuotaRequest) returns (JsonResponse);
+  rpc ReleaseQuotaOnFailure(ReleaseQuotaOnFailureRequest) returns (JsonResponse);
+  rpc RecordUsageStat(RecordUsageStatRequest) returns (JsonResponse);
+  rpc QueryUsageStats(QueryUsageStatsRequest) returns (JsonResponse);
+  rpc AuthenticateConsoleUser(AuthenticateConsoleUserRequest) returns (JsonResponse);
+  rpc CreateTenant(CreateTenantRequest) returns (JsonResponse);
+  rpc ListTenants(ListTenantsRequest) returns (JsonResponse);
+  rpc CreateTenantApp(CreateTenantAppRequest) returns (JsonResponse);
+  rpc ListTenantApps(ListTenantAppsRequest) returns (JsonResponse);
+  rpc RotateAppSecret(RotateAppSecretRequest) returns (JsonResponse);
+  rpc UpdateTenantAppStatus(UpdateTenantAppStatusRequest) returns (JsonResponse);
+  rpc UpdateAppQuota(UpdateAppQuotaRequest) returns (JsonResponse);
+  rpc CheckIpBan(CheckIpBanRequest) returns (JsonResponse);
+}
+
+message JsonResponse {
+  int32 code = 1;
+  string message = 2;
+  string data_json = 3;
+}
+
+message GetAppAuthContextRequest {
+  string app_key = 1;
+}
+
+message CheckReplayRequest {
+  string app_id = 1;
+  string nonce = 2;
+  int64 timestamp = 3;
+}
+
+message CheckAndReserveQuotaRequest {
+  string app_id = 1;
+  string policy_key = 2;
+  string request_id = 3;
+}
+
+message ReleaseQuotaOnFailureRequest {
+  string app_id = 1;
+  string request_id = 2;
+}
+
+message RecordUsageStatRequest {
+  string tenant_id = 1;
+  string app_id = 2;
+  string policy_key = 3;
+  string request_id = 4;
+  bool success = 5;
+  int64 duration_ms = 6;
+  int64 upstream_duration_ms = 7;
+  int32 status_code = 8;
+  string result_code = 9;
+}
+
+message QueryUsageStatsRequest {
+  string tenant_id = 1;
+  string app_id = 2;
+  string policy_key = 3;
+  int64 start_unix = 4;
+  int64 end_unix = 5;
+}
+
+message AuthenticateConsoleUserRequest {
+  string username = 1;
+  string password = 2;
+}
+
+message CreateTenantRequest {
+  string name = 1;
+}
+
+message ListTenantsRequest {}
+
+message CreateTenantAppRequest {
+  string tenant_id = 1;
+  string name = 2;
+  int64 daily_quota = 3;
+  int32 qps_limit = 4;
+}
+
+message ListTenantAppsRequest {
+  string tenant_id = 1;
+}
+
+message RotateAppSecretRequest {
+  string app_id = 1;
+}
+
+message UpdateTenantAppStatusRequest {
+  string app_id = 1;
+  string status = 2;
+}
+
+message UpdateAppQuotaRequest {
+  string app_id = 1;
+  int64 daily_quota = 2;
+  int32 qps_limit = 3;
+}
+
+message CheckIpBanRequest {
+  string ip = 1;
+}

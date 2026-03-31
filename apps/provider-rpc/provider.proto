@@ -1,0 +1,30 @@
+syntax = "proto3";
+
+package xsonar.provider.v1;
+
+option go_package = "xsonar/pkg/proto/providerpb";
+
+service ProviderService {
+  rpc ExecutePolicy(ExecutePolicyRequest) returns (JsonResponse);
+  rpc HealthCheckProvider(HealthCheckProviderRequest) returns (JsonResponse);
+}
+
+message JsonResponse {
+  int32 code = 1;
+  string message = 2;
+  string data_json = 3;
+}
+
+message ExecutePolicyRequest {
+  string request_id = 1;
+  string policy_key = 2;
+  string upstream_method = 3;
+  string upstream_path = 4;
+  string query_json = 5;
+  string provider_name = 6;
+  string provider_api_key = 7;
+}
+
+message HealthCheckProviderRequest {
+  string provider_name = 1;
+}

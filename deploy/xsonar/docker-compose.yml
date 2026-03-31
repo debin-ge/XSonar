@@ -1,0 +1,182 @@
+x-common-app-env: &common-app-env
+  COMMON_MODE: "${COMMON_MODE:-dev}"
+  COMMON_TIMEOUT: "${COMMON_TIMEOUT:-5000}"
+  COMMON_ACCESS_RPC_ENDPOINTS: "${COMMON_ACCESS_RPC_ENDPOINTS:-access-rpc:9001}"
+  COMMON_ACCESS_RPC_TIMEOUT: "${COMMON_ACCESS_RPC_TIMEOUT:-2000}"
+  COMMON_POLICY_RPC_ENDPOINTS: "${COMMON_POLICY_RPC_ENDPOINTS:-policy-rpc:9002}"
+  COMMON_POLICY_RPC_TIMEOUT: "${COMMON_POLICY_RPC_TIMEOUT:-2000}"
+  COMMON_PROVIDER_RPC_ENDPOINTS: "${COMMON_PROVIDER_RPC_ENDPOINTS:-provider-rpc:9003}"
+  COMMON_PROVIDER_RPC_TIMEOUT: "${COMMON_PROVIDER_RPC_TIMEOUT:-2000}"
+  COMMON_STORE_BACKEND: "${COMMON_STORE_BACKEND:-pgredis}"
+  COMMON_POSTGRES_DSN: "${COMMON_POSTGRES_DSN:-postgres://${POSTGRES_USER:-xsonar}:${POSTGRES_PASSWORD:-xsonar}@postgres:5432/${POSTGRES_DB:-xsonar}?sslmode=${POSTGRES_SSLMODE:-disable}}"
+  COMMON_REDIS_ADDR: "${COMMON_REDIS_ADDR:-redis:6379}"
+  COMMON_REDIS_PASSWORD: "${COMMON_REDIS_PASSWORD:-}"
+  COMMON_REDIS_DB: "${COMMON_REDIS_DB:-0}"
+
+services:
+  gateway-api:
+    build:
+      context: ../..
+      dockerfile: deploy/docker/gateway-api.Dockerfile
+    env_file:
+      - ${ENV_FILE:-.env}
+    environment:
+      <<: *common-app-env
+      CONFIG: /app/config/gateway-api.yaml
+    depends_on:
+      access-rpc:
+        condition: service_healthy
+      policy-rpc:
+        condition: service_healthy
+      provider-rpc:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    ports:
+      - "${HOST_GATEWAY_API_PORT:-8080}:${GATEWAY_API_PORT:-8080}"
+    volumes:
+      - ../../runtime/logs/gateway-api:/app/runtime/logs/gateway-api
+    healthcheck:
+      test: ["CMD-SHELL", "nc -z 127.0.0.1 ${GATEWAY_API_PORT:-8080} || exit 1"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    networks:
+      - xsonar-net
+
+  console-api:
+    build:
+      context: ../..
+      dockerfile: deploy/docker/console-api.Dockerfile
+    env_file:
+      - ${ENV_FILE:-.env}
+    environment:
+      <<: *common-app-env
+      CONFIG: /app/config/console-api.yaml
+    depends_on:
+      access-rpc:
+        condition: service_healthy
+      policy-rpc:
+        condition: service_healthy
+      provider-rpc:
+        condition: service_healthy
+    ports:
+      - "${HOST_CONSOLE_API_PORT:-8081}:${CONSOLE_API_PORT:-8081}"
+    volumes:
+      - ../../runtime/logs/console-api:/app/runtime/logs/console-api
+    healthcheck:
+      test: ["CMD-SHELL", "nc -z 127.0.0.1 ${CONSOLE_API_PORT:-8081} || exit 1"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    networks:
+      - xsonar-net
+
+  access-rpc:
+    build:
+      context: ../..
+      dockerfile: deploy/docker/access-rpc.Dockerfile
+    env_file:
+      - ${ENV_FILE:-.env}
+    environment:
+      <<: *common-app-env
+      CONFIG: /app/config/access-rpc.yaml
+      ACCESS_RPC_APP_METADATA_CACHE_TTL_MS: "${ACCESS_RPC_APP_METADATA_CACHE_TTL_MS:-60000}"
+      ACCESS_RPC_APP_METADATA_CACHE_PREFIX: "${ACCESS_RPC_APP_METADATA_CACHE_PREFIX:-}"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - ../../runtime/logs/access-rpc:/app/runtime/logs/access-rpc
+    healthcheck:
+      test: ["CMD-SHELL", "nc -z 127.0.0.1 $${ACCESS_RPC_LISTEN_ON##*:} || exit 1"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    networks:
+      - xsonar-net
+
+  policy-rpc:
+    build:
+      context: ../..
+      dockerfile: deploy/docker/policy-rpc.Dockerfile
+    env_file:
+      - ${ENV_FILE:-.env}
+    environment:
+      <<: *common-app-env
+      CONFIG: /app/config/policy-rpc.yaml
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - ../../runtime/logs/policy-rpc:/app/runtime/logs/policy-rpc
+    healthcheck:
+      test: ["CMD-SHELL", "nc -z 127.0.0.1 $${POLICY_RPC_LISTEN_ON##*:} || exit 1"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    networks:
+      - xsonar-net
+
+  provider-rpc:
+    build:
+      context: ../..
+      dockerfile: deploy/docker/provider-rpc.Dockerfile
+    env_file:
+      - ${ENV_FILE:-.env}
+    environment:
+      <<: *common-app-env
+      CONFIG: /app/config/provider-rpc.yaml
+    volumes:
+      - ../../runtime/logs/provider-rpc:/app/runtime/logs/provider-rpc
+    healthcheck:
+      test: ["CMD-SHELL", "nc -z 127.0.0.1 $${PROVIDER_RPC_LISTEN_ON##*:} || exit 1"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    networks:
+      - xsonar-net
+
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: "${POSTGRES_USER:-xsonar}"
+      POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:-xsonar}"
+      POSTGRES_DB: "${POSTGRES_DB:-xsonar}"
+    ports:
+      - "${HOST_POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-xsonar} -d ${POSTGRES_DB:-xsonar}"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    networks:
+      - xsonar-net
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "${HOST_REDIS_PORT:-6379}:6379"
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    networks:
+      - xsonar-net
+
+networks:
+  xsonar-net:
+    driver: bridge
+
+volumes:
+  postgres-data:
+  redis-data:
