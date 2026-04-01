@@ -18,6 +18,11 @@
   "paths": {
     "/admin/v1/apps/{id}/policies": {
       "put": {
+        "security": [
+          {
+            "adminBearer": []
+          }
+        ],
         "consumes": [
           "application/json"
         ],
@@ -83,6 +88,11 @@
     },
     "/admin/v1/apps/{id}/quota": {
       "put": {
+        "security": [
+          {
+            "adminBearer": []
+          }
+        ],
         "consumes": [
           "application/json"
         ],
@@ -149,6 +159,11 @@
     },
     "/admin/v1/apps/{id}/status": {
       "put": {
+        "security": [
+          {
+            "adminBearer": []
+          }
+        ],
         "consumes": [
           "application/json"
         ],
@@ -271,6 +286,11 @@
     },
     "/admin/v1/health/services": {
       "get": {
+        "security": [
+          {
+            "adminBearer": []
+          }
+        ],
         "produces": [
           "application/json"
         ],
@@ -306,6 +326,11 @@
     },
     "/admin/v1/policies": {
       "get": {
+        "security": [
+          {
+            "adminBearer": []
+          }
+        ],
         "produces": [
           "application/json"
         ],
@@ -339,6 +364,11 @@
         }
       },
       "post": {
+        "security": [
+          {
+            "adminBearer": []
+          }
+        ],
         "consumes": [
           "application/json"
         ],
@@ -437,6 +467,11 @@
     },
     "/admin/v1/reports/usage": {
       "get": {
+        "security": [
+          {
+            "adminBearer": []
+          }
+        ],
         "produces": [
           "application/json"
         ],
@@ -472,6 +507,11 @@
     },
     "/admin/v1/tenants": {
       "get": {
+        "security": [
+          {
+            "adminBearer": []
+          }
+        ],
         "produces": [
           "application/json"
         ],
@@ -505,6 +545,11 @@
         }
       },
       "post": {
+        "security": [
+          {
+            "adminBearer": []
+          }
+        ],
         "consumes": [
           "application/json"
         ],
@@ -561,6 +606,11 @@
     },
     "/admin/v1/tenants/{id}": {
       "get": {
+        "security": [
+          {
+            "adminBearer": []
+          }
+        ],
         "produces": [
           "application/json"
         ],
@@ -604,6 +654,11 @@
     },
     "/admin/v1/tenants/{id}/apps": {
       "post": {
+        "security": [
+          {
+            "adminBearer": []
+          }
+        ],
         "consumes": [
           "application/json"
         ],
@@ -674,6 +729,11 @@
     },
     "/admin/v1/apps/{id}/secret:rotate": {
       "post": {
+        "security": [
+          {
+            "adminBearer": []
+          }
+        ],
         "consumes": [
           "application/x-www-form-urlencoded"
         ],
@@ -717,6 +777,14 @@
           }
         }
       }
+    }
+  },
+  "securityDefinitions": {
+    "adminBearer": {
+      "description": "Bearer access token for console admin APIs.",
+      "type": "apiKey",
+      "name": "Authorization",
+      "in": "header"
     }
   },
   "x-description": "This is a goctl generated swagger file.",

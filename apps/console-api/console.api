@@ -6,6 +6,7 @@ info (
 	version:     "v1"
 	consumes:    "application/json"
 	produces:    "application/json"
+	securityDefinitionsFromJson: `{"adminBearer":{"type":"apiKey","name":"Authorization","in":"header","description":"Bearer access token for console admin APIs."}}`
 )
 
 type LoginReq {
@@ -70,7 +71,7 @@ type Envelope {
 
 @server (
 	tags:    "Console API"
-	summary: "Administrative APIs"
+	summary: "Console authentication APIs"
 )
 service console-api {
 	@doc (
@@ -78,7 +79,14 @@ service console-api {
 	)
 	@handler Login
 	post /admin/v1/auth/login (LoginReq) returns (Envelope)
+}
 
+@server (
+	tags:     "Console API"
+	summary:  "Administrative APIs"
+	authType: adminBearer
+)
+service console-api {
 	@doc (
 		summary: "List tenants."
 	)

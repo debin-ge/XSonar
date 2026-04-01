@@ -3,12 +3,84 @@
 
 package types
 
-type EmptyReq struct {
-}
-
 type Envelope struct {
 	Code      int64       `json:"code"`
 	Message   string      `json:"message"`
 	Data      interface{} `json:"data,optional"`
 	RequestID string      `json:"request_id,optional"`
+}
+
+type GatewayAuthReq struct {
+	AppKey    string `form:"AppKey"`
+	Timestamp string `form:"Timestamp"`
+	Nonce     string `form:"Nonce"`
+	Signature string `form:"Signature"`
+}
+
+type SearchTrendingReq struct {
+	GatewayAuthReq
+}
+
+type SearchTrendsReq struct {
+	GatewayAuthReq
+	ID string `form:"id"`
+}
+
+type SearchTweetsReq struct {
+	GatewayAuthReq
+	Words      string `form:"words"`
+	Cursor     string `form:"cursor,optional"`
+	Phrase     string `form:"phrase,optional"`
+	Any        string `form:"any,optional"`
+	None       string `form:"none,optional"`
+	Tag        string `form:"tag,optional"`
+	From       string `form:"from,optional"`
+	To         string `form:"to,optional"`
+	Mentioning string `form:"mentioning,optional"`
+	Replies    string `form:"replies,optional"`
+	Likes      string `form:"likes,optional"`
+	Retweets   string `form:"retweets,optional"`
+	Since      string `form:"since,optional"`
+	Until      string `form:"until,optional"`
+	Product    string `form:"product,optional"`
+	Count      int64  `form:"count,optional"`
+}
+
+type TweetsByIDsReq struct {
+	GatewayAuthReq
+	TweetIDs string `form:"tweetIds"`
+}
+
+type TweetsDetailReq struct {
+	GatewayAuthReq
+	TweetID string `form:"tweetId"`
+	Cursor  string `form:"cursor,optional"`
+}
+
+type TweetsRepliesReq struct {
+	GatewayAuthReq
+	UserID string `form:"userId"`
+	Cursor string `form:"cursor,optional"`
+}
+
+type TweetsTimelineReq struct {
+	GatewayAuthReq
+	UserID string `form:"userId"`
+	Cursor string `form:"cursor,optional"`
+}
+
+type UserByIDReq struct {
+	GatewayAuthReq
+	UserID string `form:"userId"`
+	Cursor string `form:"cursor,optional"`
+}
+
+type UserByUsernameReq struct {
+	GatewayAuthReq
+	ScreenName string `form:"screenName"`
+}
+
+type UsersByIDsReq struct {
+	GatewayAuthReq
+	UserIDs string `form:"userIds"`
 }

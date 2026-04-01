@@ -46,6 +46,51 @@ func TestAddSwaggerRoutesServesEmbeddedConsoleSpec(t *testing.T) {
 		t.Fatalf("expected swagger title %q, got %#v", "XSonar Console API", got)
 	}
 
+	securityDefinitions, ok := response["securityDefinitions"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected securityDefinitions in swagger doc, got %#v", response["securityDefinitions"])
+	}
+	if _, ok := securityDefinitions["adminBearer"]; !ok {
+		t.Fatalf("expected adminBearer security definition, got %#v", securityDefinitions)
+	}
+
+	paths, ok := response["paths"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected paths object in swagger doc, got %#v", response["paths"])
+	}
+
+	tenantPath, ok := paths["/admin/v1/tenants"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected /admin/v1/tenants path in swagger doc, got %#v", paths["/admin/v1/tenants"])
+	}
+	listTenantsOperation, ok := tenantPath["get"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected GET /admin/v1/tenants operation, got %#v", tenantPath["get"])
+	}
+	operationSecurity, ok := listTenantsOperation["security"].([]any)
+	if !ok || len(operationSecurity) == 0 {
+		t.Fatalf("expected GET /admin/v1/tenants security requirement, got %#v", listTenantsOperation["security"])
+	}
+	adminBearerSecurity, ok := operationSecurity[0].(map[string]any)
+	if !ok {
+		t.Fatalf("expected security requirement object, got %#v", operationSecurity[0])
+	}
+	if _, ok := adminBearerSecurity["adminBearer"]; !ok {
+		t.Fatalf("expected adminBearer security requirement, got %#v", adminBearerSecurity)
+	}
+
+	loginPath, ok := paths["/admin/v1/auth/login"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected /admin/v1/auth/login path in swagger doc, got %#v", paths["/admin/v1/auth/login"])
+	}
+	loginOperation, ok := loginPath["post"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected POST /admin/v1/auth/login operation, got %#v", loginPath["post"])
+	}
+	if _, ok := loginOperation["security"]; ok {
+		t.Fatalf("expected login operation to remain public, got %#v", loginOperation["security"])
+	}
+
 	req = httptest.NewRequest(http.MethodGet, "/swagger/index.html", nil)
 	rec = httptest.NewRecorder()
 

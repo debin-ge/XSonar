@@ -46,6 +46,29 @@ func TestAddSwaggerRoutesServesEmbeddedGatewaySpec(t *testing.T) {
 		t.Fatalf("expected swagger title %q, got %#v", "XSonar Gateway API", got)
 	}
 
+	paths, ok := response["paths"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected paths object in swagger doc, got %#v", response["paths"])
+	}
+	userByIDPath, ok := paths["/v1/users/by-id"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected /v1/users/by-id path in swagger doc, got %#v", paths["/v1/users/by-id"])
+	}
+	userByIDOperation, ok := userByIDPath["get"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected GET /v1/users/by-id operation, got %#v", userByIDPath["get"])
+	}
+	parameters, ok := userByIDOperation["parameters"].([]any)
+	if !ok {
+		t.Fatalf("expected GET /v1/users/by-id parameters, got %#v", userByIDOperation["parameters"])
+	}
+	assertParameter(t, parameters, "query", "AppKey", true)
+	assertParameter(t, parameters, "query", "Timestamp", true)
+	assertParameter(t, parameters, "query", "Nonce", true)
+	assertParameter(t, parameters, "query", "Signature", true)
+	assertParameter(t, parameters, "query", "userId", true)
+	assertParameter(t, parameters, "query", "cursor", false)
+
 	req = httptest.NewRequest(http.MethodGet, "/swagger/index.html", nil)
 	rec = httptest.NewRecorder()
 
@@ -57,4 +80,24 @@ func TestAddSwaggerRoutesServesEmbeddedGatewaySpec(t *testing.T) {
 	if !strings.Contains(rec.Body.String(), "/swagger/doc.json") {
 		t.Fatalf("expected index to reference doc.json, got %q", rec.Body.String())
 	}
+}
+
+func assertParameter(t *testing.T, parameters []any, location, name string, required bool) {
+	t.Helper()
+
+	for _, rawParameter := range parameters {
+		parameter, ok := rawParameter.(map[string]any)
+		if !ok {
+			continue
+		}
+		if parameter["in"] != location || parameter["name"] != name {
+			continue
+		}
+		if gotRequired, _ := parameter["required"].(bool); gotRequired != required {
+			t.Fatalf("expected %s %s required=%t, got %#v", location, name, required, parameter)
+		}
+		return
+	}
+
+	t.Fatalf("expected %s parameter %q, got %#v", location, name, parameters)
 }

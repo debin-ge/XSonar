@@ -29,6 +29,32 @@
         ],
         "summary": "Get trending search terms.",
         "operationId": "searchTrending",
+        "parameters": [
+          {
+            "type": "string",
+            "name": "AppKey",
+            "in": "query",
+            "required": true
+          },
+          {
+            "type": "string",
+            "name": "Timestamp",
+            "in": "query",
+            "required": true
+          },
+          {
+            "type": "string",
+            "name": "Nonce",
+            "in": "query",
+            "required": true
+          },
+          {
+            "type": "string",
+            "name": "Signature",
+            "in": "query",
+            "required": true
+          }
+        ],
         "responses": {
           "200": {
             "description": "",
@@ -64,6 +90,38 @@
         ],
         "summary": "List search trends.",
         "operationId": "searchTrends",
+        "parameters": [
+          {
+            "type": "string",
+            "name": "AppKey",
+            "in": "query",
+            "required": true
+          },
+          {
+            "type": "string",
+            "name": "Timestamp",
+            "in": "query",
+            "required": true
+          },
+          {
+            "type": "string",
+            "name": "Nonce",
+            "in": "query",
+            "required": true
+          },
+          {
+            "type": "string",
+            "name": "Signature",
+            "in": "query",
+            "required": true
+          },
+          {
+            "type": "string",
+            "name": "id",
+            "in": "query",
+            "required": true
+          }
+        ],
         "responses": {
           "200": {
             "description": "",
@@ -99,6 +157,128 @@
         ],
         "summary": "Search tweets.",
         "operationId": "searchTweets",
+        "parameters": [
+          {
+            "type": "string",
+            "name": "AppKey",
+            "in": "query",
+            "required": true
+          },
+          {
+            "type": "string",
+            "name": "Timestamp",
+            "in": "query",
+            "required": true
+          },
+          {
+            "type": "string",
+            "name": "Nonce",
+            "in": "query",
+            "required": true
+          },
+          {
+            "type": "string",
+            "name": "Signature",
+            "in": "query",
+            "required": true
+          },
+          {
+            "type": "string",
+            "name": "words",
+            "in": "query",
+            "required": true
+          },
+          {
+            "type": "string",
+            "name": "cursor",
+            "in": "query",
+            "allowEmptyValue": true
+          },
+          {
+            "type": "string",
+            "name": "phrase",
+            "in": "query",
+            "allowEmptyValue": true
+          },
+          {
+            "type": "string",
+            "name": "any",
+            "in": "query",
+            "allowEmptyValue": true
+          },
+          {
+            "type": "string",
+            "name": "none",
+            "in": "query",
+            "allowEmptyValue": true
+          },
+          {
+            "type": "string",
+            "name": "tag",
+            "in": "query",
+            "allowEmptyValue": true
+          },
+          {
+            "type": "string",
+            "name": "from",
+            "in": "query",
+            "allowEmptyValue": true
+          },
+          {
+            "type": "string",
+            "name": "to",
+            "in": "query",
+            "allowEmptyValue": true
+          },
+          {
+            "type": "string",
+            "name": "mentioning",
+            "in": "query",
+            "allowEmptyValue": true
+          },
+          {
+            "type": "string",
+            "name": "replies",
+            "in": "query",
+            "allowEmptyValue": true
+          },
+          {
+            "type": "string",
+            "name": "likes",
+            "in": "query",
+            "allowEmptyValue": true
+          },
+          {
+            "type": "string",
+            "name": "retweets",
+            "in": "query",
+            "allowEmptyValue": true
+          },
+          {
+            "type": "string",
+            "name": "since",
+            "in": "query",
+            "allowEmptyValue": true
+          },
+          {
+            "type": "string",
+            "name": "until",
+            "in": "query",
+            "allowEmptyValue": true
+          },
+          {
+            "type": "string",
+            "name": "product",
+            "in": "query",
+            "allowEmptyValue": true
+          },
+          {
+            "type": "integer",
+            "name": "count",
+            "in": "query",
+            "allowEmptyValue": true
+          }
+        ],
         "responses": {
           "200": {
             "description": "",
@@ -134,6 +314,38 @@
         ],
         "summary": "Get tweets by IDs.",
         "operationId": "tweetsByIDs",
+        "parameters": [
+          {
+            "type": "string",
+            "name": "AppKey",
+            "in": "query",
+            "required": true
+          },
+          {
+            "type": "string",
+            "name": "Timestamp",
+            "in": "query",
+            "required": true
+          },
+          {
+            "type": "string",
+            "name": "Nonce",
+            "in": "query",
+            "required": true
+          },
+          {
+            "type": "string",
+            "name": "Signature",
+            "in": "query",
+            "required": true
+          },
+          {
+            "type": "string",
+            "name": "tweetIds",
+            "in": "query",
+            "required": true
+          }
+        ],
         "responses": {
           "200": {
             "description": "",
@@ -169,6 +381,44 @@
         ],
         "summary": "Get tweet details.",
         "operationId": "tweetsDetail",
+        "parameters": [
+          {
+            "type": "string",
+            "name": "AppKey",
+            "in": "query",
+            "required": true
+          },
+          {
+            "type": "string",
+            "name": "Timestamp",
+            "in": "query",
+            "required": true
+          },
+          {
+            "type": "string",
+            "name": "Nonce",
+            "in": "query",
+            "required": true
+          },
+          {
+            "type": "string",
+            "name": "Signature",
+            "in": "query",
+            "required": true
+          },
+          {
+            "type": "string",
+            "name": "tweetId",
+            "in": "query",
+            "required": true
+          },
+          {
+            "type": "string",
+            "name": "cursor",
+            "in": "query",
+            "allowEmptyValue": true
+          }
+        ],
         "responses": {
           "200": {
             "description": "",
@@ -204,6 +454,44 @@
         ],
         "summary": "Get tweet replies.",
         "operationId": "tweetsReplies",
+        "parameters": [
+          {
+            "type": "string",
+            "name": "AppKey",
+            "in": "query",
+            "required": true
+          },
+          {
+            "type": "string",
+            "name": "Timestamp",
+            "in": "query",
+            "required": true
+          },
+          {
+            "type": "string",
+            "name": "Nonce",
+            "in": "query",
+            "required": true
+          },
+          {
+            "type": "string",
+            "name": "Signature",
+            "in": "query",
+            "required": true
+          },
+          {
+            "type": "string",
+            "name": "userId",
+            "in": "query",
+            "required": true
+          },
+          {
+            "type": "string",
+            "name": "cursor",
+            "in": "query",
+            "allowEmptyValue": true
+          }
+        ],
         "responses": {
           "200": {
             "description": "",
@@ -239,6 +527,44 @@
         ],
         "summary": "Get the tweets timeline.",
         "operationId": "tweetsTimeline",
+        "parameters": [
+          {
+            "type": "string",
+            "name": "AppKey",
+            "in": "query",
+            "required": true
+          },
+          {
+            "type": "string",
+            "name": "Timestamp",
+            "in": "query",
+            "required": true
+          },
+          {
+            "type": "string",
+            "name": "Nonce",
+            "in": "query",
+            "required": true
+          },
+          {
+            "type": "string",
+            "name": "Signature",
+            "in": "query",
+            "required": true
+          },
+          {
+            "type": "string",
+            "name": "userId",
+            "in": "query",
+            "required": true
+          },
+          {
+            "type": "string",
+            "name": "cursor",
+            "in": "query",
+            "allowEmptyValue": true
+          }
+        ],
         "responses": {
           "200": {
             "description": "",
@@ -274,6 +600,44 @@
         ],
         "summary": "Get a user by ID.",
         "operationId": "userByID",
+        "parameters": [
+          {
+            "type": "string",
+            "name": "AppKey",
+            "in": "query",
+            "required": true
+          },
+          {
+            "type": "string",
+            "name": "Timestamp",
+            "in": "query",
+            "required": true
+          },
+          {
+            "type": "string",
+            "name": "Nonce",
+            "in": "query",
+            "required": true
+          },
+          {
+            "type": "string",
+            "name": "Signature",
+            "in": "query",
+            "required": true
+          },
+          {
+            "type": "string",
+            "name": "userId",
+            "in": "query",
+            "required": true
+          },
+          {
+            "type": "string",
+            "name": "cursor",
+            "in": "query",
+            "allowEmptyValue": true
+          }
+        ],
         "responses": {
           "200": {
             "description": "",
@@ -309,6 +673,38 @@
         ],
         "summary": "Get users by IDs.",
         "operationId": "usersByIDs",
+        "parameters": [
+          {
+            "type": "string",
+            "name": "AppKey",
+            "in": "query",
+            "required": true
+          },
+          {
+            "type": "string",
+            "name": "Timestamp",
+            "in": "query",
+            "required": true
+          },
+          {
+            "type": "string",
+            "name": "Nonce",
+            "in": "query",
+            "required": true
+          },
+          {
+            "type": "string",
+            "name": "Signature",
+            "in": "query",
+            "required": true
+          },
+          {
+            "type": "string",
+            "name": "userIds",
+            "in": "query",
+            "required": true
+          }
+        ],
         "responses": {
           "200": {
             "description": "",
@@ -344,6 +740,38 @@
         ],
         "summary": "Get a user by username.",
         "operationId": "userByUsername",
+        "parameters": [
+          {
+            "type": "string",
+            "name": "AppKey",
+            "in": "query",
+            "required": true
+          },
+          {
+            "type": "string",
+            "name": "Timestamp",
+            "in": "query",
+            "required": true
+          },
+          {
+            "type": "string",
+            "name": "Nonce",
+            "in": "query",
+            "required": true
+          },
+          {
+            "type": "string",
+            "name": "Signature",
+            "in": "query",
+            "required": true
+          },
+          {
+            "type": "string",
+            "name": "screenName",
+            "in": "query",
+            "required": true
+          }
+        ],
         "responses": {
           "200": {
             "description": "",
