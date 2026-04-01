@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Swagger UI</title>
+    <link rel="stylesheet" type="text/css" href="./swagger-ui.css" />
+  </head>
+  <body>
+    <div id="swagger-ui"></div>
+    <script src="./swagger-ui-bundle.js" charset="UTF-8"></script>
+    <script src="./swagger-ui-standalone-preset.js" charset="UTF-8"></script>
+    <script>
+      window.onload = function () {
+        const docUrl = window.location.pathname === "/swagger/index.html"
+          ? "/swagger/doc.json"
+          : new URL("./doc.json", window.location.href).href;
+
+        window.ui = SwaggerUIBundle({
+          url: docUrl,
+          dom_id: "#swagger-ui",
+          deepLinking: true,
+          validatorUrl: null,
+          oauth2RedirectUrl: "./oauth2-redirect.html",
+          presets: [SwaggerUIBundle.presets.apis, SwaggerUIStandalonePreset],
+          layout: "StandaloneLayout",
+        });
+      };
+    </script>
+  </body>
+</html>

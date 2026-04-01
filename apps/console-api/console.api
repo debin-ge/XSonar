@@ -1,5 +1,15 @@
 syntax = "v1"
 
+info (
+	title:       "XSonar Console API"
+	description: "Administrative API for managing tenants, apps, policies, and reports."
+	version:     "v1"
+	consumes:    "application/json"
+	produces:    "application/json"
+	schemes:     "http"
+	securityDefinitionsFromJson: `{"adminBearer":{"type":"apiKey","name":"Authorization","in":"header","description":"Bearer access token for console admin APIs."}}`
+)
+
 type LoginReq {
 	Username string `json:"username"`
 	Password string `json:"password"`
@@ -10,18 +20,29 @@ type CreateTenantReq {
 }
 
 type CreateTenantAppReq {
+	Id        string `path:"id"`
 	Name       string `json:"name"`
 	DailyQuota int64  `json:"daily_quota"`
 	QpsLimit   int    `json:"qps_limit"`
 }
 
 type UpdateAppStatusReq {
+	Id     string `path:"id"`
 	Status string `json:"status"`
 }
 
 type UpdateAppQuotaReq {
+	Id        string `path:"id"`
 	DailyQuota int64 `json:"daily_quota"`
 	QpsLimit   int   `json:"qps_limit"`
+}
+
+type GetTenantDetailReq {
+	Id string `path:"id"`
+}
+
+type RotateAppSecretReq {
+	Id string `path:"id"`
 }
 
 type PublishPolicyConfigReq {
@@ -38,6 +59,7 @@ type PublishPolicyConfigReq {
 }
 
 type BindAppPoliciesReq {
+	Id         string   `path:"id"`
 	PolicyKeys []string `json:"policy_keys"`
 }
 
@@ -48,43 +70,93 @@ type Envelope {
 	RequestID string      `json:"request_id,optional"`
 }
 
+@server (
+	tags:    "Console API"
+	summary: "Console authentication APIs"
+)
 service console-api {
+	@doc (
+		summary: "Log in to the admin console."
+	)
 	@handler Login
 	post /admin/v1/auth/login (LoginReq) returns (Envelope)
+}
 
+@server (
+	tags:     "Console API"
+	summary:  "Administrative APIs"
+	authType: adminBearer
+)
+service console-api {
+	@doc (
+		summary: "List tenants."
+	)
 	@handler ListTenants
 	get /admin/v1/tenants returns (Envelope)
 
+	@doc (
+		summary: "Create a tenant."
+	)
 	@handler CreateTenant
 	post /admin/v1/tenants (CreateTenantReq) returns (Envelope)
 
+	@doc (
+		summary: "Get tenant details."
+	)
 	@handler GetTenantDetail
-	get /admin/v1/tenants/:id returns (Envelope)
+	get /admin/v1/tenants/:id (GetTenantDetailReq) returns (Envelope)
 
+	@doc (
+		summary: "Create an application for a tenant."
+	)
 	@handler CreateTenantApp
 	post /admin/v1/tenants/:id/apps (CreateTenantAppReq) returns (Envelope)
 
+	@doc (
+		summary: "Rotate an application secret."
+	)
 	@handler RotateAppSecret
-	post /admin/v1/apps/:id/secret:rotate returns (Envelope)
+	post /admin/v1/apps/:id/secret:rotate (RotateAppSecretReq) returns (Envelope)
 
+	@doc (
+		summary: "Update application status."
+	)
 	@handler UpdateAppStatus
 	put /admin/v1/apps/:id/status (UpdateAppStatusReq) returns (Envelope)
 
+	@doc (
+		summary: "Update application quota."
+	)
 	@handler UpdateAppQuota
 	put /admin/v1/apps/:id/quota (UpdateAppQuotaReq) returns (Envelope)
 
+	@doc (
+		summary: "List policies."
+	)
 	@handler ListPolicies
 	get /admin/v1/policies returns (Envelope)
 
+	@doc (
+		summary: "Publish a policy configuration."
+	)
 	@handler PublishPolicyConfig
 	post /admin/v1/policies (PublishPolicyConfigReq) returns (Envelope)
 
+	@doc (
+		summary: "Bind policies to an application."
+	)
 	@handler BindAppPolicies
 	put /admin/v1/apps/:id/policies (BindAppPoliciesReq) returns (Envelope)
 
+	@doc (
+		summary: "Fetch the usage report."
+	)
 	@handler UsageReport
 	get /admin/v1/reports/usage returns (Envelope)
 
+	@doc (
+		summary: "Check downstream service health."
+	)
 	@handler ServiceHealth
 	get /admin/v1/health/services returns (Envelope)
 }

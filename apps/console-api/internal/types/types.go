@@ -3,45 +3,20 @@
 
 package types
 
-type LoginReq struct {
-	Username string `json:"username" validate:"required,min=1,max=64"`
-	Password string `json:"password" validate:"required,min=1,max=128"`
-}
-
-type CreateTenantReq struct {
-	Name string `json:"name" validate:"required,min=1,max=32"`
+type BindAppPoliciesReq struct {
+	Id         string   `path:"id"`
+	PolicyKeys []string `json:"policy_keys"`
 }
 
 type CreateTenantAppReq struct {
-	Name       string `json:"name" validate:"required,min=1,max=64"`
-	DailyQuota int64  `json:"daily_quota" validate:"min=0,max=1000000000"`
-	QpsLimit   int    `json:"qps_limit" validate:"min=0,max=1000000"`
+	Id         string `path:"id"`
+	Name       string `json:"name"`
+	DailyQuota int64  `json:"daily_quota"`
+	QpsLimit   int    `json:"qps_limit"`
 }
 
-type UpdateAppStatusReq struct {
-	Status string `json:"status" validate:"required,oneof=active disabled"`
-}
-
-type UpdateAppQuotaReq struct {
-	DailyQuota int64 `json:"daily_quota" validate:"min=0,max=1000000000"`
-	QpsLimit   int   `json:"qps_limit" validate:"min=0,max=1000000"`
-}
-
-type PublishPolicyConfigReq struct {
-	PolicyKey            string            `json:"policy_key" validate:"required,min=1,max=64"`
-	DisplayName          string            `json:"display_name" validate:"required,min=1,max=64"`
-	PublicMethod         string            `json:"public_method" validate:"required,oneof=GET POST PUT PATCH DELETE"`
-	PublicPath           string            `json:"public_path" validate:"required,min=1,max=256"`
-	UpstreamMethod       string            `json:"upstream_method" validate:"required,oneof=GET POST PUT PATCH DELETE"`
-	UpstreamPath         string            `json:"upstream_path" validate:"required,min=1,max=256"`
-	AllowedParams        []string          `json:"allowed_params,optional"`
-	DeniedParams         []string          `json:"denied_params,optional"`
-	DefaultParams        map[string]string `json:"default_params,optional"`
-	ProviderCredentialID string            `json:"provider_credential_id" validate:"required,min=1,max=64"`
-}
-
-type BindAppPoliciesReq struct {
-	PolicyKeys []string `json:"policy_keys" validate:"required"`
+type CreateTenantReq struct {
+	Name string `json:"name"`
 }
 
 type Envelope struct {
@@ -49,4 +24,41 @@ type Envelope struct {
 	Message   string      `json:"message"`
 	Data      interface{} `json:"data,optional"`
 	RequestID string      `json:"request_id,optional"`
+}
+
+type GetTenantDetailReq struct {
+	Id string `path:"id"`
+}
+
+type LoginReq struct {
+	Username string `json:"username"`
+	Password string `json:"password"`
+}
+
+type PublishPolicyConfigReq struct {
+	PolicyKey            string            `json:"policy_key"`
+	DisplayName          string            `json:"display_name"`
+	PublicMethod         string            `json:"public_method"`
+	PublicPath           string            `json:"public_path"`
+	UpstreamMethod       string            `json:"upstream_method"`
+	UpstreamPath         string            `json:"upstream_path"`
+	AllowedParams        []string          `json:"allowed_params,optional"`
+	DeniedParams         []string          `json:"denied_params,optional"`
+	DefaultParams        map[string]string `json:"default_params,optional"`
+	ProviderCredentialID string            `json:"provider_credential_id"`
+}
+
+type RotateAppSecretReq struct {
+	Id string `path:"id"`
+}
+
+type UpdateAppQuotaReq struct {
+	Id         string `path:"id"`
+	DailyQuota int64  `json:"daily_quota"`
+	QpsLimit   int    `json:"qps_limit"`
+}
+
+type UpdateAppStatusReq struct {
+	Id     string `path:"id"`
+	Status string `json:"status"`
 }

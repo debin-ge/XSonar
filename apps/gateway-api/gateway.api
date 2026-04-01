@@ -1,6 +1,88 @@
 syntax = "v1"
 
-type EmptyReq {}
+info (
+	title:       "XSonar Gateway API"
+	description: "Public gateway API for user and search endpoints."
+	version:     "v1"
+	consumes:    "application/json"
+	produces:    "application/json"
+	schemes:     "http"
+)
+
+type GatewayAuthReq {
+	AppKey    string `form:"AppKey"`
+	Timestamp string `form:"Timestamp"`
+	Nonce     string `form:"Nonce"`
+	Signature string `form:"Signature"`
+}
+
+type UsersByIDsReq {
+	GatewayAuthReq
+	UserIDs string `form:"userIds"`
+}
+
+type UserByIDReq {
+	GatewayAuthReq
+	UserID string `form:"userId"`
+	Cursor string `form:"cursor,optional"`
+}
+
+type UserByUsernameReq {
+	GatewayAuthReq
+	ScreenName string `form:"screenName"`
+}
+
+type TweetsByIDsReq {
+	GatewayAuthReq
+	TweetIDs string `form:"tweetIds"`
+}
+
+type TweetsTimelineReq {
+	GatewayAuthReq
+	UserID string `form:"userId"`
+	Cursor string `form:"cursor,optional"`
+}
+
+type TweetsRepliesReq {
+	GatewayAuthReq
+	UserID string `form:"userId"`
+	Cursor string `form:"cursor,optional"`
+}
+
+type TweetsDetailReq {
+	GatewayAuthReq
+	TweetID string `form:"tweetId"`
+	Cursor  string `form:"cursor,optional"`
+}
+
+type SearchTweetsReq {
+	GatewayAuthReq
+	Words      string `form:"words"`
+	Cursor     string `form:"cursor,optional"`
+	Phrase     string `form:"phrase,optional"`
+	Any        string `form:"any,optional"`
+	None       string `form:"none,optional"`
+	Tag        string `form:"tag,optional"`
+	From       string `form:"from,optional"`
+	To         string `form:"to,optional"`
+	Mentioning string `form:"mentioning,optional"`
+	Replies    string `form:"replies,optional"`
+	Likes      string `form:"likes,optional"`
+	Retweets   string `form:"retweets,optional"`
+	Since      string `form:"since,optional"`
+	Until      string `form:"until,optional"`
+	Product    string `form:"product,optional"`
+	Count      int64  `form:"count,optional"`
+}
+
+type SearchTrendingReq {
+	GatewayAuthReq
+}
+
+type SearchTrendsReq {
+	GatewayAuthReq
+	ID string `form:"id"`
+}
 
 type Envelope {
 	Code      int64       `json:"code"`
@@ -9,35 +91,68 @@ type Envelope {
 	RequestID string      `json:"request_id,optional"`
 }
 
+@server (
+	tags:    "Gateway API"
+	summary: "Public gateway APIs"
+)
 service gateway-api {
+	@doc (
+		summary: "Get users by IDs."
+	)
 	@handler UsersByIDs
-	get /v1/users/by-ids returns (Envelope)
+	get /v1/users/by-ids (UsersByIDsReq) returns (Envelope)
 
+	@doc (
+		summary: "Get a user by ID."
+	)
 	@handler UserByID
-	get /v1/users/by-id returns (Envelope)
+	get /v1/users/by-id (UserByIDReq) returns (Envelope)
 
+	@doc (
+		summary: "Get a user by username."
+	)
 	@handler UserByUsername
-	get /v1/users/by-username returns (Envelope)
+	get /v1/users/by-username (UserByUsernameReq) returns (Envelope)
 
+	@doc (
+		summary: "Get tweets by IDs."
+	)
 	@handler TweetsByIDs
-	get /v1/tweets/by-ids returns (Envelope)
+	get /v1/tweets/by-ids (TweetsByIDsReq) returns (Envelope)
 
+	@doc (
+		summary: "Get the tweets timeline."
+	)
 	@handler TweetsTimeline
-	get /v1/tweets/timeline returns (Envelope)
+	get /v1/tweets/timeline (TweetsTimelineReq) returns (Envelope)
 
+	@doc (
+		summary: "Get tweet replies."
+	)
 	@handler TweetsReplies
-	get /v1/tweets/replies returns (Envelope)
+	get /v1/tweets/replies (TweetsRepliesReq) returns (Envelope)
 
+	@doc (
+		summary: "Get tweet details."
+	)
 	@handler TweetsDetail
-	get /v1/tweets/detail returns (Envelope)
+	get /v1/tweets/detail (TweetsDetailReq) returns (Envelope)
 
+	@doc (
+		summary: "Search tweets."
+	)
 	@handler SearchTweets
-	get /v1/search/tweets returns (Envelope)
+	get /v1/search/tweets (SearchTweetsReq) returns (Envelope)
 
+	@doc (
+		summary: "Get trending search terms."
+	)
 	@handler SearchTrending
-	get /v1/search/trending returns (Envelope)
+	get /v1/search/trending (SearchTrendingReq) returns (Envelope)
 
+	@doc (
+		summary: "List search trends."
+	)
 	@handler SearchTrends
-	get /v1/search/trends returns (Envelope)
+	get /v1/search/trends (SearchTrendsReq) returns (Envelope)
 }
-

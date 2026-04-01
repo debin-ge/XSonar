@@ -264,9 +264,10 @@ func TestExecutePolicySuppressesPlaceholderUpstreamErrorBody(t *testing.T) {
 	cfg.ProviderTimeoutMS = 1000
 
 	var logs bytes.Buffer
+	const upstreamBody = `{"additionalProp":{}}`
 	client := &http.Client{
 		Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
-			return jsonHTTPResponse(http.StatusBadRequest, `{"additionalProp":{}}`), nil
+			return jsonHTTPResponse(http.StatusBadRequest, upstreamBody), nil
 		}),
 	}
 
@@ -291,21 +292,31 @@ func TestExecutePolicySuppressesPlaceholderUpstreamErrorBody(t *testing.T) {
 	}
 
 	entry := decodeProviderLogLine(t, logs.Bytes())
-	upstreamResponse := entry["upstream_response"].(map[string]any)
-	if _, exists := upstreamResponse["additionalProp"]; !exists {
-		t.Fatalf("expected upstream response to be logged, got %#v", entry)
+	if _, exists := entry["upstream_response"]; exists {
+		t.Fatalf("expected full upstream response to be omitted, got %#v", entry)
+	}
+	if entry["upstream_content_type"] != "application/json" {
+		t.Fatalf("expected upstream_content_type to be logged, got %#v", entry)
+	}
+	if entry["upstream_response_bytes"] != float64(len(upstreamBody)) {
+		t.Fatalf("expected upstream_response_bytes to be logged, got %#v", entry)
+	}
+	if entry["upstream_response_preview"] != upstreamBody {
+		t.Fatalf("expected upstream_response_preview to be logged, got %#v", entry)
 	}
 }
 
-func TestExecutePolicyLogsRawUpstreamResponseOnSuccess(t *testing.T) {
+func TestExecutePolicyOmitsUpstreamResponsePreviewOnSuccess(t *testing.T) {
 	cfg := shared.DefaultConfig("provider-rpc", 9003)
 	cfg.ProviderBaseURL = "https://provider.example/api"
 	cfg.ProviderTimeoutMS = 1000
 
 	var logs bytes.Buffer
+	rawMessage := strings.Repeat("x", 288)
+	upstreamBody := `{"code":0,"data":{"tweets":[{"id":"2"}]},"result":{"trace":"raw"},"msg":"` + rawMessage + `"}`
 	client := &http.Client{
 		Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
-			return jsonHTTPResponse(http.StatusOK, `{"code":0,"data":{"tweets":[{"id":"2"}]},"result":{"trace":"raw"},"msg":"raw message"}`), nil
+			return jsonHTTPResponse(http.StatusOK, upstreamBody), nil
 		}),
 	}
 
@@ -322,12 +333,17 @@ func TestExecutePolicyLogsRawUpstreamResponseOnSuccess(t *testing.T) {
 	}
 
 	entry := decodeProviderLogLine(t, logs.Bytes())
-	upstreamResponse := entry["upstream_response"].(map[string]any)
-	if upstreamResponse["code"] != float64(0) {
-		t.Fatalf("expected raw upstream code to be logged, got %#v", upstreamResponse)
+	if _, exists := entry["upstream_response"]; exists {
+		t.Fatalf("expected full upstream response to be omitted, got %#v", entry)
 	}
-	if upstreamResponse["msg"] != "raw message" {
-		t.Fatalf("expected raw upstream message to be logged, got %#v", upstreamResponse)
+	if entry["upstream_content_type"] != "application/json" {
+		t.Fatalf("expected upstream_content_type to be logged, got %#v", entry)
+	}
+	if entry["upstream_response_bytes"] != float64(len(upstreamBody)) {
+		t.Fatalf("expected upstream_response_bytes to be logged, got %#v", entry)
+	}
+	if _, exists := entry["upstream_response_preview"]; exists {
+		t.Fatalf("expected upstream_response_preview to be omitted on success, got %#v", entry)
 	}
 }
 

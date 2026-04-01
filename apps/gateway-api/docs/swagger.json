@@ -1,0 +1,802 @@
+{
+  "consumes": [
+    "application/json"
+  ],
+  "produces": [
+    "application/json"
+  ],
+  "schemes": [
+    "http"
+  ],
+  "swagger": "2.0",
+  "info": {
+    "description": "Public gateway API for user and search endpoints.",
+    "title": "XSonar Gateway API",
+    "version": "v1"
+  },
+  "basePath": "/",
+  "paths": {
+    "/v1/search/trending": {
+      "get": {
+        "produces": [
+          "application/json"
+        ],
+        "schemes": [
+          "http"
+        ],
+        "tags": [
+          "Gateway API"
+        ],
+        "summary": "Get trending search terms.",
+        "operationId": "searchTrending",
+        "parameters": [
+          {
+            "type": "string",
+            "name": "AppKey",
+            "in": "query",
+            "required": true
+          },
+          {
+            "type": "string",
+            "name": "Timestamp",
+            "in": "query",
+            "required": true
+          },
+          {
+            "type": "string",
+            "name": "Nonce",
+            "in": "query",
+            "required": true
+          },
+          {
+            "type": "string",
+            "name": "Signature",
+            "in": "query",
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "schema": {
+              "type": "object",
+              "properties": {
+                "code": {
+                  "type": "integer"
+                },
+                "data": {},
+                "message": {
+                  "type": "string"
+                },
+                "request_id": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/search/trends": {
+      "get": {
+        "produces": [
+          "application/json"
+        ],
+        "schemes": [
+          "http"
+        ],
+        "tags": [
+          "Gateway API"
+        ],
+        "summary": "List search trends.",
+        "operationId": "searchTrends",
+        "parameters": [
+          {
+            "type": "string",
+            "name": "AppKey",
+            "in": "query",
+            "required": true
+          },
+          {
+            "type": "string",
+            "name": "Timestamp",
+            "in": "query",
+            "required": true
+          },
+          {
+            "type": "string",
+            "name": "Nonce",
+            "in": "query",
+            "required": true
+          },
+          {
+            "type": "string",
+            "name": "Signature",
+            "in": "query",
+            "required": true
+          },
+          {
+            "type": "string",
+            "name": "id",
+            "in": "query",
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "schema": {
+              "type": "object",
+              "properties": {
+                "code": {
+                  "type": "integer"
+                },
+                "data": {},
+                "message": {
+                  "type": "string"
+                },
+                "request_id": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/search/tweets": {
+      "get": {
+        "produces": [
+          "application/json"
+        ],
+        "schemes": [
+          "http"
+        ],
+        "tags": [
+          "Gateway API"
+        ],
+        "summary": "Search tweets.",
+        "operationId": "searchTweets",
+        "parameters": [
+          {
+            "type": "string",
+            "name": "AppKey",
+            "in": "query",
+            "required": true
+          },
+          {
+            "type": "string",
+            "name": "Timestamp",
+            "in": "query",
+            "required": true
+          },
+          {
+            "type": "string",
+            "name": "Nonce",
+            "in": "query",
+            "required": true
+          },
+          {
+            "type": "string",
+            "name": "Signature",
+            "in": "query",
+            "required": true
+          },
+          {
+            "type": "string",
+            "name": "words",
+            "in": "query",
+            "required": true
+          },
+          {
+            "type": "string",
+            "name": "cursor",
+            "in": "query",
+            "allowEmptyValue": true
+          },
+          {
+            "type": "string",
+            "name": "phrase",
+            "in": "query",
+            "allowEmptyValue": true
+          },
+          {
+            "type": "string",
+            "name": "any",
+            "in": "query",
+            "allowEmptyValue": true
+          },
+          {
+            "type": "string",
+            "name": "none",
+            "in": "query",
+            "allowEmptyValue": true
+          },
+          {
+            "type": "string",
+            "name": "tag",
+            "in": "query",
+            "allowEmptyValue": true
+          },
+          {
+            "type": "string",
+            "name": "from",
+            "in": "query",
+            "allowEmptyValue": true
+          },
+          {
+            "type": "string",
+            "name": "to",
+            "in": "query",
+            "allowEmptyValue": true
+          },
+          {
+            "type": "string",
+            "name": "mentioning",
+            "in": "query",
+            "allowEmptyValue": true
+          },
+          {
+            "type": "string",
+            "name": "replies",
+            "in": "query",
+            "allowEmptyValue": true
+          },
+          {
+            "type": "string",
+            "name": "likes",
+            "in": "query",
+            "allowEmptyValue": true
+          },
+          {
+            "type": "string",
+            "name": "retweets",
+            "in": "query",
+            "allowEmptyValue": true
+          },
+          {
+            "type": "string",
+            "name": "since",
+            "in": "query",
+            "allowEmptyValue": true
+          },
+          {
+            "type": "string",
+            "name": "until",
+            "in": "query",
+            "allowEmptyValue": true
+          },
+          {
+            "type": "string",
+            "name": "product",
+            "in": "query",
+            "allowEmptyValue": true
+          },
+          {
+            "type": "integer",
+            "name": "count",
+            "in": "query",
+            "allowEmptyValue": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "schema": {
+              "type": "object",
+              "properties": {
+                "code": {
+                  "type": "integer"
+                },
+                "data": {},
+                "message": {
+                  "type": "string"
+                },
+                "request_id": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/tweets/by-ids": {
+      "get": {
+        "produces": [
+          "application/json"
+        ],
+        "schemes": [
+          "http"
+        ],
+        "tags": [
+          "Gateway API"
+        ],
+        "summary": "Get tweets by IDs.",
+        "operationId": "tweetsByIDs",
+        "parameters": [
+          {
+            "type": "string",
+            "name": "AppKey",
+            "in": "query",
+            "required": true
+          },
+          {
+            "type": "string",
+            "name": "Timestamp",
+            "in": "query",
+            "required": true
+          },
+          {
+            "type": "string",
+            "name": "Nonce",
+            "in": "query",
+            "required": true
+          },
+          {
+            "type": "string",
+            "name": "Signature",
+            "in": "query",
+            "required": true
+          },
+          {
+            "type": "string",
+            "name": "tweetIds",
+            "in": "query",
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "schema": {
+              "type": "object",
+              "properties": {
+                "code": {
+                  "type": "integer"
+                },
+                "data": {},
+                "message": {
+                  "type": "string"
+                },
+                "request_id": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/tweets/detail": {
+      "get": {
+        "produces": [
+          "application/json"
+        ],
+        "schemes": [
+          "http"
+        ],
+        "tags": [
+          "Gateway API"
+        ],
+        "summary": "Get tweet details.",
+        "operationId": "tweetsDetail",
+        "parameters": [
+          {
+            "type": "string",
+            "name": "AppKey",
+            "in": "query",
+            "required": true
+          },
+          {
+            "type": "string",
+            "name": "Timestamp",
+            "in": "query",
+            "required": true
+          },
+          {
+            "type": "string",
+            "name": "Nonce",
+            "in": "query",
+            "required": true
+          },
+          {
+            "type": "string",
+            "name": "Signature",
+            "in": "query",
+            "required": true
+          },
+          {
+            "type": "string",
+            "name": "tweetId",
+            "in": "query",
+            "required": true
+          },
+          {
+            "type": "string",
+            "name": "cursor",
+            "in": "query",
+            "allowEmptyValue": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "schema": {
+              "type": "object",
+              "properties": {
+                "code": {
+                  "type": "integer"
+                },
+                "data": {},
+                "message": {
+                  "type": "string"
+                },
+                "request_id": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/tweets/replies": {
+      "get": {
+        "produces": [
+          "application/json"
+        ],
+        "schemes": [
+          "http"
+        ],
+        "tags": [
+          "Gateway API"
+        ],
+        "summary": "Get tweet replies.",
+        "operationId": "tweetsReplies",
+        "parameters": [
+          {
+            "type": "string",
+            "name": "AppKey",
+            "in": "query",
+            "required": true
+          },
+          {
+            "type": "string",
+            "name": "Timestamp",
+            "in": "query",
+            "required": true
+          },
+          {
+            "type": "string",
+            "name": "Nonce",
+            "in": "query",
+            "required": true
+          },
+          {
+            "type": "string",
+            "name": "Signature",
+            "in": "query",
+            "required": true
+          },
+          {
+            "type": "string",
+            "name": "userId",
+            "in": "query",
+            "required": true
+          },
+          {
+            "type": "string",
+            "name": "cursor",
+            "in": "query",
+            "allowEmptyValue": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "schema": {
+              "type": "object",
+              "properties": {
+                "code": {
+                  "type": "integer"
+                },
+                "data": {},
+                "message": {
+                  "type": "string"
+                },
+                "request_id": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/tweets/timeline": {
+      "get": {
+        "produces": [
+          "application/json"
+        ],
+        "schemes": [
+          "http"
+        ],
+        "tags": [
+          "Gateway API"
+        ],
+        "summary": "Get the tweets timeline.",
+        "operationId": "tweetsTimeline",
+        "parameters": [
+          {
+            "type": "string",
+            "name": "AppKey",
+            "in": "query",
+            "required": true
+          },
+          {
+            "type": "string",
+            "name": "Timestamp",
+            "in": "query",
+            "required": true
+          },
+          {
+            "type": "string",
+            "name": "Nonce",
+            "in": "query",
+            "required": true
+          },
+          {
+            "type": "string",
+            "name": "Signature",
+            "in": "query",
+            "required": true
+          },
+          {
+            "type": "string",
+            "name": "userId",
+            "in": "query",
+            "required": true
+          },
+          {
+            "type": "string",
+            "name": "cursor",
+            "in": "query",
+            "allowEmptyValue": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "schema": {
+              "type": "object",
+              "properties": {
+                "code": {
+                  "type": "integer"
+                },
+                "data": {},
+                "message": {
+                  "type": "string"
+                },
+                "request_id": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/users/by-id": {
+      "get": {
+        "produces": [
+          "application/json"
+        ],
+        "schemes": [
+          "http"
+        ],
+        "tags": [
+          "Gateway API"
+        ],
+        "summary": "Get a user by ID.",
+        "operationId": "userByID",
+        "parameters": [
+          {
+            "type": "string",
+            "name": "AppKey",
+            "in": "query",
+            "required": true
+          },
+          {
+            "type": "string",
+            "name": "Timestamp",
+            "in": "query",
+            "required": true
+          },
+          {
+            "type": "string",
+            "name": "Nonce",
+            "in": "query",
+            "required": true
+          },
+          {
+            "type": "string",
+            "name": "Signature",
+            "in": "query",
+            "required": true
+          },
+          {
+            "type": "string",
+            "name": "userId",
+            "in": "query",
+            "required": true
+          },
+          {
+            "type": "string",
+            "name": "cursor",
+            "in": "query",
+            "allowEmptyValue": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "schema": {
+              "type": "object",
+              "properties": {
+                "code": {
+                  "type": "integer"
+                },
+                "data": {},
+                "message": {
+                  "type": "string"
+                },
+                "request_id": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/users/by-ids": {
+      "get": {
+        "produces": [
+          "application/json"
+        ],
+        "schemes": [
+          "http"
+        ],
+        "tags": [
+          "Gateway API"
+        ],
+        "summary": "Get users by IDs.",
+        "operationId": "usersByIDs",
+        "parameters": [
+          {
+            "type": "string",
+            "name": "AppKey",
+            "in": "query",
+            "required": true
+          },
+          {
+            "type": "string",
+            "name": "Timestamp",
+            "in": "query",
+            "required": true
+          },
+          {
+            "type": "string",
+            "name": "Nonce",
+            "in": "query",
+            "required": true
+          },
+          {
+            "type": "string",
+            "name": "Signature",
+            "in": "query",
+            "required": true
+          },
+          {
+            "type": "string",
+            "name": "userIds",
+            "in": "query",
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "schema": {
+              "type": "object",
+              "properties": {
+                "code": {
+                  "type": "integer"
+                },
+                "data": {},
+                "message": {
+                  "type": "string"
+                },
+                "request_id": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/users/by-username": {
+      "get": {
+        "produces": [
+          "application/json"
+        ],
+        "schemes": [
+          "http"
+        ],
+        "tags": [
+          "Gateway API"
+        ],
+        "summary": "Get a user by username.",
+        "operationId": "userByUsername",
+        "parameters": [
+          {
+            "type": "string",
+            "name": "AppKey",
+            "in": "query",
+            "required": true
+          },
+          {
+            "type": "string",
+            "name": "Timestamp",
+            "in": "query",
+            "required": true
+          },
+          {
+            "type": "string",
+            "name": "Nonce",
+            "in": "query",
+            "required": true
+          },
+          {
+            "type": "string",
+            "name": "Signature",
+            "in": "query",
+            "required": true
+          },
+          {
+            "type": "string",
+            "name": "screenName",
+            "in": "query",
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "schema": {
+              "type": "object",
+              "properties": {
+                "code": {
+                  "type": "integer"
+                },
+                "data": {},
+                "message": {
+                  "type": "string"
+                },
+                "request_id": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "x-description": "This is a goctl generated swagger file.",
+  "x-github": "https://github.com/zeromicro/go-zero",
+  "x-go-zero-doc": "https://go-zero.dev/",
+  "x-goctl-version": "1.10.1"
+}
