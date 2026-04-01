@@ -33,6 +33,7 @@ func main() {
 	ctx := svc.NewServiceContext(c)
 	defer func() { _ = ctx.Close() }()
 	shared.AddHealthzRoute(server, "gateway-api")
+	addSwaggerRoutes(server)
 	handler.RegisterHandlers(server, ctx)
 
 	fmt.Printf("Starting server at %s:%d...\n", c.Host, c.Port)
