@@ -83,8 +83,11 @@ func TestAddSwaggerRoutesServesIndex(t *testing.T) {
 		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
 	}
 	body := rec.Body.String()
-	if !strings.Contains(body, `url: "/swagger/doc.json"`) {
-		t.Fatalf("expected index to reference /swagger/doc.json, got %q", body)
+	if !strings.Contains(body, "/swagger/doc.json") {
+		t.Fatalf("expected index to include /swagger/doc.json fallback, got %q", body)
+	}
+	if !strings.Contains(body, `new URL("./doc.json", window.location.href).href`) {
+		t.Fatalf("expected index to derive doc.json from the current page location, got %q", body)
 	}
 	if strings.Contains(body, "validator.swagger.io") {
 		t.Fatalf("expected index to disable external validator, got %q", body)
@@ -119,8 +122,11 @@ func TestSwaggerRoutesServesIndexWithCustomPrefix(t *testing.T) {
 		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
 	}
 	body := rec.Body.String()
-	if !strings.Contains(body, `url: "/docs/doc.json"`) {
-		t.Fatalf("expected index to reference /docs/doc.json, got %q", body)
+	if strings.Contains(body, "/docs/doc.json") {
+		t.Fatalf("expected index not to hardcode /docs/doc.json, got %q", body)
+	}
+	if !strings.Contains(body, `new URL("./doc.json", window.location.href).href`) {
+		t.Fatalf("expected index to derive doc.json from the current page location, got %q", body)
 	}
 }
 

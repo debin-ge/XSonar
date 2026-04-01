@@ -11,8 +11,12 @@
     <script src="./swagger-ui-standalone-preset.js" charset="UTF-8"></script>
     <script>
       window.onload = function () {
+        const docUrl = window.location.pathname.startsWith("/swagger/")
+          ? "/swagger/doc.json"
+          : new URL("./doc.json", window.location.href).href;
+
         window.ui = SwaggerUIBundle({
-          url: "__SWAGGER_DOC_URL__",
+          url: docUrl,
           dom_id: "#swagger-ui",
           deepLinking: true,
           validatorUrl: null,

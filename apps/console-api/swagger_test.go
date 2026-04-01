@@ -57,4 +57,7 @@ func TestAddSwaggerRoutesServesEmbeddedConsoleSpec(t *testing.T) {
 	if !strings.Contains(rec.Body.String(), "/swagger/doc.json") {
 		t.Fatalf("expected index to reference doc.json, got %q", rec.Body.String())
 	}
+	if !strings.Contains(rec.Body.String(), `new URL("./doc.json", window.location.href).href`) {
+		t.Fatalf("expected index to derive doc.json from the current page location, got %q", rec.Body.String())
+	}
 }

@@ -1,7 +1,6 @@
 package shared
 
 import (
-	"bytes"
 	"embed"
 	"net/http"
 	"path"
@@ -12,7 +11,6 @@ import (
 
 const (
 	defaultSwaggerRoutePrefix = "/swagger"
-	swaggerDocURLPlaceholder  = "__SWAGGER_DOC_URL__"
 )
 
 // SwaggerDocSource provides the raw swagger document bytes for the shared UI routes.
@@ -31,18 +29,17 @@ func AddSwaggerRoutes(server *rest.Server, docSource SwaggerDocSource) {
 // SwaggerRoutes builds the shared Swagger document and UI routes for the provided prefix.
 func SwaggerRoutes(prefix string, docSource SwaggerDocSource) []rest.Route {
 	routePrefix := normalizeSwaggerPrefix(prefix)
-	docURL := routePrefix + "/doc.json"
 
 	return []rest.Route{
 		{
 			Method:  http.MethodGet,
-			Path:    docURL,
+			Path:    routePrefix + "/doc.json",
 			Handler: swaggerDocHandler(docSource),
 		},
 		{
 			Method:  http.MethodGet,
 			Path:    routePrefix + "/index.html",
-			Handler: swaggerIndexHandler(docURL),
+			Handler: swaggerAssetHandler("swaggerui/index.html"),
 		},
 		{
 			Method:  http.MethodGet,
@@ -118,22 +115,6 @@ func swaggerAssetHandler(assetPath string) http.HandlerFunc {
 			w.Header().Set("Content-Type", contentType)
 		}
 
-		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write(data)
-	}
-}
-
-func swaggerIndexHandler(docURL string) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		data, err := swaggerUIAssets.ReadFile("swaggerui/index.html")
-		if err != nil {
-			http.Error(w, "swagger asset is unavailable", http.StatusInternalServerError)
-			return
-		}
-
-		data = bytes.ReplaceAll(data, []byte(swaggerDocURLPlaceholder), []byte(docURL))
-
-		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write(data)
 	}
