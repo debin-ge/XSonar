@@ -83,14 +83,44 @@ func TestAddSwaggerRoutesServesIndex(t *testing.T) {
 		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
 	}
 	body := rec.Body.String()
-	if !strings.Contains(body, `url: "./doc.json"`) {
-		t.Fatalf("expected index to reference relative doc.json, got %q", body)
+	if !strings.Contains(body, `url: "/swagger/doc.json"`) {
+		t.Fatalf("expected index to reference /swagger/doc.json, got %q", body)
 	}
 	if strings.Contains(body, "validator.swagger.io") {
 		t.Fatalf("expected index to disable external validator, got %q", body)
 	}
 	if !strings.Contains(body, `validatorUrl: null`) {
 		t.Fatalf("expected index to disable validatorUrl, got %q", body)
+	}
+}
+
+func TestSwaggerRoutesServesIndexWithCustomPrefix(t *testing.T) {
+	server := rest.MustNewServer(rest.RestConf{
+		Host: "127.0.0.1",
+		Port: 0,
+	})
+	defer server.Stop()
+
+	server.AddRoutes(SwaggerRoutes("/docs", testSwaggerDocSource{
+		doc: []byte(`{"swagger":"2.0"}`),
+	}))
+
+	serverless, err := rest.NewServerless(server)
+	if err != nil {
+		t.Fatalf("build serverless: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/docs/index.html", nil)
+	rec := httptest.NewRecorder()
+
+	serverless.Serve(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	body := rec.Body.String()
+	if !strings.Contains(body, `url: "/docs/doc.json"`) {
+		t.Fatalf("expected index to reference /docs/doc.json, got %q", body)
 	}
 }
 

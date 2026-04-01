@@ -54,7 +54,7 @@ func TestAddSwaggerRoutesServesEmbeddedConsoleSpec(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
 	}
-	if !strings.Contains(rec.Body.String(), "./doc.json") {
+	if !strings.Contains(rec.Body.String(), "/swagger/doc.json") {
 		t.Fatalf("expected index to reference doc.json, got %q", rec.Body.String())
 	}
 }
