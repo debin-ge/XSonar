@@ -6,7 +6,7 @@
     "application/json"
   ],
   "schemes": [
-    "https"
+    "http"
   ],
   "swagger": "2.0",
   "info": {
@@ -22,7 +22,7 @@
           "application/json"
         ],
         "schemes": [
-          "https"
+          "http"
         ],
         "tags": [
           "Gateway API"
@@ -83,7 +83,7 @@
           "application/json"
         ],
         "schemes": [
-          "https"
+          "http"
         ],
         "tags": [
           "Gateway API"
@@ -150,7 +150,7 @@
           "application/json"
         ],
         "schemes": [
-          "https"
+          "http"
         ],
         "tags": [
           "Gateway API"
@@ -307,7 +307,7 @@
           "application/json"
         ],
         "schemes": [
-          "https"
+          "http"
         ],
         "tags": [
           "Gateway API"
@@ -374,7 +374,7 @@
           "application/json"
         ],
         "schemes": [
-          "https"
+          "http"
         ],
         "tags": [
           "Gateway API"
@@ -447,7 +447,7 @@
           "application/json"
         ],
         "schemes": [
-          "https"
+          "http"
         ],
         "tags": [
           "Gateway API"
@@ -520,7 +520,7 @@
           "application/json"
         ],
         "schemes": [
-          "https"
+          "http"
         ],
         "tags": [
           "Gateway API"
@@ -593,7 +593,7 @@
           "application/json"
         ],
         "schemes": [
-          "https"
+          "http"
         ],
         "tags": [
           "Gateway API"
@@ -666,7 +666,7 @@
           "application/json"
         ],
         "schemes": [
-          "https"
+          "http"
         ],
         "tags": [
           "Gateway API"
@@ -733,7 +733,7 @@
           "application/json"
         ],
         "schemes": [
-          "https"
+          "http"
         ],
         "tags": [
           "Gateway API"

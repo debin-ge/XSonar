@@ -6,7 +6,7 @@
     "application/json"
   ],
   "schemes": [
-    "https"
+    "http"
   ],
   "swagger": "2.0",
   "info": {
@@ -30,7 +30,7 @@
           "application/json"
         ],
         "schemes": [
-          "https"
+          "http"
         ],
         "tags": [
           "Console API"
@@ -100,7 +100,7 @@
           "application/json"
         ],
         "schemes": [
-          "https"
+          "http"
         ],
         "tags": [
           "Console API"
@@ -171,7 +171,7 @@
           "application/json"
         ],
         "schemes": [
-          "https"
+          "http"
         ],
         "tags": [
           "Console API"
@@ -233,7 +233,7 @@
           "application/json"
         ],
         "schemes": [
-          "https"
+          "http"
         ],
         "tags": [
           "Console API"
@@ -295,7 +295,7 @@
           "application/json"
         ],
         "schemes": [
-          "https"
+          "http"
         ],
         "tags": [
           "Console API"
@@ -335,7 +335,7 @@
           "application/json"
         ],
         "schemes": [
-          "https"
+          "http"
         ],
         "tags": [
           "Console API"
@@ -376,7 +376,7 @@
           "application/json"
         ],
         "schemes": [
-          "https"
+          "http"
         ],
         "tags": [
           "Console API"
@@ -476,7 +476,7 @@
           "application/json"
         ],
         "schemes": [
-          "https"
+          "http"
         ],
         "tags": [
           "Console API"
@@ -516,7 +516,7 @@
           "application/json"
         ],
         "schemes": [
-          "https"
+          "http"
         ],
         "tags": [
           "Console API"
@@ -557,7 +557,7 @@
           "application/json"
         ],
         "schemes": [
-          "https"
+          "http"
         ],
         "tags": [
           "Console API"
@@ -615,7 +615,7 @@
           "application/json"
         ],
         "schemes": [
-          "https"
+          "http"
         ],
         "tags": [
           "Console API"
@@ -666,7 +666,7 @@
           "application/json"
         ],
         "schemes": [
-          "https"
+          "http"
         ],
         "tags": [
           "Console API"
@@ -741,7 +741,7 @@
           "application/json"
         ],
         "schemes": [
-          "https"
+          "http"
         ],
         "tags": [
           "Console API"

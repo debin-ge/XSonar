@@ -45,6 +45,7 @@ func TestAddSwaggerRoutesServesEmbeddedGatewaySpec(t *testing.T) {
 	if got := info["title"]; got != "XSonar Gateway API" {
 		t.Fatalf("expected swagger title %q, got %#v", "XSonar Gateway API", got)
 	}
+	assertSchemes(t, response["schemes"], "http")
 
 	paths, ok := response["paths"].(map[string]any)
 	if !ok {
@@ -58,6 +59,7 @@ func TestAddSwaggerRoutesServesEmbeddedGatewaySpec(t *testing.T) {
 	if !ok {
 		t.Fatalf("expected GET /v1/users/by-id operation, got %#v", userByIDPath["get"])
 	}
+	assertSchemes(t, userByIDOperation["schemes"], "http")
 	parameters, ok := userByIDOperation["parameters"].([]any)
 	if !ok {
 		t.Fatalf("expected GET /v1/users/by-id parameters, got %#v", userByIDOperation["parameters"])
@@ -100,4 +102,16 @@ func assertParameter(t *testing.T, parameters []any, location, name string, requ
 	}
 
 	t.Fatalf("expected %s parameter %q, got %#v", location, name, parameters)
+}
+
+func assertSchemes(t *testing.T, rawSchemes any, expected string) {
+	t.Helper()
+
+	schemes, ok := rawSchemes.([]any)
+	if !ok {
+		t.Fatalf("expected schemes array, got %#v", rawSchemes)
+	}
+	if len(schemes) != 1 || schemes[0] != expected {
+		t.Fatalf("expected schemes [%q], got %#v", expected, schemes)
+	}
 }

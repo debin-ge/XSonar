@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"net/url"
 	"slices"
+	"strconv"
 	"strings"
 	"time"
 
@@ -45,6 +46,7 @@ type gatewayService struct {
 	accessClient    gatewayAccessClient
 	policyClient    gatewayPolicyClient
 	providerClient  gatewayProviderClient
+	usageStats      usageStatRecorder
 	developmentAuth bool
 }
 
@@ -55,18 +57,64 @@ type providerExecutionPayload struct {
 	UpstreamDurationMS int64           `json:"upstream_duration_ms"`
 }
 
+type ipBanCheckResult struct {
+	resp      *clients.EnvelopeResponse
+	err       error
+	blocked   bool
+	decodeErr error
+}
+
+type policyResolveResult struct {
+	resp      *clients.EnvelopeResponse
+	err       error
+	data      map[string]any
+	decodeErr error
+}
+
+type quotaReserveResult struct {
+	resp *clients.EnvelopeResponse
+	err  error
+}
+
+type policyAccessResult struct {
+	resp      *clients.EnvelopeResponse
+	err       error
+	allowed   bool
+	decodeErr error
+}
+
+const (
+	searchTweetsDefaultCount = 10
+	searchTweetsMaxCount     = 20
+)
+
 func newGatewayServiceWithClients(logger *xlog.Logger, accessClient gatewayAccessClient, policyClient gatewayPolicyClient, providerClient gatewayProviderClient) *gatewayService {
 	return newGatewayServiceWithMode(logger, accessClient, policyClient, providerClient, "")
 }
 
 func newGatewayServiceWithMode(logger *xlog.Logger, accessClient gatewayAccessClient, policyClient gatewayPolicyClient, providerClient gatewayProviderClient, mode string) *gatewayService {
+	return newGatewayServiceWithModeAndUsageStats(logger, accessClient, policyClient, providerClient, newInlineUsageStatRecorder(accessClient), mode)
+}
+
+func newGatewayServiceWithModeAndUsageStats(logger *xlog.Logger, accessClient gatewayAccessClient, policyClient gatewayPolicyClient, providerClient gatewayProviderClient, usageStats usageStatRecorder, mode string) *gatewayService {
+	if usageStats == nil {
+		usageStats = newInlineUsageStatRecorder(accessClient)
+	}
 	return &gatewayService{
 		logger:          logger,
 		accessClient:    accessClient,
 		policyClient:    policyClient,
 		providerClient:  providerClient,
+		usageStats:      usageStats,
 		developmentAuth: isDevelopmentMode(mode),
 	}
+}
+
+func (s *gatewayService) Close() {
+	if s == nil || s.usageStats == nil {
+		return
+	}
+	s.usageStats.Close()
 }
 
 func (s *gatewayService) handleProxy(w http.ResponseWriter, r *http.Request) {
@@ -128,24 +176,25 @@ func (s *gatewayService) handleProxy(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
 	defer cancel()
 
-	if clientIP != "" {
-		ipBanResp, ipBanErr := s.accessClient.CheckIpBan(ctx, &accessservice.CheckIpBanRequest{Ip: clientIP})
-		if ipBanErr != nil {
-			s.writeGatewayDownstreamError(w, r, requestID, start, clientIP, tenantID, appID, policyKey, "CheckIpBan", ipBanResp, ipBanErr)
-			return
-		}
-		ipBanData, decodeErr := decodeObject(ipBanResp.Data)
-		if decodeErr != nil {
-			writeGatewayError(http.StatusBadGateway, model.CodeInternalError, "decode ip ban response failed", "ACCESS_IP_BAN_DECODE_ERROR", decodeErr.Error())
-			return
-		}
-		if blocked, _ := ipBanData["blocked"].(bool); blocked {
-			writeGatewayError(http.StatusForbidden, model.CodeForbidden, "client ip is blocked", "CLIENT_IP_BLOCKED", "client ip is blocked")
-			return
-		}
-	}
+	ipBanCh := s.startIPBanCheck(ctx, clientIP)
+	policyCh := s.startPolicyResolve(ctx, r.URL.Path, r.Method)
 
 	authResp, authErr := s.accessClient.GetAppAuthContext(ctx, &accessservice.GetAppAuthContextRequest{AppKey: appKey})
+
+	ipBanResult := <-ipBanCh
+	if ipBanResult.err != nil {
+		s.writeGatewayDownstreamError(w, r, requestID, start, clientIP, tenantID, appID, policyKey, "CheckIpBan", ipBanResult.resp, ipBanResult.err)
+		return
+	}
+	if ipBanResult.decodeErr != nil {
+		writeGatewayError(http.StatusBadGateway, model.CodeInternalError, "decode ip ban response failed", "ACCESS_IP_BAN_DECODE_ERROR", ipBanResult.decodeErr.Error())
+		return
+	}
+	if ipBanResult.blocked {
+		writeGatewayError(http.StatusForbidden, model.CodeForbidden, "client ip is blocked", "CLIENT_IP_BLOCKED", "client ip is blocked")
+		return
+	}
+
 	if authErr != nil {
 		s.writeGatewayDownstreamError(w, r, requestID, start, clientIP, tenantID, appID, policyKey, "GetAppAuthContext", authResp, authErr)
 		return
@@ -199,50 +248,40 @@ func (s *gatewayService) handleProxy(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	policyResp, policyErr := s.policyClient.ResolvePolicy(ctx, &policyservice.ResolvePolicyRequest{
-		Path:   r.URL.Path,
-		Method: r.Method,
-	})
-	if policyErr != nil {
-		s.writeGatewayDownstreamError(w, r, requestID, start, clientIP, tenantID, appID, policyKey, "ResolvePolicy", policyResp, policyErr)
+	policyResult := <-policyCh
+	if policyResult.err != nil {
+		s.writeGatewayDownstreamError(w, r, requestID, start, clientIP, tenantID, appID, policyKey, "ResolvePolicy", policyResult.resp, policyResult.err)
 		return
 	}
-
-	policyData, policyDecodeErr := decodeObject(policyResp.Data)
-	if policyDecodeErr != nil {
-		writeGatewayError(http.StatusBadGateway, model.CodeInternalError, "decode policy response failed", "POLICY_RESOLVE_DECODE_ERROR", policyDecodeErr.Error())
+	if policyResult.decodeErr != nil {
+		writeGatewayError(http.StatusBadGateway, model.CodeInternalError, "decode policy response failed", "POLICY_RESOLVE_DECODE_ERROR", policyResult.decodeErr.Error())
 		return
 	}
+	policyData := policyResult.data
 
 	policyKey = stringValue(policyData["policy_key"])
 
-	quotaResp, quotaErr := s.accessClient.CheckAndReserveQuota(ctx, &accessservice.CheckAndReserveQuotaRequest{
-		AppId:     appID,
-		PolicyKey: policyKey,
-		RequestId: requestID,
-	})
-	if quotaErr != nil {
-		s.writeGatewayDownstreamError(w, r, requestID, start, clientIP, tenantID, appID, policyKey, "CheckAndReserveQuota", quotaResp, quotaErr)
+	quotaCh := s.startQuotaReservation(ctx, appID, policyKey, requestID)
+	accessCh := s.startPolicyAccessCheck(ctx, appID, policyKey)
+
+	quotaResult := <-quotaCh
+	if quotaResult.err != nil {
+		s.writeGatewayDownstreamError(w, r, requestID, start, clientIP, tenantID, appID, policyKey, "CheckAndReserveQuota", quotaResult.resp, quotaResult.err)
 		return
 	}
 
-	accessResp, accessErr := s.policyClient.CheckAppPolicyAccess(ctx, &policyservice.CheckAppPolicyAccessRequest{
-		AppId:     appID,
-		PolicyKey: policyKey,
-	})
-	if accessErr != nil {
+	accessResult := <-accessCh
+	if accessResult.err != nil {
 		_ = s.releaseQuota(ctx, appID, requestID)
-		s.writeGatewayDownstreamError(w, r, requestID, start, clientIP, tenantID, appID, policyKey, "CheckAppPolicyAccess", accessResp, accessErr)
+		s.writeGatewayDownstreamError(w, r, requestID, start, clientIP, tenantID, appID, policyKey, "CheckAppPolicyAccess", accessResult.resp, accessResult.err)
 		return
 	}
-
-	accessData, accessDecodeErr := decodeObject(accessResp.Data)
-	if accessDecodeErr != nil {
+	if accessResult.decodeErr != nil {
 		_ = s.releaseQuota(ctx, appID, requestID)
-		writeGatewayError(http.StatusBadGateway, model.CodeInternalError, "decode policy access response failed", "POLICY_ACCESS_DECODE_ERROR", accessDecodeErr.Error())
+		writeGatewayError(http.StatusBadGateway, model.CodeInternalError, "decode policy access response failed", "POLICY_ACCESS_DECODE_ERROR", accessResult.decodeErr.Error())
 		return
 	}
-	if allowed, _ := accessData["allowed"].(bool); !allowed {
+	if !accessResult.allowed {
 		_ = s.releaseQuota(ctx, appID, requestID)
 		writeGatewayError(http.StatusForbidden, model.CodeForbidden, "policy access denied", "POLICY_ACCESS_DENIED", "policy access denied")
 		return
@@ -302,17 +341,19 @@ func (s *gatewayService) handleProxy(w http.ResponseWriter, r *http.Request) {
 		_ = s.releaseQuota(ctx, appID, requestID)
 	}
 
-	_, _ = s.accessClient.RecordUsageStat(ctx, &accessservice.RecordUsageStatRequest{
-		TenantId:           tenantID,
-		AppId:              appID,
-		PolicyKey:          policyKey,
-		RequestId:          requestID,
-		Success:            success,
-		DurationMs:         time.Since(start).Milliseconds(),
-		UpstreamDurationMs: providerData.UpstreamDurationMS,
-		StatusCode:         int32(statusCode),
-		ResultCode:         resultCode,
-	})
+	if s.usageStats != nil {
+		s.usageStats.Record(accessservice.RecordUsageStatRequest{
+			TenantId:           tenantID,
+			AppId:              appID,
+			PolicyKey:          policyKey,
+			RequestId:          requestID,
+			Success:            success,
+			DurationMs:         time.Since(start).Milliseconds(),
+			UpstreamDurationMs: providerData.UpstreamDurationMS,
+			StatusCode:         int32(statusCode),
+			ResultCode:         resultCode,
+		})
+	}
 
 	if !success {
 		s.logGatewayError(r, requestID, start, clientIP, tenantID, appID, policyKey, statusCode, firstNonEmpty(resultCode, "UPSTREAM_REQUEST_FAILED"), "upstream request failed")
@@ -325,7 +366,6 @@ func (s *gatewayService) handleProxy(w http.ResponseWriter, r *http.Request) {
 	shared.WriteRawOK(w, body, requestID)
 
 	_ = replayResp
-	_ = quotaResp
 }
 
 func (s *gatewayService) releaseQuota(ctx context.Context, appID, requestID string) error {
@@ -334,6 +374,93 @@ func (s *gatewayService) releaseQuota(ctx context.Context, appID, requestID stri
 		RequestId: requestID,
 	})
 	return err
+}
+
+func (s *gatewayService) startIPBanCheck(ctx context.Context, clientIP string) <-chan ipBanCheckResult {
+	resultCh := make(chan ipBanCheckResult, 1)
+	if clientIP == "" {
+		resultCh <- ipBanCheckResult{}
+		return resultCh
+	}
+
+	go func() {
+		resp, err := s.accessClient.CheckIpBan(ctx, &accessservice.CheckIpBanRequest{Ip: clientIP})
+		result := ipBanCheckResult{
+			resp: resp,
+			err:  err,
+		}
+		if err == nil {
+			data, decodeErr := decodeObject(resp.Data)
+			result.decodeErr = decodeErr
+			if decodeErr == nil {
+				result.blocked, _ = data["blocked"].(bool)
+			}
+		}
+		resultCh <- result
+	}()
+
+	return resultCh
+}
+
+func (s *gatewayService) startPolicyResolve(ctx context.Context, path, method string) <-chan policyResolveResult {
+	resultCh := make(chan policyResolveResult, 1)
+
+	go func() {
+		resp, err := s.policyClient.ResolvePolicy(ctx, &policyservice.ResolvePolicyRequest{
+			Path:   path,
+			Method: method,
+		})
+		result := policyResolveResult{
+			resp: resp,
+			err:  err,
+		}
+		if err == nil {
+			result.data, result.decodeErr = decodeObject(resp.Data)
+		}
+		resultCh <- result
+	}()
+
+	return resultCh
+}
+
+func (s *gatewayService) startQuotaReservation(ctx context.Context, appID, policyKey, requestID string) <-chan quotaReserveResult {
+	resultCh := make(chan quotaReserveResult, 1)
+
+	go func() {
+		resp, err := s.accessClient.CheckAndReserveQuota(ctx, &accessservice.CheckAndReserveQuotaRequest{
+			AppId:     appID,
+			PolicyKey: policyKey,
+			RequestId: requestID,
+		})
+		resultCh <- quotaReserveResult{resp: resp, err: err}
+	}()
+
+	return resultCh
+}
+
+func (s *gatewayService) startPolicyAccessCheck(ctx context.Context, appID, policyKey string) <-chan policyAccessResult {
+	resultCh := make(chan policyAccessResult, 1)
+
+	go func() {
+		resp, err := s.policyClient.CheckAppPolicyAccess(ctx, &policyservice.CheckAppPolicyAccessRequest{
+			AppId:     appID,
+			PolicyKey: policyKey,
+		})
+		result := policyAccessResult{
+			resp: resp,
+			err:  err,
+		}
+		if err == nil {
+			data, decodeErr := decodeObject(resp.Data)
+			result.decodeErr = decodeErr
+			if decodeErr == nil {
+				result.allowed, _ = data["allowed"].(bool)
+			}
+		}
+		resultCh <- result
+	}()
+
+	return resultCh
 }
 
 func (s *gatewayService) writeGatewayDownstreamError(w http.ResponseWriter, r *http.Request, requestID string, startedAt time.Time, clientIP, tenantID, appID, policyKey, downstreamPath string, response *clients.EnvelopeResponse, err error) {
@@ -555,6 +682,8 @@ func normalizeProviderQuery(policyKey, upstreamPath string, query map[string]any
 	}
 
 	switch {
+	case policyKey == "search_tweets_v1", upstreamPath == "/base/apitools/search":
+		normalizeSearchTweetsCount(query)
 	case policyKey == "tweets_detail_v1", upstreamPath == "/base/apitools/tweetTimeline":
 		if _, exists := query["id"]; exists {
 			return query
@@ -566,6 +695,52 @@ func normalizeProviderQuery(policyKey, upstreamPath string, query map[string]any
 	}
 
 	return query
+}
+
+func normalizeSearchTweetsCount(query map[string]any) {
+	rawCount, exists := query["count"]
+	if !exists {
+		query["count"] = strconv.Itoa(searchTweetsDefaultCount)
+		return
+	}
+
+	count, ok := parsePositiveInt(rawCount)
+	if !ok {
+		query["count"] = strconv.Itoa(searchTweetsDefaultCount)
+		return
+	}
+	if count > searchTweetsMaxCount {
+		query["count"] = strconv.Itoa(searchTweetsMaxCount)
+		return
+	}
+
+	query["count"] = strconv.Itoa(count)
+}
+
+func parsePositiveInt(value any) (int, bool) {
+	switch typed := value.(type) {
+	case string:
+		parsed, err := strconv.Atoi(strings.TrimSpace(typed))
+		if err != nil || parsed <= 0 {
+			return 0, false
+		}
+		return parsed, true
+	case int:
+		return typed, typed > 0
+	case int64:
+		return int(typed), typed > 0
+	case float64:
+		parsed := int(typed)
+		return parsed, typed == float64(parsed) && parsed > 0
+	case json.Number:
+		parsed, err := typed.Int64()
+		if err != nil || parsed <= 0 {
+			return 0, false
+		}
+		return int(parsed), true
+	default:
+		return 0, false
+	}
 }
 
 func validateRequiredQuery(query map[string]any, requiredParams []string) error {

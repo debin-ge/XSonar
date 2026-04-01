@@ -29,6 +29,7 @@ type providerService struct {
 }
 
 const maxUpstreamResponseBytes = 10 << 20
+const maxUpstreamLogPreviewChars = 256
 
 type executePolicyRequest struct {
 	RequestID      string         `json:"request_id"`
@@ -180,7 +181,9 @@ func (s *providerService) executePolicy(ctx context.Context, req executePolicyRe
 		lastResultCode = normalizedResultCode
 		logFields := providerLogFields(req, method, targetURL, attempt, normalizedStatusCode, lastResultCode, "")
 		logFields["upstream_status_code"] = resp.StatusCode
-		logFields["upstream_response"] = rawProviderLogBody(bodyBytes, resp.Header.Get("Content-Type"))
+		for key, value := range providerLogResponseFields(bodyBytes, resp.Header.Get("Content-Type"), normalizedStatusCode >= http.StatusBadRequest) {
+			logFields[key] = value
+		}
 		if normalizedStatusCode >= http.StatusBadRequest {
 			shared.LogRequestError(s.logger, "provider request executed", req.RequestID, start, logFields)
 		} else {
@@ -435,14 +438,44 @@ func decodeUpstreamBody(body []byte, contentType string) any {
 	return string(body)
 }
 
-func rawProviderLogBody(body []byte, contentType string) any {
-	if len(bytes.TrimSpace(body)) == 0 {
-		return map[string]any{}
+func providerLogResponseFields(body []byte, contentType string, includePreview bool) map[string]any {
+	fields := map[string]any{
+		"upstream_response_bytes": len(body),
 	}
-	if json.Valid(body) {
-		return json.RawMessage(cloneRawJSON(body))
+
+	if trimmedContentType := strings.TrimSpace(contentType); trimmedContentType != "" {
+		fields["upstream_content_type"] = trimmedContentType
 	}
-	return string(body)
+
+	if includePreview {
+		if preview := providerLogResponsePreview(body, contentType); preview != "" {
+			fields["upstream_response_preview"] = preview
+		}
+	}
+
+	return fields
+}
+
+func providerLogResponsePreview(body []byte, contentType string) string {
+	trimmedBody := bytes.TrimSpace(body)
+	if len(trimmedBody) == 0 {
+		return ""
+	}
+
+	previewBody := trimmedBody
+	if strings.Contains(strings.ToLower(contentType), "json") || json.Valid(trimmedBody) {
+		var compact bytes.Buffer
+		if err := json.Compact(&compact, trimmedBody); err == nil {
+			previewBody = compact.Bytes()
+		}
+	}
+
+	preview := string(previewBody)
+	if len([]rune(preview)) <= maxUpstreamLogPreviewChars {
+		return preview
+	}
+
+	return string([]rune(preview)[:maxUpstreamLogPreviewChars]) + "..."
 }
 
 func normalizeUpstreamPayloadRaw(statusCode int, body []byte, contentType string) (int, string, json.RawMessage) {

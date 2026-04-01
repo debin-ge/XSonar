@@ -45,6 +45,7 @@ func TestAddSwaggerRoutesServesEmbeddedConsoleSpec(t *testing.T) {
 	if got := info["title"]; got != "XSonar Console API" {
 		t.Fatalf("expected swagger title %q, got %#v", "XSonar Console API", got)
 	}
+	assertSchemes(t, response["schemes"], "http")
 
 	securityDefinitions, ok := response["securityDefinitions"].(map[string]any)
 	if !ok {
@@ -67,6 +68,7 @@ func TestAddSwaggerRoutesServesEmbeddedConsoleSpec(t *testing.T) {
 	if !ok {
 		t.Fatalf("expected GET /admin/v1/tenants operation, got %#v", tenantPath["get"])
 	}
+	assertSchemes(t, listTenantsOperation["schemes"], "http")
 	operationSecurity, ok := listTenantsOperation["security"].([]any)
 	if !ok || len(operationSecurity) == 0 {
 		t.Fatalf("expected GET /admin/v1/tenants security requirement, got %#v", listTenantsOperation["security"])
@@ -104,5 +106,17 @@ func TestAddSwaggerRoutesServesEmbeddedConsoleSpec(t *testing.T) {
 	}
 	if !strings.Contains(rec.Body.String(), `new URL("./doc.json", window.location.href).href`) {
 		t.Fatalf("expected index to derive doc.json from the current page location, got %q", rec.Body.String())
+	}
+}
+
+func assertSchemes(t *testing.T, rawSchemes any, expected string) {
+	t.Helper()
+
+	schemes, ok := rawSchemes.([]any)
+	if !ok {
+		t.Fatalf("expected schemes array, got %#v", rawSchemes)
+	}
+	if len(schemes) != 1 || schemes[0] != expected {
+		t.Fatalf("expected schemes [%q], got %#v", expected, schemes)
 	}
 }

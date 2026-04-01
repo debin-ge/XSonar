@@ -6,6 +6,7 @@ info (
 	version:     "v1"
 	consumes:    "application/json"
 	produces:    "application/json"
+	schemes:     "http"
 	securityDefinitionsFromJson: `{"adminBearer":{"type":"apiKey","name":"Authorization","in":"header","description":"Bearer access token for console admin APIs."}}`
 )
 

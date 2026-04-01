@@ -946,6 +946,424 @@ func TestSanitizeUpstreamQueryRejectsNormalizedDuplicates(t *testing.T) {
 	}
 }
 
+func TestNormalizeProviderQuerySetsDefaultCountForSearchTweets(t *testing.T) {
+	query := map[string]any{"words": "ai"}
+
+	got := normalizeProviderQuery("search_tweets_v1", "/base/apitools/search", query)
+
+	if got["count"] != "10" {
+		t.Fatalf("expected default count=10, got %#v", got["count"])
+	}
+}
+
+func TestNormalizeProviderQueryClampsSearchTweetsCount(t *testing.T) {
+	query := map[string]any{
+		"words": "ai",
+		"count": "100",
+	}
+
+	got := normalizeProviderQuery("search_tweets_v1", "/base/apitools/search", query)
+
+	if got["count"] != "20" {
+		t.Fatalf("expected clamped count=20, got %#v", got["count"])
+	}
+}
+
+func TestNormalizeProviderQueryRepairsInvalidSearchTweetsCount(t *testing.T) {
+	query := map[string]any{
+		"words": "ai",
+		"count": "abc",
+	}
+
+	got := normalizeProviderQuery("search_tweets_v1", "/base/apitools/search", query)
+
+	if got["count"] != "10" {
+		t.Fatalf("expected repaired count=10, got %#v", got["count"])
+	}
+}
+
+func TestGatewaySearchTweetsInjectsNormalizedCount(t *testing.T) {
+	var recordedUsage *accessservice.RecordUsageStatRequest
+
+	accessClient := stubJSONClient{
+		postFunc: func(_ context.Context, path string, payload any) (*clients.EnvelopeResponse, error) {
+			switch path {
+			case "/rpc/CheckIpBan":
+				return okEnvelope(map[string]any{"blocked": false}), nil
+			case "/rpc/GetAppAuthContext":
+				return okEnvelope(map[string]any{
+					"tenant_id":  "tenant_search",
+					"app_id":     "app_search",
+					"app_key":    "app_key_search",
+					"app_secret": "secret_search",
+					"status":     "active",
+				}), nil
+			case "/rpc/CheckAndReserveQuota":
+				return okEnvelope(map[string]any{"allowed": true}), nil
+			case "/rpc/RecordUsageStat":
+				recordedUsage = payload.(*accessservice.RecordUsageStatRequest)
+				return okEnvelope(map[string]any{"recorded": true}), nil
+			case "/rpc/ReleaseQuotaOnFailure":
+				return okEnvelope(map[string]any{"released": true}), nil
+			default:
+				return nil, errors.New("unexpected access path: " + path)
+			}
+		},
+	}
+
+	policyClient := stubJSONClient{
+		postFunc: func(_ context.Context, path string, payload any) (*clients.EnvelopeResponse, error) {
+			switch path {
+			case "/rpc/ResolvePolicy":
+				return okEnvelope(map[string]any{
+					"policy_key":       "search_tweets_v1",
+					"upstream_method":  "GET",
+					"upstream_path":    "/base/apitools/search",
+					"allowed_params":   []string{"words", "count"},
+					"required_params":  []string{"words"},
+					"denied_params":    []string{"proxyUrl", "auth_token"},
+					"default_params":   map[string]any{"resFormat": "json"},
+					"provider_name":    "fapi.uk",
+					"provider_api_key": "provider_key_search",
+				}), nil
+			case "/rpc/CheckAppPolicyAccess":
+				return okEnvelope(map[string]any{"allowed": true}), nil
+			default:
+				return nil, errors.New("unexpected policy path: " + path)
+			}
+		},
+	}
+
+	providerClient := stubJSONClient{
+		postFunc: func(_ context.Context, path string, payload any) (*clients.EnvelopeResponse, error) {
+			if path != "/rpc/ExecutePolicy" {
+				return nil, errors.New("unexpected provider path: " + path)
+			}
+			req := payload.(*providerservice.ExecutePolicyRequest)
+			var query map[string]any
+			if err := json.Unmarshal([]byte(req.QueryJson), &query); err != nil {
+				t.Fatalf("decode query json: %v", err)
+			}
+			if query["words"] != "ai gateway optimization" {
+				t.Fatalf("expected words to be passed through, got %#v", query["words"])
+			}
+			if query["resFormat"] != "json" {
+				t.Fatalf("expected resFormat=json injection, got %#v", query["resFormat"])
+			}
+			if query["count"] != "20" {
+				t.Fatalf("expected count to be normalized to 20, got %#v", query["count"])
+			}
+			return okEnvelope(map[string]any{
+				"status_code":          200,
+				"result_code":          "UPSTREAM_OK",
+				"body":                 map[string]any{"items": []any{}},
+				"upstream_duration_ms": 15,
+			}), nil
+		},
+	}
+
+	svc := newGatewayServiceWithMode(xlog.NewStdout("gateway-test"), accessClient, policyClient, providerClient, "dev")
+
+	req := httptest.NewRequest(http.MethodGet, "/v1/search/tweets?words=ai+gateway+optimization&count=100", nil)
+	req.Header.Set("AppKey", "app_key_search")
+	req.Header.Set("AppSecret", "secret_search")
+	rec := httptest.NewRecorder()
+
+	svc.handleProxy(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	if recordedUsage == nil || recordedUsage.PolicyKey != "search_tweets_v1" {
+		t.Fatalf("expected usage stat to be recorded, got %#v", recordedUsage)
+	}
+}
+
+func TestGatewayDoesNotBlockOnUsageStatRecording(t *testing.T) {
+	recordUsageStarted := make(chan struct{}, 1)
+	releaseRecordUsage := make(chan struct{})
+
+	accessClient := stubJSONClient{
+		postFunc: func(_ context.Context, path string, payload any) (*clients.EnvelopeResponse, error) {
+			switch path {
+			case "/rpc/CheckIpBan":
+				return okEnvelope(map[string]any{"blocked": false}), nil
+			case "/rpc/GetAppAuthContext":
+				return okEnvelope(map[string]any{
+					"tenant_id":  "tenant_async",
+					"app_id":     "app_async",
+					"app_key":    "app_key_async",
+					"app_secret": "secret_async",
+					"status":     "active",
+				}), nil
+			case "/rpc/CheckAndReserveQuota":
+				return okEnvelope(map[string]any{"allowed": true}), nil
+			case "/rpc/RecordUsageStat":
+				recordUsageStarted <- struct{}{}
+				<-releaseRecordUsage
+				return okEnvelope(map[string]any{"recorded": true}), nil
+			case "/rpc/ReleaseQuotaOnFailure":
+				return okEnvelope(map[string]any{"released": true}), nil
+			default:
+				return nil, errors.New("unexpected access path: " + path)
+			}
+		},
+	}
+
+	policyClient := stubJSONClient{
+		postFunc: func(_ context.Context, path string, payload any) (*clients.EnvelopeResponse, error) {
+			switch path {
+			case "/rpc/ResolvePolicy":
+				return okEnvelope(map[string]any{
+					"policy_key":       "search_tweets_v1",
+					"upstream_method":  "GET",
+					"upstream_path":    "/base/apitools/search",
+					"allowed_params":   []string{"words", "count"},
+					"required_params":  []string{"words"},
+					"denied_params":    []string{"proxyUrl", "auth_token"},
+					"default_params":   map[string]any{"resFormat": "json"},
+					"provider_name":    "fapi.uk",
+					"provider_api_key": "provider_key_async",
+				}), nil
+			case "/rpc/CheckAppPolicyAccess":
+				return okEnvelope(map[string]any{"allowed": true}), nil
+			default:
+				return nil, errors.New("unexpected policy path: " + path)
+			}
+		},
+	}
+
+	providerClient := stubJSONClient{
+		postFunc: func(_ context.Context, path string, payload any) (*clients.EnvelopeResponse, error) {
+			if path != "/rpc/ExecutePolicy" {
+				return nil, errors.New("unexpected provider path: " + path)
+			}
+			return okEnvelope(map[string]any{
+				"status_code":          200,
+				"result_code":          "UPSTREAM_OK",
+				"body":                 map[string]any{"items": []any{}},
+				"upstream_duration_ms": 15,
+			}), nil
+		},
+	}
+
+	recorder := newAsyncUsageStatRecorder(xlog.NewStdout("gateway-test"), accessClient, 8, 1, 200*time.Millisecond)
+	defer recorder.Close()
+	defer close(releaseRecordUsage)
+
+	svc := newGatewayServiceWithModeAndUsageStats(xlog.NewStdout("gateway-test"), accessClient, policyClient, providerClient, recorder, "dev")
+
+	req := httptest.NewRequest(http.MethodGet, "/v1/search/tweets?words=ai+async+recording", nil)
+	req.Header.Set("AppKey", "app_key_async")
+	req.Header.Set("AppSecret", "secret_async")
+	rec := httptest.NewRecorder()
+
+	start := time.Now()
+	svc.handleProxy(rec, req)
+	elapsed := time.Since(start)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	if elapsed >= 100*time.Millisecond {
+		t.Fatalf("expected response to avoid waiting for usage stats, took %s", elapsed)
+	}
+
+	select {
+	case <-recordUsageStarted:
+	case <-time.After(200 * time.Millisecond):
+		t.Fatal("expected async usage stat worker to start")
+	}
+}
+
+func TestGatewayOverlapsIPBanAndPolicyResolution(t *testing.T) {
+	const delay = 120 * time.Millisecond
+
+	accessClient := stubJSONClient{
+		postFunc: func(ctx context.Context, path string, payload any) (*clients.EnvelopeResponse, error) {
+			switch path {
+			case "/rpc/CheckIpBan":
+				select {
+				case <-ctx.Done():
+					return nil, ctx.Err()
+				case <-time.After(delay):
+				}
+				return okEnvelope(map[string]any{"blocked": false}), nil
+			case "/rpc/GetAppAuthContext":
+				return okEnvelope(map[string]any{
+					"tenant_id":  "tenant_overlap_a",
+					"app_id":     "app_overlap_a",
+					"app_key":    "app_key_overlap_a",
+					"app_secret": "secret_overlap_a",
+					"status":     "active",
+				}), nil
+			case "/rpc/CheckAndReserveQuota":
+				return okEnvelope(map[string]any{"allowed": true}), nil
+			case "/rpc/RecordUsageStat":
+				return okEnvelope(map[string]any{"recorded": true}), nil
+			case "/rpc/ReleaseQuotaOnFailure":
+				return okEnvelope(map[string]any{"released": true}), nil
+			default:
+				return nil, errors.New("unexpected access path: " + path)
+			}
+		},
+	}
+
+	policyClient := stubJSONClient{
+		postFunc: func(ctx context.Context, path string, payload any) (*clients.EnvelopeResponse, error) {
+			switch path {
+			case "/rpc/ResolvePolicy":
+				select {
+				case <-ctx.Done():
+					return nil, ctx.Err()
+				case <-time.After(delay):
+				}
+				return okEnvelope(map[string]any{
+					"policy_key":       "search_tweets_v1",
+					"upstream_method":  "GET",
+					"upstream_path":    "/base/apitools/search",
+					"allowed_params":   []string{"words"},
+					"required_params":  []string{"words"},
+					"denied_params":    []string{"proxyUrl", "auth_token"},
+					"default_params":   map[string]any{"resFormat": "json"},
+					"provider_name":    "fapi.uk",
+					"provider_api_key": "provider_key_overlap_a",
+				}), nil
+			case "/rpc/CheckAppPolicyAccess":
+				return okEnvelope(map[string]any{"allowed": true}), nil
+			default:
+				return nil, errors.New("unexpected policy path: " + path)
+			}
+		},
+	}
+
+	providerClient := stubJSONClient{
+		postFunc: func(_ context.Context, path string, payload any) (*clients.EnvelopeResponse, error) {
+			if path != "/rpc/ExecutePolicy" {
+				return nil, errors.New("unexpected provider path: " + path)
+			}
+			return okEnvelope(map[string]any{
+				"status_code":          200,
+				"result_code":          "UPSTREAM_OK",
+				"body":                 map[string]any{"items": []any{}},
+				"upstream_duration_ms": 15,
+			}), nil
+		},
+	}
+
+	svc := newGatewayServiceWithMode(xlog.NewStdout("gateway-test"), accessClient, policyClient, providerClient, "dev")
+
+	req := httptest.NewRequest(http.MethodGet, "/v1/search/tweets?words=ai+overlap+ipban+policy", nil)
+	req.Header.Set("AppKey", "app_key_overlap_a")
+	req.Header.Set("AppSecret", "secret_overlap_a")
+	rec := httptest.NewRecorder()
+
+	start := time.Now()
+	svc.handleProxy(rec, req)
+	elapsed := time.Since(start)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	if elapsed >= 2*delay {
+		t.Fatalf("expected ip ban and policy resolution to overlap, took %s", elapsed)
+	}
+}
+
+func TestGatewayOverlapsQuotaReservationAndPolicyAccess(t *testing.T) {
+	const delay = 120 * time.Millisecond
+
+	accessClient := stubJSONClient{
+		postFunc: func(ctx context.Context, path string, payload any) (*clients.EnvelopeResponse, error) {
+			switch path {
+			case "/rpc/CheckIpBan":
+				return okEnvelope(map[string]any{"blocked": false}), nil
+			case "/rpc/GetAppAuthContext":
+				return okEnvelope(map[string]any{
+					"tenant_id":  "tenant_overlap_b",
+					"app_id":     "app_overlap_b",
+					"app_key":    "app_key_overlap_b",
+					"app_secret": "secret_overlap_b",
+					"status":     "active",
+				}), nil
+			case "/rpc/CheckAndReserveQuota":
+				select {
+				case <-ctx.Done():
+					return nil, ctx.Err()
+				case <-time.After(delay):
+				}
+				return okEnvelope(map[string]any{"allowed": true}), nil
+			case "/rpc/RecordUsageStat":
+				return okEnvelope(map[string]any{"recorded": true}), nil
+			case "/rpc/ReleaseQuotaOnFailure":
+				return okEnvelope(map[string]any{"released": true}), nil
+			default:
+				return nil, errors.New("unexpected access path: " + path)
+			}
+		},
+	}
+
+	policyClient := stubJSONClient{
+		postFunc: func(ctx context.Context, path string, payload any) (*clients.EnvelopeResponse, error) {
+			switch path {
+			case "/rpc/ResolvePolicy":
+				return okEnvelope(map[string]any{
+					"policy_key":       "search_tweets_v1",
+					"upstream_method":  "GET",
+					"upstream_path":    "/base/apitools/search",
+					"allowed_params":   []string{"words"},
+					"required_params":  []string{"words"},
+					"denied_params":    []string{"proxyUrl", "auth_token"},
+					"default_params":   map[string]any{"resFormat": "json"},
+					"provider_name":    "fapi.uk",
+					"provider_api_key": "provider_key_overlap_b",
+				}), nil
+			case "/rpc/CheckAppPolicyAccess":
+				select {
+				case <-ctx.Done():
+					return nil, ctx.Err()
+				case <-time.After(delay):
+				}
+				return okEnvelope(map[string]any{"allowed": true}), nil
+			default:
+				return nil, errors.New("unexpected policy path: " + path)
+			}
+		},
+	}
+
+	providerClient := stubJSONClient{
+		postFunc: func(_ context.Context, path string, payload any) (*clients.EnvelopeResponse, error) {
+			if path != "/rpc/ExecutePolicy" {
+				return nil, errors.New("unexpected provider path: " + path)
+			}
+			return okEnvelope(map[string]any{
+				"status_code":          200,
+				"result_code":          "UPSTREAM_OK",
+				"body":                 map[string]any{"items": []any{}},
+				"upstream_duration_ms": 15,
+			}), nil
+		},
+	}
+
+	svc := newGatewayServiceWithMode(xlog.NewStdout("gateway-test"), accessClient, policyClient, providerClient, "dev")
+
+	req := httptest.NewRequest(http.MethodGet, "/v1/search/tweets?words=ai+overlap+quota+access", nil)
+	req.Header.Set("AppKey", "app_key_overlap_b")
+	req.Header.Set("AppSecret", "secret_overlap_b")
+	rec := httptest.NewRecorder()
+
+	start := time.Now()
+	svc.handleProxy(rec, req)
+	elapsed := time.Since(start)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	if elapsed >= 2*delay {
+		t.Fatalf("expected quota and policy access checks to overlap, took %s", elapsed)
+	}
+}
+
 func okEnvelope(data any) *clients.EnvelopeResponse {
 	payload, _ := json.Marshal(data)
 	return &clients.EnvelopeResponse{

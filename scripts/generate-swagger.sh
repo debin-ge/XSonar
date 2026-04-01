@@ -6,6 +6,42 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 TMP_DIR="$(mktemp -d)"
 trap 'rm -rf "$TMP_DIR"' EXIT
 
+normalize_http_schemes='
+  | .schemes = ["http"]
+  | .paths |= with_entries(
+      .value |= with_entries(
+        if .key == "get"
+          or .key == "put"
+          or .key == "post"
+          or .key == "delete"
+          or .key == "patch"
+          or .key == "options"
+          or .key == "head"
+        then
+          .value |= (.schemes = ["http"])
+        else
+          .
+        end
+      )
+    )
+'
+
+console_swagger_filter='
+  if .paths["/admin/v1/apps/{id}/secret/rotate"] then
+    .paths["/admin/v1/apps/{id}/secret:rotate"] = .paths["/admin/v1/apps/{id}/secret/rotate"]
+    | del(.paths["/admin/v1/apps/{id}/secret/rotate"])
+    | if .paths["/admin/v1/apps/{id}/secret:rotate"] then
+        del(."x-date")
+      else
+        error("console swagger rewrite did not produce /admin/v1/apps/{id}/secret:rotate")
+      end
+  else
+    error("expected goctl to generate /admin/v1/apps/{id}/secret/rotate before post-processing")
+  end
+'
+
+gateway_swagger_filter='del(."x-date")'
+
 mkdir -p "$ROOT_DIR/apps/console-api/docs" "$ROOT_DIR/apps/gateway-api/docs"
 
 CONSOLE_API_TMP="$TMP_DIR/console.api"
@@ -35,19 +71,8 @@ goctl api swagger \
   --dir "$ROOT_DIR/apps/console-api/docs" \
   --filename swagger
 
-jq '
-  if .paths["/admin/v1/apps/{id}/secret/rotate"] then
-    .paths["/admin/v1/apps/{id}/secret:rotate"] = .paths["/admin/v1/apps/{id}/secret/rotate"]
-    | del(.paths["/admin/v1/apps/{id}/secret/rotate"])
-    | if .paths["/admin/v1/apps/{id}/secret:rotate"] then
-        del(."x-date")
-      else
-        error("console swagger rewrite did not produce /admin/v1/apps/{id}/secret:rotate")
-      end
-  else
-    error("expected goctl to generate /admin/v1/apps/{id}/secret/rotate before post-processing")
-  end
-' "$ROOT_DIR/apps/console-api/docs/swagger.json" > "$TMP_DIR/swagger.json"
+jq "$console_swagger_filter$normalize_http_schemes" \
+  "$ROOT_DIR/apps/console-api/docs/swagger.json" > "$TMP_DIR/swagger.json"
 mv "$TMP_DIR/swagger.json" "$ROOT_DIR/apps/console-api/docs/swagger.json"
 
 goctl api swagger \
@@ -55,6 +80,6 @@ goctl api swagger \
   --dir "$ROOT_DIR/apps/gateway-api/docs" \
   --filename swagger
 
-jq 'del(."x-date")' \
+jq "$gateway_swagger_filter$normalize_http_schemes" \
   "$ROOT_DIR/apps/gateway-api/docs/swagger.json" > "$TMP_DIR/swagger.json"
 mv "$TMP_DIR/swagger.json" "$ROOT_DIR/apps/gateway-api/docs/swagger.json"

@@ -4,6 +4,8 @@
 package svc
 
 import (
+	"time"
+
 	gatewayinternal "xsonar/apps/gateway-api/internal"
 	"xsonar/apps/gateway-api/internal/config"
 	"xsonar/pkg/clients"
@@ -18,22 +20,34 @@ type ServiceContext struct {
 
 func NewServiceContext(c config.Config) *ServiceContext {
 	logger := xlog.NewStdout("gateway-api")
+	accessClient := clients.NewAccessRPC(c.AccessRPC)
+	policyClient := clients.NewPolicyRPC(c.PolicyRPC)
+	providerClient := clients.NewProviderRPC(c.ProviderRPC)
 
 	return &ServiceContext{
 		Config: c,
 		Logger: logger,
-		Bridge: gatewayinternal.NewBridgeWithMode(
+		Bridge: gatewayinternal.NewBridgeWithModeAndAsyncUsageStats(
 			logger,
-			clients.NewAccessRPC(c.AccessRPC),
-			clients.NewPolicyRPC(c.PolicyRPC),
-			clients.NewProviderRPC(c.ProviderRPC),
+			accessClient,
+			policyClient,
+			providerClient,
 			c.Mode,
+			c.UsageStatQueueSize,
+			c.UsageStatWorkers,
+			time.Duration(c.UsageStatTimeoutMS)*time.Millisecond,
 		),
 	}
 }
 
 func (s *ServiceContext) Close() error {
-	if s == nil || s.Logger == nil {
+	if s == nil {
+		return nil
+	}
+	if s.Bridge != nil {
+		s.Bridge.Close()
+	}
+	if s.Logger == nil {
 		return nil
 	}
 	return s.Logger.Close()

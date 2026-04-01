@@ -13,4 +13,8 @@ type Config struct {
 	AccessRPC   zrpc.RpcClientConf
 	PolicyRPC   zrpc.RpcClientConf
 	ProviderRPC zrpc.RpcClientConf
+
+	UsageStatQueueSize int
+	UsageStatWorkers   int
+	UsageStatTimeoutMS int
 }

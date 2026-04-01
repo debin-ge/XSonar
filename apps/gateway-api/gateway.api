@@ -6,6 +6,7 @@ info (
 	version:     "v1"
 	consumes:    "application/json"
 	produces:    "application/json"
+	schemes:     "http"
 )
 
 type GatewayAuthReq {
@@ -155,4 +156,3 @@ service gateway-api {
 	@handler SearchTrends
 	get /v1/search/trends (SearchTrendsReq) returns (Envelope)
 }
-

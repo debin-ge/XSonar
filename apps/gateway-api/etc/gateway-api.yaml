@@ -15,3 +15,6 @@ ProviderRPC:
   Endpoints:
     - provider-rpc:9003
   Timeout: 10000
+UsageStatQueueSize: 1024
+UsageStatWorkers: 2
+UsageStatTimeoutMS: 500
