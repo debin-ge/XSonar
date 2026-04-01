@@ -43,6 +43,12 @@ runtime/
 tests/
 .worktrees/
 
+# Keep generated Swagger specs tracked even if a broad docs/ ignore rule exists.
+!apps/console-api/docs/
+!apps/console-api/docs/swagger.json
+!apps/gateway-api/docs/
+!apps/gateway-api/docs/swagger.json
+
 # Temporary files
 tmp/
 .tmp/

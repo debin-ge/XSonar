@@ -1,5 +1,13 @@
 syntax = "v1"
 
+info (
+	title:       "XSonar Console API"
+	description: "Administrative API for managing tenants, apps, policies, and reports."
+	version:     "v1"
+	consumes:    "application/json"
+	produces:    "application/json"
+)
+
 type LoginReq {
 	Username string `json:"username"`
 	Password string `json:"password"`
@@ -48,43 +56,86 @@ type Envelope {
 	RequestID string      `json:"request_id,optional"`
 }
 
+@server (
+	tags:    "Console API"
+	summary: "Administrative APIs"
+)
 service console-api {
+	@doc (
+		summary: "Log in to the admin console."
+	)
 	@handler Login
 	post /admin/v1/auth/login (LoginReq) returns (Envelope)
 
+	@doc (
+		summary: "List tenants."
+	)
 	@handler ListTenants
 	get /admin/v1/tenants returns (Envelope)
 
+	@doc (
+		summary: "Create a tenant."
+	)
 	@handler CreateTenant
 	post /admin/v1/tenants (CreateTenantReq) returns (Envelope)
 
+	@doc (
+		summary: "Get tenant details."
+	)
 	@handler GetTenantDetail
 	get /admin/v1/tenants/:id returns (Envelope)
 
+	@doc (
+		summary: "Create an application for a tenant."
+	)
 	@handler CreateTenantApp
 	post /admin/v1/tenants/:id/apps (CreateTenantAppReq) returns (Envelope)
 
+	@doc (
+		summary: "Rotate an application secret."
+	)
 	@handler RotateAppSecret
 	post /admin/v1/apps/:id/secret:rotate returns (Envelope)
 
+	@doc (
+		summary: "Update application status."
+	)
 	@handler UpdateAppStatus
 	put /admin/v1/apps/:id/status (UpdateAppStatusReq) returns (Envelope)
 
+	@doc (
+		summary: "Update application quota."
+	)
 	@handler UpdateAppQuota
 	put /admin/v1/apps/:id/quota (UpdateAppQuotaReq) returns (Envelope)
 
+	@doc (
+		summary: "List policies."
+	)
 	@handler ListPolicies
 	get /admin/v1/policies returns (Envelope)
 
+	@doc (
+		summary: "Publish a policy configuration."
+	)
 	@handler PublishPolicyConfig
 	post /admin/v1/policies (PublishPolicyConfigReq) returns (Envelope)
 
+	@doc (
+		summary: "Bind policies to an application."
+	)
 	@handler BindAppPolicies
 	put /admin/v1/apps/:id/policies (BindAppPoliciesReq) returns (Envelope)
 
+	@doc (
+		summary: "Fetch the usage report."
+	)
 	@handler UsageReport
 	get /admin/v1/reports/usage returns (Envelope)
 
+	@doc (
+		summary: "Check downstream service health."
+	)
 	@handler ServiceHealth
 	get /admin/v1/health/services returns (Envelope)
 }

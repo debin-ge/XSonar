@@ -1,5 +1,13 @@
 syntax = "v1"
 
+info (
+	title:       "XSonar Gateway API"
+	description: "Public gateway API for user and search endpoints."
+	version:     "v1"
+	consumes:    "application/json"
+	produces:    "application/json"
+)
+
 type EmptyReq {}
 
 type Envelope {
@@ -9,35 +17,68 @@ type Envelope {
 	RequestID string      `json:"request_id,optional"`
 }
 
+@server (
+	tags:    "Gateway API"
+	summary: "Public gateway APIs"
+)
 service gateway-api {
+	@doc (
+		summary: "Get users by IDs."
+	)
 	@handler UsersByIDs
 	get /v1/users/by-ids returns (Envelope)
 
+	@doc (
+		summary: "Get a user by ID."
+	)
 	@handler UserByID
 	get /v1/users/by-id returns (Envelope)
 
+	@doc (
+		summary: "Get a user by username."
+	)
 	@handler UserByUsername
 	get /v1/users/by-username returns (Envelope)
 
+	@doc (
+		summary: "Get tweets by IDs."
+	)
 	@handler TweetsByIDs
 	get /v1/tweets/by-ids returns (Envelope)
 
+	@doc (
+		summary: "Get the tweets timeline."
+	)
 	@handler TweetsTimeline
 	get /v1/tweets/timeline returns (Envelope)
 
+	@doc (
+		summary: "Get tweet replies."
+	)
 	@handler TweetsReplies
 	get /v1/tweets/replies returns (Envelope)
 
+	@doc (
+		summary: "Get tweet details."
+	)
 	@handler TweetsDetail
 	get /v1/tweets/detail returns (Envelope)
 
+	@doc (
+		summary: "Search tweets."
+	)
 	@handler SearchTweets
 	get /v1/search/tweets returns (Envelope)
 
+	@doc (
+		summary: "Get trending search terms."
+	)
 	@handler SearchTrending
 	get /v1/search/trending returns (Envelope)
 
+	@doc (
+		summary: "List search trends."
+	)
 	@handler SearchTrends
 	get /v1/search/trends returns (Envelope)
 }
-
