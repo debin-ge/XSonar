@@ -14,7 +14,7 @@ type Config struct {
 	PolicyRPC   zrpc.RpcClientConf
 	ProviderRPC zrpc.RpcClientConf
 
-	UsageStatQueueSize int
-	UsageStatWorkers   int
-	UsageStatTimeoutMS int
+	UsageStatQueueSize int `json:",default=1024"`
+	UsageStatWorkers   int `json:",default=2"`
+	UsageStatTimeoutMS int `json:",default=500"`
 }
