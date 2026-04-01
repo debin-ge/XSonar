@@ -21,8 +21,13 @@ jq '
   if .paths["/admin/v1/apps/{id}/secret/rotate"] then
     .paths["/admin/v1/apps/{id}/secret:rotate"] = .paths["/admin/v1/apps/{id}/secret/rotate"]
     | del(.paths["/admin/v1/apps/{id}/secret/rotate"])
+    | if .paths["/admin/v1/apps/{id}/secret:rotate"] then
+        del(."x-date")
+      else
+        error("console swagger rewrite did not produce /admin/v1/apps/{id}/secret:rotate")
+      end
   else
-    .
+    error("expected goctl to generate /admin/v1/apps/{id}/secret/rotate before post-processing")
   end
 ' "$ROOT_DIR/apps/console-api/docs/swagger.json" > "$TMP_DIR/swagger.json"
 mv "$TMP_DIR/swagger.json" "$ROOT_DIR/apps/console-api/docs/swagger.json"
@@ -31,3 +36,7 @@ goctl api swagger \
   --api "$ROOT_DIR/apps/gateway-api/gateway.api" \
   --dir "$ROOT_DIR/apps/gateway-api/docs" \
   --filename swagger
+
+jq 'del(."x-date")' \
+  "$ROOT_DIR/apps/gateway-api/docs/swagger.json" > "$TMP_DIR/swagger.json"
+mv "$TMP_DIR/swagger.json" "$ROOT_DIR/apps/gateway-api/docs/swagger.json"
