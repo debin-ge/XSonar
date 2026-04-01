@@ -18,18 +18,29 @@ type CreateTenantReq {
 }
 
 type CreateTenantAppReq {
+	Id        string `path:"id"`
 	Name       string `json:"name"`
 	DailyQuota int64  `json:"daily_quota"`
 	QpsLimit   int    `json:"qps_limit"`
 }
 
 type UpdateAppStatusReq {
+	Id     string `path:"id"`
 	Status string `json:"status"`
 }
 
 type UpdateAppQuotaReq {
+	Id        string `path:"id"`
 	DailyQuota int64 `json:"daily_quota"`
 	QpsLimit   int   `json:"qps_limit"`
+}
+
+type GetTenantDetailReq {
+	Id string `path:"id"`
+}
+
+type RotateAppSecretReq {
+	Id string `path:"id"`
 }
 
 type PublishPolicyConfigReq {
@@ -46,6 +57,7 @@ type PublishPolicyConfigReq {
 }
 
 type BindAppPoliciesReq {
+	Id         string   `path:"id"`
 	PolicyKeys []string `json:"policy_keys"`
 }
 
@@ -83,7 +95,7 @@ service console-api {
 		summary: "Get tenant details."
 	)
 	@handler GetTenantDetail
-	get /admin/v1/tenants/:id returns (Envelope)
+	get /admin/v1/tenants/:id (GetTenantDetailReq) returns (Envelope)
 
 	@doc (
 		summary: "Create an application for a tenant."
@@ -95,7 +107,7 @@ service console-api {
 		summary: "Rotate an application secret."
 	)
 	@handler RotateAppSecret
-	post /admin/v1/apps/:id/secret:rotate returns (Envelope)
+	post /admin/v1/apps/:id/secret:rotate (RotateAppSecretReq) returns (Envelope)
 
 	@doc (
 		summary: "Update application status."

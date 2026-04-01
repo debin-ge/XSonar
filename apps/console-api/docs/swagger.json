@@ -34,6 +34,12 @@
         "operationId": "bindAppPolicies",
         "parameters": [
           {
+            "type": "string",
+            "name": "id",
+            "in": "path",
+            "required": true
+          },
+          {
             "name": "body",
             "in": "body",
             "required": true,
@@ -92,6 +98,12 @@
         "summary": "Update application quota.",
         "operationId": "updateAppQuota",
         "parameters": [
+          {
+            "type": "string",
+            "name": "id",
+            "in": "path",
+            "required": true
+          },
           {
             "name": "body",
             "in": "body",
@@ -152,6 +164,12 @@
         "summary": "Update application status.",
         "operationId": "updateAppStatus",
         "parameters": [
+          {
+            "type": "string",
+            "name": "id",
+            "in": "path",
+            "required": true
+          },
           {
             "name": "body",
             "in": "body",
@@ -554,6 +572,14 @@
         ],
         "summary": "Get tenant details.",
         "operationId": "getTenantDetail",
+        "parameters": [
+          {
+            "type": "string",
+            "name": "id",
+            "in": "path",
+            "required": true
+          }
+        ],
         "responses": {
           "200": {
             "description": "",
@@ -593,6 +619,12 @@
         "summary": "Create an application for a tenant.",
         "operationId": "createTenantApp",
         "parameters": [
+          {
+            "type": "string",
+            "name": "id",
+            "in": "path",
+            "required": true
+          },
           {
             "name": "body",
             "in": "body",
@@ -642,6 +674,9 @@
     },
     "/admin/v1/apps/{id}/secret:rotate": {
       "post": {
+        "consumes": [
+          "application/x-www-form-urlencoded"
+        ],
         "produces": [
           "application/json"
         ],
@@ -653,6 +688,14 @@
         ],
         "summary": "Rotate an application secret.",
         "operationId": "rotateAppSecret",
+        "parameters": [
+          {
+            "type": "string",
+            "name": "id",
+            "in": "path",
+            "required": true
+          }
+        ],
         "responses": {
           "200": {
             "description": "",
