@@ -33,26 +33,27 @@
           {
             "type": "string",
             "name": "AppKey",
-            "in": "query",
-            "required": true
+            "in": "header"
+          },
+          {
+            "type": "string",
+            "name": "AppSecret",
+            "in": "header"
           },
           {
             "type": "string",
             "name": "Timestamp",
-            "in": "query",
-            "required": true
+            "in": "header"
           },
           {
             "type": "string",
             "name": "Nonce",
-            "in": "query",
-            "required": true
+            "in": "header"
           },
           {
             "type": "string",
             "name": "Signature",
-            "in": "query",
-            "required": true
+            "in": "header"
           }
         ],
         "responses": {
@@ -94,26 +95,27 @@
           {
             "type": "string",
             "name": "AppKey",
-            "in": "query",
-            "required": true
+            "in": "header"
+          },
+          {
+            "type": "string",
+            "name": "AppSecret",
+            "in": "header"
           },
           {
             "type": "string",
             "name": "Timestamp",
-            "in": "query",
-            "required": true
+            "in": "header"
           },
           {
             "type": "string",
             "name": "Nonce",
-            "in": "query",
-            "required": true
+            "in": "header"
           },
           {
             "type": "string",
             "name": "Signature",
-            "in": "query",
-            "required": true
+            "in": "header"
           },
           {
             "type": "string",
@@ -161,26 +163,27 @@
           {
             "type": "string",
             "name": "AppKey",
-            "in": "query",
-            "required": true
+            "in": "header"
+          },
+          {
+            "type": "string",
+            "name": "AppSecret",
+            "in": "header"
           },
           {
             "type": "string",
             "name": "Timestamp",
-            "in": "query",
-            "required": true
+            "in": "header"
           },
           {
             "type": "string",
             "name": "Nonce",
-            "in": "query",
-            "required": true
+            "in": "header"
           },
           {
             "type": "string",
             "name": "Signature",
-            "in": "query",
-            "required": true
+            "in": "header"
           },
           {
             "type": "string",
@@ -318,26 +321,27 @@
           {
             "type": "string",
             "name": "AppKey",
-            "in": "query",
-            "required": true
+            "in": "header"
+          },
+          {
+            "type": "string",
+            "name": "AppSecret",
+            "in": "header"
           },
           {
             "type": "string",
             "name": "Timestamp",
-            "in": "query",
-            "required": true
+            "in": "header"
           },
           {
             "type": "string",
             "name": "Nonce",
-            "in": "query",
-            "required": true
+            "in": "header"
           },
           {
             "type": "string",
             "name": "Signature",
-            "in": "query",
-            "required": true
+            "in": "header"
           },
           {
             "type": "string",
@@ -385,26 +389,27 @@
           {
             "type": "string",
             "name": "AppKey",
-            "in": "query",
-            "required": true
+            "in": "header"
+          },
+          {
+            "type": "string",
+            "name": "AppSecret",
+            "in": "header"
           },
           {
             "type": "string",
             "name": "Timestamp",
-            "in": "query",
-            "required": true
+            "in": "header"
           },
           {
             "type": "string",
             "name": "Nonce",
-            "in": "query",
-            "required": true
+            "in": "header"
           },
           {
             "type": "string",
             "name": "Signature",
-            "in": "query",
-            "required": true
+            "in": "header"
           },
           {
             "type": "string",
@@ -458,26 +463,27 @@
           {
             "type": "string",
             "name": "AppKey",
-            "in": "query",
-            "required": true
+            "in": "header"
+          },
+          {
+            "type": "string",
+            "name": "AppSecret",
+            "in": "header"
           },
           {
             "type": "string",
             "name": "Timestamp",
-            "in": "query",
-            "required": true
+            "in": "header"
           },
           {
             "type": "string",
             "name": "Nonce",
-            "in": "query",
-            "required": true
+            "in": "header"
           },
           {
             "type": "string",
             "name": "Signature",
-            "in": "query",
-            "required": true
+            "in": "header"
           },
           {
             "type": "string",
@@ -531,26 +537,27 @@
           {
             "type": "string",
             "name": "AppKey",
-            "in": "query",
-            "required": true
+            "in": "header"
+          },
+          {
+            "type": "string",
+            "name": "AppSecret",
+            "in": "header"
           },
           {
             "type": "string",
             "name": "Timestamp",
-            "in": "query",
-            "required": true
+            "in": "header"
           },
           {
             "type": "string",
             "name": "Nonce",
-            "in": "query",
-            "required": true
+            "in": "header"
           },
           {
             "type": "string",
             "name": "Signature",
-            "in": "query",
-            "required": true
+            "in": "header"
           },
           {
             "type": "string",
@@ -604,26 +611,27 @@
           {
             "type": "string",
             "name": "AppKey",
-            "in": "query",
-            "required": true
+            "in": "header"
+          },
+          {
+            "type": "string",
+            "name": "AppSecret",
+            "in": "header"
           },
           {
             "type": "string",
             "name": "Timestamp",
-            "in": "query",
-            "required": true
+            "in": "header"
           },
           {
             "type": "string",
             "name": "Nonce",
-            "in": "query",
-            "required": true
+            "in": "header"
           },
           {
             "type": "string",
             "name": "Signature",
-            "in": "query",
-            "required": true
+            "in": "header"
           },
           {
             "type": "string",
@@ -677,26 +685,27 @@
           {
             "type": "string",
             "name": "AppKey",
-            "in": "query",
-            "required": true
+            "in": "header"
+          },
+          {
+            "type": "string",
+            "name": "AppSecret",
+            "in": "header"
           },
           {
             "type": "string",
             "name": "Timestamp",
-            "in": "query",
-            "required": true
+            "in": "header"
           },
           {
             "type": "string",
             "name": "Nonce",
-            "in": "query",
-            "required": true
+            "in": "header"
           },
           {
             "type": "string",
             "name": "Signature",
-            "in": "query",
-            "required": true
+            "in": "header"
           },
           {
             "type": "string",
@@ -744,26 +753,27 @@
           {
             "type": "string",
             "name": "AppKey",
-            "in": "query",
-            "required": true
+            "in": "header"
+          },
+          {
+            "type": "string",
+            "name": "AppSecret",
+            "in": "header"
           },
           {
             "type": "string",
             "name": "Timestamp",
-            "in": "query",
-            "required": true
+            "in": "header"
           },
           {
             "type": "string",
             "name": "Nonce",
-            "in": "query",
-            "required": true
+            "in": "header"
           },
           {
             "type": "string",
             "name": "Signature",
-            "in": "query",
-            "required": true
+            "in": "header"
           },
           {
             "type": "string",

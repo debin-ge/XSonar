@@ -17,7 +17,7 @@ func TestAddSwaggerRoutesServesEmbeddedGatewaySpec(t *testing.T) {
 	})
 	defer server.Stop()
 
-	addSwaggerRoutes(server)
+	addSwaggerRoutes(server, "dev")
 
 	serverless, err := rest.NewServerless(server)
 	if err != nil {
@@ -64,10 +64,11 @@ func TestAddSwaggerRoutesServesEmbeddedGatewaySpec(t *testing.T) {
 	if !ok {
 		t.Fatalf("expected GET /v1/users/by-id parameters, got %#v", userByIDOperation["parameters"])
 	}
-	assertParameter(t, parameters, "query", "AppKey", true)
-	assertParameter(t, parameters, "query", "Timestamp", true)
-	assertParameter(t, parameters, "query", "Nonce", true)
-	assertParameter(t, parameters, "query", "Signature", true)
+	assertParameter(t, parameters, "header", "AppKey", true)
+	assertParameter(t, parameters, "header", "AppSecret", true)
+	assertParameterAbsent(t, parameters, "Timestamp")
+	assertParameterAbsent(t, parameters, "Nonce")
+	assertParameterAbsent(t, parameters, "Signature")
 	assertParameter(t, parameters, "query", "userId", true)
 	assertParameter(t, parameters, "query", "cursor", false)
 
@@ -82,6 +83,60 @@ func TestAddSwaggerRoutesServesEmbeddedGatewaySpec(t *testing.T) {
 	if !strings.Contains(rec.Body.String(), "/swagger/doc.json") {
 		t.Fatalf("expected index to reference doc.json, got %q", rec.Body.String())
 	}
+}
+
+func TestAddSwaggerRoutesServesProductionGatewaySpec(t *testing.T) {
+	server := rest.MustNewServer(rest.RestConf{
+		Host: "127.0.0.1",
+		Port: 0,
+	})
+	defer server.Stop()
+
+	addSwaggerRoutes(server, "pro")
+
+	serverless, err := rest.NewServerless(server)
+	if err != nil {
+		t.Fatalf("build serverless: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/swagger/doc.json", nil)
+	rec := httptest.NewRecorder()
+
+	serverless.Serve(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	var response map[string]any
+	if err := json.Unmarshal(rec.Body.Bytes(), &response); err != nil {
+		t.Fatalf("decode swagger doc: %v", err)
+	}
+
+	paths, ok := response["paths"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected paths object in swagger doc, got %#v", response["paths"])
+	}
+	userByIDPath, ok := paths["/v1/users/by-id"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected /v1/users/by-id path in swagger doc, got %#v", paths["/v1/users/by-id"])
+	}
+	userByIDOperation, ok := userByIDPath["get"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected GET /v1/users/by-id operation, got %#v", userByIDPath["get"])
+	}
+	parameters, ok := userByIDOperation["parameters"].([]any)
+	if !ok {
+		t.Fatalf("expected GET /v1/users/by-id parameters, got %#v", userByIDOperation["parameters"])
+	}
+
+	assertParameter(t, parameters, "header", "AppKey", true)
+	assertParameter(t, parameters, "header", "Timestamp", true)
+	assertParameter(t, parameters, "header", "Nonce", true)
+	assertParameter(t, parameters, "header", "Signature", true)
+	assertParameterAbsent(t, parameters, "AppSecret")
+	assertParameter(t, parameters, "query", "userId", true)
+	assertParameter(t, parameters, "query", "cursor", false)
 }
 
 func assertParameter(t *testing.T, parameters []any, location, name string, required bool) {
@@ -102,6 +157,20 @@ func assertParameter(t *testing.T, parameters []any, location, name string, requ
 	}
 
 	t.Fatalf("expected %s parameter %q, got %#v", location, name, parameters)
+}
+
+func assertParameterAbsent(t *testing.T, parameters []any, name string) {
+	t.Helper()
+
+	for _, rawParameter := range parameters {
+		parameter, ok := rawParameter.(map[string]any)
+		if !ok {
+			continue
+		}
+		if parameter["name"] == name {
+			t.Fatalf("expected parameter %q to be absent, got %#v", name, parameter)
+		}
+	}
 }
 
 func assertSchemes(t *testing.T, rawSchemes any, expected string) {

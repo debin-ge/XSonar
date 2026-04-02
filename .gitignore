@@ -30,11 +30,6 @@ bin/
 build/
 dist/
 coverage/
-/gateway-api
-/console-api
-/access-rpc
-/policy-rpc
-/provider-rpc
 *.exe
 
 # Runtime data and generated load-test artifacts

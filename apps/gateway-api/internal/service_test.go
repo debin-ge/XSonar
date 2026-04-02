@@ -69,6 +69,18 @@ func (s stubJSONClient) ExecutePolicy(ctx context.Context, req *providerservice.
 	return s.call(ctx, "/rpc/ExecutePolicy", req)
 }
 
+func setProductionAuthHeaders(req *http.Request, appKey, timestamp, nonce, signature string) {
+	req.Header.Set("AppKey", appKey)
+	req.Header.Set("Timestamp", timestamp)
+	req.Header.Set("Nonce", nonce)
+	req.Header.Set("Signature", signature)
+}
+
+func setDevelopmentAuthHeaders(req *http.Request, appKey, appSecret string) {
+	req.Header.Set("AppKey", appKey)
+	req.Header.Set("AppSecret", appSecret)
+}
+
 func TestGatewayProxySuccess(t *testing.T) {
 	var recordedUsage *accessservice.RecordUsageStatRequest
 
@@ -152,13 +164,10 @@ func TestGatewayProxySuccess(t *testing.T) {
 	query := url.Values{}
 	query.Set("userIds", "1,2")
 	timestamp := strconv.FormatInt(time.Now().UTC().Unix(), 10)
-	query.Set("timestamp", timestamp)
-	query.Set("nonce", "nonce-1")
-	query.Set("appKey", "app_key_1")
 	signature := shared.ComputeSignature("secret_1", http.MethodGet, "/v1/users/by-ids", query, timestamp, "nonce-1")
-	query.Set("signature", signature)
 
 	req := httptest.NewRequest(http.MethodGet, "/v1/users/by-ids?"+query.Encode(), nil)
+	setProductionAuthHeaders(req, "app_key_1", timestamp, "nonce-1", signature)
 	rec := httptest.NewRecorder()
 
 	svc.handleProxy(rec, req)
@@ -214,11 +223,11 @@ func TestGatewayRejectsInvalidSignature(t *testing.T) {
 	query := url.Values{}
 	query.Set("userIds", "1,2")
 	query.Set("timestamp", strconv.FormatInt(time.Now().UTC().Unix(), 10))
-	query.Set("nonce", "nonce-1")
-	query.Set("appKey", "app_key_1")
-	query.Set("signature", "wrong-signature")
+	timestamp := query.Get("timestamp")
+	query.Del("timestamp")
 
 	req := httptest.NewRequest(http.MethodGet, "/v1/users/by-ids?"+query.Encode(), nil)
+	setProductionAuthHeaders(req, "app_key_1", timestamp, "nonce-1", "wrong-signature")
 	rec := httptest.NewRecorder()
 	svc.handleProxy(rec, req)
 
@@ -296,13 +305,10 @@ func TestGatewayProxyPreservesLargeIntegersFromProviderPayload(t *testing.T) {
 	query := url.Values{}
 	query.Set("tweetId", "9007199254740993")
 	timestamp := strconv.FormatInt(time.Now().UTC().Unix(), 10)
-	query.Set("timestamp", timestamp)
-	query.Set("nonce", "nonce-1")
-	query.Set("appKey", "app_key_1")
 	signature := shared.ComputeSignature("secret_1", http.MethodGet, "/v1/tweets/detail", query, timestamp, "nonce-1")
-	query.Set("signature", signature)
 
 	req := httptest.NewRequest(http.MethodGet, "/v1/tweets/detail?"+query.Encode(), nil)
+	setProductionAuthHeaders(req, "app_key_1", timestamp, "nonce-1", signature)
 	rec := httptest.NewRecorder()
 
 	svc.handleProxy(rec, req)
@@ -412,13 +418,10 @@ func TestGatewayMapsTweetDetailTweetIDToUpstreamID(t *testing.T) {
 	query := url.Values{}
 	query.Set("tweetId", "1971453180132327700")
 	timestamp := strconv.FormatInt(time.Now().UTC().Unix(), 10)
-	query.Set("timestamp", timestamp)
-	query.Set("nonce", "nonce-1")
-	query.Set("appKey", "app_key_1")
 	signature := shared.ComputeSignature("secret_1", http.MethodGet, "/v1/tweets/detail", query, timestamp, "nonce-1")
-	query.Set("signature", signature)
 
 	req := httptest.NewRequest(http.MethodGet, "/v1/tweets/detail?"+query.Encode(), nil)
+	setProductionAuthHeaders(req, "app_key_1", timestamp, "nonce-1", signature)
 	rec := httptest.NewRecorder()
 
 	svc.handleProxy(rec, req)
@@ -492,13 +495,10 @@ func TestGatewayRejectsMissingRequiredQueryParam(t *testing.T) {
 
 	query := url.Values{}
 	timestamp := strconv.FormatInt(time.Now().UTC().Unix(), 10)
-	query.Set("timestamp", timestamp)
-	query.Set("nonce", "nonce-1")
-	query.Set("appKey", "app_key_1")
 	signature := shared.ComputeSignature("secret_1", http.MethodGet, "/v1/tweets/detail", query, timestamp, "nonce-1")
-	query.Set("signature", signature)
 
 	req := httptest.NewRequest(http.MethodGet, "/v1/tweets/detail?"+query.Encode(), nil)
+	setProductionAuthHeaders(req, "app_key_1", timestamp, "nonce-1", signature)
 	rec := httptest.NewRecorder()
 
 	svc.handleProxy(rec, req)
@@ -597,7 +597,8 @@ func TestGatewayDevModeAcceptsAppSecretWithoutSignature(t *testing.T) {
 
 	svc := newGatewayServiceWithMode(xlog.NewStdout("gateway-test"), accessClient, policyClient, providerClient, "dev")
 
-	req := httptest.NewRequest(http.MethodGet, "/v1/users/by-ids?userIds=1,2&appKey=app_key_1&appSecret=secret_1", nil)
+	req := httptest.NewRequest(http.MethodGet, "/v1/users/by-ids?userIds=1,2", nil)
+	setDevelopmentAuthHeaders(req, "app_key_1", "secret_1")
 	rec := httptest.NewRecorder()
 
 	svc.handleProxy(rec, req)
@@ -607,6 +608,162 @@ func TestGatewayDevModeAcceptsAppSecretWithoutSignature(t *testing.T) {
 	}
 	if recordedUsage == nil || recordedUsage.PolicyKey != "users_by_ids_v1" {
 		t.Fatalf("expected usage stat to be recorded, got %#v", recordedUsage)
+	}
+}
+
+func TestGatewayRejectsQueryAuthParametersInProductionMode(t *testing.T) {
+	accessClient := stubJSONClient{
+		postFunc: func(_ context.Context, path string, payload any) (*clients.EnvelopeResponse, error) {
+			switch path {
+			case "/rpc/CheckIpBan":
+				return okEnvelope(map[string]any{"blocked": false}), nil
+			case "/rpc/GetAppAuthContext":
+				return okEnvelope(map[string]any{
+					"tenant_id":  "tenant_1",
+					"app_id":     "app_1",
+					"app_key":    "app_key_1",
+					"app_secret": "secret_1",
+					"status":     "active",
+				}), nil
+			case "/rpc/CheckReplay":
+				return okEnvelope(map[string]any{"accepted": true}), nil
+			case "/rpc/CheckAndReserveQuota":
+				return okEnvelope(map[string]any{"allowed": true}), nil
+			case "/rpc/RecordUsageStat":
+				return okEnvelope(map[string]any{"recorded": true}), nil
+			case "/rpc/ReleaseQuotaOnFailure":
+				return okEnvelope(map[string]any{"released": true}), nil
+			default:
+				return nil, errors.New("unexpected access path: " + path)
+			}
+		},
+	}
+
+	policyClient := stubJSONClient{
+		postFunc: func(_ context.Context, path string, payload any) (*clients.EnvelopeResponse, error) {
+			switch path {
+			case "/rpc/ResolvePolicy":
+				return okEnvelope(map[string]any{
+					"policy_key":       "users_by_ids_v1",
+					"upstream_method":  "GET",
+					"upstream_path":    "/base/apitools/usersByIdRestIds",
+					"allowed_params":   []string{"userIds"},
+					"denied_params":    []string{"proxyUrl", "auth_token"},
+					"default_params":   map[string]any{"resFormat": "json"},
+					"provider_name":    "fapi.uk",
+					"provider_api_key": "provider_key_1",
+				}), nil
+			case "/rpc/CheckAppPolicyAccess":
+				return okEnvelope(map[string]any{"allowed": true}), nil
+			default:
+				return nil, errors.New("unexpected policy path: " + path)
+			}
+		},
+	}
+
+	providerClient := stubJSONClient{
+		postFunc: func(_ context.Context, path string, payload any) (*clients.EnvelopeResponse, error) {
+			if path != "/rpc/ExecutePolicy" {
+				return nil, errors.New("unexpected provider path: " + path)
+			}
+			return okEnvelope(map[string]any{
+				"status_code":          200,
+				"result_code":          "UPSTREAM_OK",
+				"body":                 map[string]any{"users": []any{map[string]any{"id": "1"}}},
+				"upstream_duration_ms": 12,
+			}), nil
+		},
+	}
+
+	svc := newGatewayServiceWithClients(xlog.NewStdout("gateway-test"), accessClient, policyClient, providerClient)
+
+	query := url.Values{}
+	query.Set("userIds", "1,2")
+	timestamp := strconv.FormatInt(time.Now().UTC().Unix(), 10)
+	query.Set("timestamp", timestamp)
+	query.Set("nonce", "nonce-1")
+	query.Set("appKey", "app_key_1")
+	query.Set("signature", shared.ComputeSignature("secret_1", http.MethodGet, "/v1/users/by-ids", query, timestamp, "nonce-1"))
+
+	req := httptest.NewRequest(http.MethodGet, "/v1/users/by-ids?"+query.Encode(), nil)
+	rec := httptest.NewRecorder()
+
+	svc.handleProxy(rec, req)
+
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("expected 401 when auth is provided via query string, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestGatewayDevModeRejectsQueryAuthParameters(t *testing.T) {
+	accessClient := stubJSONClient{
+		postFunc: func(_ context.Context, path string, payload any) (*clients.EnvelopeResponse, error) {
+			switch path {
+			case "/rpc/CheckIpBan":
+				return okEnvelope(map[string]any{"blocked": false}), nil
+			case "/rpc/GetAppAuthContext":
+				return okEnvelope(map[string]any{
+					"tenant_id":  "tenant_1",
+					"app_id":     "app_1",
+					"app_key":    "app_key_1",
+					"app_secret": "secret_1",
+					"status":     "active",
+				}), nil
+			case "/rpc/CheckAndReserveQuota":
+				return okEnvelope(map[string]any{"allowed": true}), nil
+			case "/rpc/RecordUsageStat":
+				return okEnvelope(map[string]any{"recorded": true}), nil
+			default:
+				return nil, errors.New("unexpected access path: " + path)
+			}
+		},
+	}
+
+	policyClient := stubJSONClient{
+		postFunc: func(_ context.Context, path string, payload any) (*clients.EnvelopeResponse, error) {
+			switch path {
+			case "/rpc/ResolvePolicy":
+				return okEnvelope(map[string]any{
+					"policy_key":       "users_by_ids_v1",
+					"upstream_method":  "GET",
+					"upstream_path":    "/base/apitools/usersByIdRestIds",
+					"allowed_params":   []string{"userIds"},
+					"denied_params":    []string{"proxyUrl", "auth_token"},
+					"default_params":   map[string]any{"resFormat": "json"},
+					"provider_name":    "fapi.uk",
+					"provider_api_key": "provider_key_1",
+				}), nil
+			case "/rpc/CheckAppPolicyAccess":
+				return okEnvelope(map[string]any{"allowed": true}), nil
+			default:
+				return nil, errors.New("unexpected policy path: " + path)
+			}
+		},
+	}
+
+	providerClient := stubJSONClient{
+		postFunc: func(_ context.Context, path string, payload any) (*clients.EnvelopeResponse, error) {
+			if path != "/rpc/ExecutePolicy" {
+				return nil, errors.New("unexpected provider path: " + path)
+			}
+			return okEnvelope(map[string]any{
+				"status_code":          200,
+				"result_code":          "UPSTREAM_OK",
+				"body":                 map[string]any{"users": []any{map[string]any{"id": "1"}}},
+				"upstream_duration_ms": 12,
+			}), nil
+		},
+	}
+
+	svc := newGatewayServiceWithMode(xlog.NewStdout("gateway-test"), accessClient, policyClient, providerClient, "dev")
+
+	req := httptest.NewRequest(http.MethodGet, "/v1/users/by-ids?userIds=1,2&appKey=app_key_1&appSecret=secret_1", nil)
+	rec := httptest.NewRecorder()
+
+	svc.handleProxy(rec, req)
+
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("expected 401 when dev auth is provided via query string, got %d: %s", rec.Code, rec.Body.String())
 	}
 }
 
@@ -636,8 +793,8 @@ func TestGatewayDevModeRejectsInvalidAppSecret(t *testing.T) {
 		"dev",
 	)
 
-	req := httptest.NewRequest(http.MethodGet, "/v1/users/by-ids?appKey=app_key_1", nil)
-	req.Header.Set("AppSecret", "wrong-secret")
+	req := httptest.NewRequest(http.MethodGet, "/v1/users/by-ids", nil)
+	setDevelopmentAuthHeaders(req, "app_key_1", "wrong-secret")
 	rec := httptest.NewRecorder()
 
 	svc.handleProxy(rec, req)
@@ -709,8 +866,8 @@ func TestGatewayDevModeTrimsAppSecretBeforeVerification(t *testing.T) {
 		"dev",
 	)
 
-	req := httptest.NewRequest(http.MethodGet, "/v1/users/by-ids?userIds=1,2&appKey=app_key_1", nil)
-	req.Header.Set("AppSecret", " secret_1 ")
+	req := httptest.NewRequest(http.MethodGet, "/v1/users/by-ids?userIds=1,2", nil)
+	setDevelopmentAuthHeaders(req, "app_key_1", " secret_1 ")
 	rec := httptest.NewRecorder()
 
 	svc.handleProxy(rec, req)
@@ -776,13 +933,10 @@ func TestGatewayRejectsDeniedParam(t *testing.T) {
 	query.Set("userIds", "1,2")
 	query.Set("proxyUrl", "http://evil")
 	timestamp := strconv.FormatInt(time.Now().UTC().Unix(), 10)
-	query.Set("timestamp", timestamp)
-	query.Set("nonce", "nonce-1")
-	query.Set("appKey", "app_key_1")
 	signature := shared.ComputeSignature("secret_1", http.MethodGet, "/v1/users/by-ids", query, timestamp, "nonce-1")
-	query.Set("signature", signature)
 
 	req := httptest.NewRequest(http.MethodGet, "/v1/users/by-ids?"+query.Encode(), nil)
+	setProductionAuthHeaders(req, "app_key_1", timestamp, "nonce-1", signature)
 	rec := httptest.NewRecorder()
 	svc.handleProxy(rec, req)
 
@@ -816,12 +970,9 @@ func TestGatewayRejectsBlockedIP(t *testing.T) {
 	query := url.Values{}
 	query.Set("userIds", "1,2")
 	timestamp := strconv.FormatInt(time.Now().UTC().Unix(), 10)
-	query.Set("timestamp", timestamp)
-	query.Set("nonce", "nonce-1")
-	query.Set("appKey", "app_key_1")
-	query.Set("signature", "ignored-before-auth")
 
 	req := httptest.NewRequest(http.MethodGet, "/v1/users/by-ids?"+query.Encode(), nil)
+	setProductionAuthHeaders(req, "app_key_1", timestamp, "nonce-1", "ignored-before-auth")
 	req.Header.Set("X-Forwarded-For", "203.0.113.10")
 	rec := httptest.NewRecorder()
 
@@ -851,12 +1002,9 @@ func TestGatewayLogsStructuredFailure(t *testing.T) {
 
 	query := url.Values{}
 	timestamp := strconv.FormatInt(time.Now().UTC().Unix(), 10)
-	query.Set("timestamp", timestamp)
-	query.Set("nonce", "nonce-log-1")
-	query.Set("appKey", "app_key_1")
-	query.Set("signature", "ignored-before-auth")
 
 	req := httptest.NewRequest(http.MethodGet, "/v1/users/by-ids?"+query.Encode(), nil)
+	setProductionAuthHeaders(req, "app_key_1", timestamp, "nonce-log-1", "ignored-before-auth")
 	req.Header.Set("X-Forwarded-For", "203.0.113.10")
 	rec := httptest.NewRecorder()
 

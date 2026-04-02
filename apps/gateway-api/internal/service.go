@@ -133,21 +133,15 @@ func (s *gatewayService) handleProxy(w http.ResponseWriter, r *http.Request) {
 	appKey := firstNonEmpty(
 		r.Header.Get("AppKey"),
 		r.Header.Get("X-App-Key"),
-		r.URL.Query().Get("AppKey"),
-		r.URL.Query().Get("appKey"),
-		r.URL.Query().Get("app_key"),
 	)
 	providedAppSecret := firstNonEmpty(
 		r.Header.Get("AppSecret"),
 		r.Header.Get("X-App-Secret"),
-		r.URL.Query().Get("AppSecret"),
-		r.URL.Query().Get("appSecret"),
-		r.URL.Query().Get("app_secret"),
 	)
 	providedAppSecret = strings.TrimSpace(providedAppSecret)
-	timestampValue := firstNonEmpty(r.Header.Get("Timestamp"), r.URL.Query().Get("Timestamp"), r.URL.Query().Get("timestamp"))
-	nonce := firstNonEmpty(r.Header.Get("Nonce"), r.URL.Query().Get("Nonce"), r.URL.Query().Get("nonce"))
-	signature := firstNonEmpty(r.Header.Get("Signature"), r.Header.Get("X-Signature"), r.URL.Query().Get("Signature"), r.URL.Query().Get("signature"))
+	timestampValue := strings.TrimSpace(r.Header.Get("Timestamp"))
+	nonce := strings.TrimSpace(r.Header.Get("Nonce"))
+	signature := firstNonEmpty(r.Header.Get("Signature"), r.Header.Get("X-Signature"))
 
 	var timestampUnix int64
 	if s.developmentAuth {
