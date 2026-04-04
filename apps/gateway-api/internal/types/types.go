@@ -11,10 +11,11 @@ type Envelope struct {
 }
 
 type GatewayAuthReq struct {
-	AppKey    string `form:"AppKey"`
-	Timestamp string `form:"Timestamp"`
-	Nonce     string `form:"Nonce"`
-	Signature string `form:"Signature"`
+	AppKey    string `header:"AppKey,optional"`
+	AppSecret string `header:"AppSecret,optional"`
+	Timestamp string `header:"Timestamp,optional"`
+	Nonce     string `header:"Nonce,optional"`
+	Signature string `header:"Signature,optional"`
 }
 
 type SearchTrendingReq struct {

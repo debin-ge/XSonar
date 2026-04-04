@@ -4,8 +4,11 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"reflect"
 	"strings"
 	"testing"
+
+	gatewaytypes "xsonar/apps/gateway-api/internal/types"
 
 	"github.com/zeromicro/go-zero/rest"
 )
@@ -161,6 +164,36 @@ func TestAddSwaggerRoutesServesProductionGatewaySpec(t *testing.T) {
 	assertParameter(t, parameters, "header", "Nonce", true)
 	assertParameter(t, parameters, "header", "Signature", true)
 	assertParameter(t, parameters, "query", "tweetId", true)
+}
+
+func TestGatewayAuthReqMatchesGatewayAPIContract(t *testing.T) {
+	t.Helper()
+
+	authType := reflect.TypeOf(gatewaytypes.GatewayAuthReq{})
+	expected := []struct {
+		field string
+		tag   string
+	}{
+		{field: "AppKey", tag: `header:"AppKey,optional"`},
+		{field: "AppSecret", tag: `header:"AppSecret,optional"`},
+		{field: "Timestamp", tag: `header:"Timestamp,optional"`},
+		{field: "Nonce", tag: `header:"Nonce,optional"`},
+		{field: "Signature", tag: `header:"Signature,optional"`},
+	}
+
+	if authType.NumField() != len(expected) {
+		t.Fatalf("expected %d auth fields, got %d", len(expected), authType.NumField())
+	}
+
+	for _, item := range expected {
+		field, ok := authType.FieldByName(item.field)
+		if !ok {
+			t.Fatalf("expected auth field %q", item.field)
+		}
+		if got := string(field.Tag); got != item.tag {
+			t.Fatalf("expected %s tag %q, got %q", item.field, item.tag, got)
+		}
+	}
 }
 
 func assertOperation(t *testing.T, paths map[string]any, path, method string) map[string]any {
