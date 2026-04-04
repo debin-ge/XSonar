@@ -72,6 +72,22 @@ func TestAddSwaggerRoutesServesEmbeddedGatewaySpec(t *testing.T) {
 	assertParameter(t, parameters, "query", "userId", true)
 	assertParameter(t, parameters, "query", "cursor", false)
 
+	tweetsBriefOperation := assertOperation(t, paths, "/v1/tweets/brief", http.MethodGet)
+	parameters = assertParameters(t, tweetsBriefOperation)
+	assertParameter(t, parameters, "query", "tweetId", true)
+	assertParameter(t, parameters, "query", "cursor", false)
+
+	accountAnalyticsOperation := assertOperation(t, paths, "/v1/users/account-analytics", http.MethodGet)
+	parameters = assertParameters(t, accountAnalyticsOperation)
+	assertParameter(t, parameters, "query", "restId", true)
+	assertParameter(t, parameters, "query", "authToken", true)
+	assertParameter(t, parameters, "query", "csrfToken", false)
+
+	listsOperation := assertOperation(t, paths, "/v1/lists", http.MethodGet)
+	parameters = assertParameters(t, listsOperation)
+	assertParameter(t, parameters, "query", "userId", false)
+	assertParameter(t, parameters, "query", "screenName", false)
+
 	req = httptest.NewRequest(http.MethodGet, "/swagger/index.html", nil)
 	rec = httptest.NewRecorder()
 
@@ -137,6 +153,41 @@ func TestAddSwaggerRoutesServesProductionGatewaySpec(t *testing.T) {
 	assertParameterAbsent(t, parameters, "AppSecret")
 	assertParameter(t, parameters, "query", "userId", true)
 	assertParameter(t, parameters, "query", "cursor", false)
+
+	tweetsBriefOperation := assertOperation(t, paths, "/v1/tweets/brief", http.MethodGet)
+	parameters = assertParameters(t, tweetsBriefOperation)
+	assertParameter(t, parameters, "header", "AppKey", true)
+	assertParameter(t, parameters, "header", "Timestamp", true)
+	assertParameter(t, parameters, "header", "Nonce", true)
+	assertParameter(t, parameters, "header", "Signature", true)
+	assertParameter(t, parameters, "query", "tweetId", true)
+}
+
+func assertOperation(t *testing.T, paths map[string]any, path, method string) map[string]any {
+	t.Helper()
+
+	pathItem, ok := paths[path].(map[string]any)
+	if !ok {
+		t.Fatalf("expected %s path in swagger doc, got %#v", path, paths[path])
+	}
+
+	operation, ok := pathItem[strings.ToLower(method)].(map[string]any)
+	if !ok {
+		t.Fatalf("expected %s %s operation, got %#v", method, path, pathItem[strings.ToLower(method)])
+	}
+
+	return operation
+}
+
+func assertParameters(t *testing.T, operation map[string]any) []any {
+	t.Helper()
+
+	parameters, ok := operation["parameters"].([]any)
+	if !ok {
+		t.Fatalf("expected operation parameters, got %#v", operation["parameters"])
+	}
+
+	return parameters
 }
 
 func assertParameter(t *testing.T, parameters []any, location, name string, required bool) {

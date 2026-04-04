@@ -21,6 +21,28 @@ type SearchTrendingReq struct {
 	GatewayAuthReq
 }
 
+type SearchBoxReq struct {
+	GatewayAuthReq
+	Words      string `form:"words"`
+	SearchType string `form:"searchType,optional"`
+}
+
+type SearchEntertainmentReq struct {
+	GatewayAuthReq
+}
+
+type SearchExploreReq struct {
+	GatewayAuthReq
+}
+
+type SearchNewsReq struct {
+	GatewayAuthReq
+}
+
+type SearchSportsReq struct {
+	GatewayAuthReq
+}
+
 type SearchTrendsReq struct {
 	GatewayAuthReq
 	ID string `form:"id"`
@@ -51,10 +73,30 @@ type TweetsByIDsReq struct {
 	TweetIDs string `form:"tweetIds"`
 }
 
+type TweetsBriefReq struct {
+	GatewayAuthReq
+	TweetID string `form:"tweetId"`
+	Cursor  string `form:"cursor,optional"`
+}
+
 type TweetsDetailReq struct {
 	GatewayAuthReq
 	TweetID string `form:"tweetId"`
 	Cursor  string `form:"cursor,optional"`
+}
+
+type TweetsFavoritersReq struct {
+	GatewayAuthReq
+	TweetID   string `form:"tweetId"`
+	Cursor    string `form:"cursor,optional"`
+	AuthToken string `form:"authToken,optional"`
+}
+
+type TweetsQuotesReq struct {
+	GatewayAuthReq
+	TweetID   string `form:"tweetId"`
+	Cursor    string `form:"cursor,optional"`
+	AuthToken string `form:"authToken,optional"`
 }
 
 type TweetsRepliesReq struct {
@@ -63,10 +105,28 @@ type TweetsRepliesReq struct {
 	Cursor string `form:"cursor,optional"`
 }
 
+type TweetsRetweetersReq struct {
+	GatewayAuthReq
+	TweetID   string `form:"tweetId"`
+	Cursor    string `form:"cursor,optional"`
+	AuthToken string `form:"authToken,optional"`
+}
+
 type TweetsTimelineReq struct {
 	GatewayAuthReq
 	UserID string `form:"userId"`
 	Cursor string `form:"cursor,optional"`
+}
+
+type CommunitiesReq struct {
+	GatewayAuthReq
+	ScreenName string `form:"screenName"`
+}
+
+type ListsReq struct {
+	GatewayAuthReq
+	UserID     string `form:"userId,optional"`
+	ScreenName string `form:"screenName,optional"`
 }
 
 type UserByIDReq struct {
@@ -80,7 +140,62 @@ type UserByUsernameReq struct {
 	ScreenName string `form:"screenName"`
 }
 
+type UsersAccountAnalyticsReq struct {
+	GatewayAuthReq
+	RestID    string `form:"restId"`
+	AuthToken string `form:"authToken"`
+	CsrfToken string `form:"csrfToken,optional"`
+}
+
+type UsersArticlesTweetsReq struct {
+	GatewayAuthReq
+	UserID    string `form:"userId"`
+	Cursor    string `form:"cursor,optional"`
+	AuthToken string `form:"authToken,optional"`
+}
+
 type UsersByIDsReq struct {
 	GatewayAuthReq
 	UserIDs string `form:"userIds"`
+}
+
+type UsersFollowersReq struct {
+	GatewayAuthReq
+	UserID string `form:"userId"`
+	Cursor string `form:"cursor,optional"`
+}
+
+type UsersFollowingsReq struct {
+	GatewayAuthReq
+	UserID string `form:"userId"`
+	Cursor string `form:"cursor,optional"`
+}
+
+type UsersHighlightsReq struct {
+	GatewayAuthReq
+	UserID    string `form:"userId"`
+	Cursor    string `form:"cursor,optional"`
+	AuthToken string `form:"authToken,optional"`
+}
+
+type UsersLikesReq struct {
+	GatewayAuthReq
+	UserID    string `form:"userId"`
+	Cursor    string `form:"cursor,optional"`
+	AuthToken string `form:"authToken,optional"`
+}
+
+type UsersMentionsTimelineReq struct {
+	GatewayAuthReq
+	AuthToken       string `form:"authToken"`
+	CsrfToken       string `form:"csrfToken,optional"`
+	SinceID         string `form:"sinceId,optional"`
+	MaxID           string `form:"maxId,optional"`
+	IncludeEntities string `form:"includeEntities,optional"`
+	TrimUser        string `form:"trimUser,optional"`
+}
+
+type UsersUsernameChangesReq struct {
+	GatewayAuthReq
+	ScreenName string `form:"screenName"`
 }

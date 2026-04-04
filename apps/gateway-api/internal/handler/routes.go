@@ -16,6 +16,41 @@ func RegisterHandlers(server *rest.Server, serverCtx *svc.ServiceContext) {
 		[]rest.Route{
 			{
 				Method:  http.MethodGet,
+				Path:    "/v1/communities",
+				Handler: serverCtx.Bridge.HandleProxy,
+			},
+			{
+				Method:  http.MethodGet,
+				Path:    "/v1/lists",
+				Handler: serverCtx.Bridge.HandleProxy,
+			},
+			{
+				Method:  http.MethodGet,
+				Path:    "/v1/search/box",
+				Handler: serverCtx.Bridge.HandleProxy,
+			},
+			{
+				Method:  http.MethodGet,
+				Path:    "/v1/search/entertainment",
+				Handler: serverCtx.Bridge.HandleProxy,
+			},
+			{
+				Method:  http.MethodGet,
+				Path:    "/v1/search/explore",
+				Handler: serverCtx.Bridge.HandleProxy,
+			},
+			{
+				Method:  http.MethodGet,
+				Path:    "/v1/search/news",
+				Handler: serverCtx.Bridge.HandleProxy,
+			},
+			{
+				Method:  http.MethodGet,
+				Path:    "/v1/search/sports",
+				Handler: serverCtx.Bridge.HandleProxy,
+			},
+			{
+				Method:  http.MethodGet,
 				Path:    "/v1/search/trending",
 				Handler: serverCtx.Bridge.HandleProxy,
 			},
@@ -36,7 +71,22 @@ func RegisterHandlers(server *rest.Server, serverCtx *svc.ServiceContext) {
 			},
 			{
 				Method:  http.MethodGet,
+				Path:    "/v1/tweets/brief",
+				Handler: serverCtx.Bridge.HandleProxy,
+			},
+			{
+				Method:  http.MethodGet,
 				Path:    "/v1/tweets/detail",
+				Handler: serverCtx.Bridge.HandleProxy,
+			},
+			{
+				Method:  http.MethodGet,
+				Path:    "/v1/tweets/favoriters",
+				Handler: serverCtx.Bridge.HandleProxy,
+			},
+			{
+				Method:  http.MethodGet,
+				Path:    "/v1/tweets/quotes",
 				Handler: serverCtx.Bridge.HandleProxy,
 			},
 			{
@@ -46,7 +96,22 @@ func RegisterHandlers(server *rest.Server, serverCtx *svc.ServiceContext) {
 			},
 			{
 				Method:  http.MethodGet,
+				Path:    "/v1/tweets/retweeters",
+				Handler: serverCtx.Bridge.HandleProxy,
+			},
+			{
+				Method:  http.MethodGet,
 				Path:    "/v1/tweets/timeline",
+				Handler: serverCtx.Bridge.HandleProxy,
+			},
+			{
+				Method:  http.MethodGet,
+				Path:    "/v1/users/account-analytics",
+				Handler: serverCtx.Bridge.HandleProxy,
+			},
+			{
+				Method:  http.MethodGet,
+				Path:    "/v1/users/articles-tweets",
 				Handler: serverCtx.Bridge.HandleProxy,
 			},
 			{
@@ -62,6 +127,36 @@ func RegisterHandlers(server *rest.Server, serverCtx *svc.ServiceContext) {
 			{
 				Method:  http.MethodGet,
 				Path:    "/v1/users/by-username",
+				Handler: serverCtx.Bridge.HandleProxy,
+			},
+			{
+				Method:  http.MethodGet,
+				Path:    "/v1/users/followers",
+				Handler: serverCtx.Bridge.HandleProxy,
+			},
+			{
+				Method:  http.MethodGet,
+				Path:    "/v1/users/followings",
+				Handler: serverCtx.Bridge.HandleProxy,
+			},
+			{
+				Method:  http.MethodGet,
+				Path:    "/v1/users/highlights",
+				Handler: serverCtx.Bridge.HandleProxy,
+			},
+			{
+				Method:  http.MethodGet,
+				Path:    "/v1/users/likes",
+				Handler: serverCtx.Bridge.HandleProxy,
+			},
+			{
+				Method:  http.MethodGet,
+				Path:    "/v1/users/mentions-timeline",
+				Handler: serverCtx.Bridge.HandleProxy,
+			},
+			{
+				Method:  http.MethodGet,
+				Path:    "/v1/users/username-changes",
 				Handler: serverCtx.Bridge.HandleProxy,
 			},
 		},

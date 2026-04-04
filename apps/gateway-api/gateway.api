@@ -2,7 +2,7 @@ syntax = "v1"
 
 info (
 	title:       "XSonar Gateway API"
-	description: "Public gateway API for user and search endpoints."
+	description: "Public gateway API for read-only user, tweet, search, list, and community endpoints."
 	version:     "v1"
 	consumes:    "application/json"
 	produces:    "application/json"
@@ -56,6 +56,43 @@ type TweetsDetailReq {
 	Cursor  string `form:"cursor,optional"`
 }
 
+type TweetsBriefReq {
+	GatewayAuthReq
+	TweetID string `form:"tweetId"`
+	Cursor  string `form:"cursor,optional"`
+}
+
+type TweetsQuotesReq {
+	GatewayAuthReq
+	TweetID   string `form:"tweetId"`
+	Cursor    string `form:"cursor,optional"`
+	AuthToken string `form:"authToken,optional"`
+}
+
+type TweetsRetweetersReq {
+	GatewayAuthReq
+	TweetID   string `form:"tweetId"`
+	Cursor    string `form:"cursor,optional"`
+	AuthToken string `form:"authToken,optional"`
+}
+
+type TweetsFavoritersReq {
+	GatewayAuthReq
+	TweetID   string `form:"tweetId"`
+	Cursor    string `form:"cursor,optional"`
+	AuthToken string `form:"authToken,optional"`
+}
+
+type UsersMentionsTimelineReq {
+	GatewayAuthReq
+	AuthToken       string `form:"authToken"`
+	CsrfToken       string `form:"csrfToken,optional"`
+	SinceID         string `form:"sinceId,optional"`
+	MaxID           string `form:"maxId,optional"`
+	IncludeEntities string `form:"includeEntities,optional"`
+	TrimUser        string `form:"trimUser,optional"`
+}
+
 type SearchTweetsReq {
 	GatewayAuthReq
 	Words      string `form:"words"`
@@ -83,6 +120,84 @@ type SearchTrendingReq {
 type SearchTrendsReq {
 	GatewayAuthReq
 	ID string `form:"id"`
+}
+
+type SearchBoxReq {
+	GatewayAuthReq
+	Words      string `form:"words"`
+	SearchType string `form:"searchType,optional"`
+}
+
+type SearchExploreReq {
+	GatewayAuthReq
+}
+
+type SearchNewsReq {
+	GatewayAuthReq
+}
+
+type SearchSportsReq {
+	GatewayAuthReq
+}
+
+type SearchEntertainmentReq {
+	GatewayAuthReq
+}
+
+type UsersUsernameChangesReq {
+	GatewayAuthReq
+	ScreenName string `form:"screenName"`
+}
+
+type UsersLikesReq {
+	GatewayAuthReq
+	UserID    string `form:"userId"`
+	Cursor    string `form:"cursor,optional"`
+	AuthToken string `form:"authToken,optional"`
+}
+
+type UsersHighlightsReq {
+	GatewayAuthReq
+	UserID    string `form:"userId"`
+	Cursor    string `form:"cursor,optional"`
+	AuthToken string `form:"authToken,optional"`
+}
+
+type UsersArticlesTweetsReq {
+	GatewayAuthReq
+	UserID    string `form:"userId"`
+	Cursor    string `form:"cursor,optional"`
+	AuthToken string `form:"authToken,optional"`
+}
+
+type UsersAccountAnalyticsReq {
+	GatewayAuthReq
+	RestID    string `form:"restId"`
+	AuthToken string `form:"authToken"`
+	CsrfToken string `form:"csrfToken,optional"`
+}
+
+type UsersFollowersReq {
+	GatewayAuthReq
+	UserID string `form:"userId"`
+	Cursor string `form:"cursor,optional"`
+}
+
+type UsersFollowingsReq {
+	GatewayAuthReq
+	UserID string `form:"userId"`
+	Cursor string `form:"cursor,optional"`
+}
+
+type ListsReq {
+	GatewayAuthReq
+	UserID     string `form:"userId,optional"`
+	ScreenName string `form:"screenName,optional"`
+}
+
+type CommunitiesReq {
+	GatewayAuthReq
+	ScreenName string `form:"screenName"`
 }
 
 type Envelope {
@@ -140,6 +255,36 @@ service gateway-api {
 	get /v1/tweets/detail (TweetsDetailReq) returns (Envelope)
 
 	@doc (
+		summary: "Get tweet brief."
+	)
+	@handler TweetsBrief
+	get /v1/tweets/brief (TweetsBriefReq) returns (Envelope)
+
+	@doc (
+		summary: "Get tweet quotes."
+	)
+	@handler TweetsQuotes
+	get /v1/tweets/quotes (TweetsQuotesReq) returns (Envelope)
+
+	@doc (
+		summary: "Get tweet retweeters."
+	)
+	@handler TweetsRetweeters
+	get /v1/tweets/retweeters (TweetsRetweetersReq) returns (Envelope)
+
+	@doc (
+		summary: "Get tweet favoriters."
+	)
+	@handler TweetsFavoriters
+	get /v1/tweets/favoriters (TweetsFavoritersReq) returns (Envelope)
+
+	@doc (
+		summary: "Get user mentions timeline."
+	)
+	@handler UsersMentionsTimeline
+	get /v1/users/mentions-timeline (UsersMentionsTimelineReq) returns (Envelope)
+
+	@doc (
 		summary: "Search tweets."
 	)
 	@handler SearchTweets
@@ -156,4 +301,88 @@ service gateway-api {
 	)
 	@handler SearchTrends
 	get /v1/search/trends (SearchTrendsReq) returns (Envelope)
+
+	@doc (
+		summary: "Search the box."
+	)
+	@handler SearchBox
+	get /v1/search/box (SearchBoxReq) returns (Envelope)
+
+	@doc (
+		summary: "Get explore search."
+	)
+	@handler SearchExplore
+	get /v1/search/explore (SearchExploreReq) returns (Envelope)
+
+	@doc (
+		summary: "Get news search."
+	)
+	@handler SearchNews
+	get /v1/search/news (SearchNewsReq) returns (Envelope)
+
+	@doc (
+		summary: "Get sports search."
+	)
+	@handler SearchSports
+	get /v1/search/sports (SearchSportsReq) returns (Envelope)
+
+	@doc (
+		summary: "Get entertainment search."
+	)
+	@handler SearchEntertainment
+	get /v1/search/entertainment (SearchEntertainmentReq) returns (Envelope)
+
+	@doc (
+		summary: "Get username changes."
+	)
+	@handler UsersUsernameChanges
+	get /v1/users/username-changes (UsersUsernameChangesReq) returns (Envelope)
+
+	@doc (
+		summary: "Get user likes."
+	)
+	@handler UsersLikes
+	get /v1/users/likes (UsersLikesReq) returns (Envelope)
+
+	@doc (
+		summary: "Get user highlights."
+	)
+	@handler UsersHighlights
+	get /v1/users/highlights (UsersHighlightsReq) returns (Envelope)
+
+	@doc (
+		summary: "Get user articles tweets."
+	)
+	@handler UsersArticlesTweets
+	get /v1/users/articles-tweets (UsersArticlesTweetsReq) returns (Envelope)
+
+	@doc (
+		summary: "Get user account analytics."
+	)
+	@handler UsersAccountAnalytics
+	get /v1/users/account-analytics (UsersAccountAnalyticsReq) returns (Envelope)
+
+	@doc (
+		summary: "Get user followers."
+	)
+	@handler UsersFollowers
+	get /v1/users/followers (UsersFollowersReq) returns (Envelope)
+
+	@doc (
+		summary: "Get user followings."
+	)
+	@handler UsersFollowings
+	get /v1/users/followings (UsersFollowingsReq) returns (Envelope)
+
+	@doc (
+		summary: "Get lists."
+	)
+	@handler Lists
+	get /v1/lists (ListsReq) returns (Envelope)
+
+	@doc (
+		summary: "Get communities."
+	)
+	@handler Communities
+	get /v1/communities (CommunitiesReq) returns (Envelope)
 }
