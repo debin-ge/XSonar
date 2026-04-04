@@ -292,6 +292,11 @@ func (s *gatewayService) handleProxy(w http.ResponseWriter, r *http.Request) {
 		writeGatewayError(http.StatusBadRequest, model.CodeInvalidRequest, validationErr.Error(), "PARAM_VALIDATION_FAILED", validationErr.Error())
 		return
 	}
+	if validationErr := validateRouteSpecificQuery(policyKey, stringValue(policyData["upstream_path"]), providerQuery, stringMap(policyData["default_params"])); validationErr != nil {
+		_ = s.releaseQuota(ctx, appID, requestID)
+		writeGatewayError(http.StatusBadRequest, model.CodeInvalidRequest, validationErr.Error(), "PARAM_VALIDATION_FAILED", validationErr.Error())
+		return
+	}
 	providerQuery = normalizeProviderQuery(policyKey, stringValue(policyData["upstream_path"]), providerQuery)
 
 	queryJSON, marshalErr := json.Marshal(providerQuery)
@@ -583,7 +588,7 @@ func stringMap(value any) map[string]string {
 func sanitizeUpstreamQuery(query url.Values, allowedParams, deniedParams []string, defaultParams map[string]string) (map[string]any, error) {
 	result := make(map[string]any)
 	allowedSet := normalizedPolicyParamKeys(allowedParams)
-	deniedSet := normalizedPolicyParamKeys(append(append([]string(nil), deniedParams...), "proxyUrl", "auth_token"))
+	deniedSet := normalizedPolicyParamKeys(append(append([]string(nil), deniedParams...), "proxyUrl", "auth_token", "ct0"))
 	defaultSet := normalizedDefaultParams(defaultParams)
 	seenKeys := make(map[string]string, len(query))
 
@@ -678,17 +683,41 @@ func normalizeProviderQuery(policyKey, upstreamPath string, query map[string]any
 	switch {
 	case policyKey == "search_tweets_v1", upstreamPath == "/base/apitools/search":
 		normalizeSearchTweetsCount(query)
+	case policyKey == "tweets_brief_v1", upstreamPath == "/base/apitools/tweetSimple":
+		moveQueryKey(query, "tweetId", "id")
 	case policyKey == "tweets_detail_v1", upstreamPath == "/base/apitools/tweetTimeline":
-		if _, exists := query["id"]; exists {
-			return query
-		}
-		if tweetID, exists := query["tweetId"]; exists {
-			query["id"] = tweetID
-			delete(query, "tweetId")
-		}
+		moveQueryKey(query, "tweetId", "id")
+	case policyKey == "tweets_quotes_v1",
+		policyKey == "tweets_retweeters_v1",
+		policyKey == "tweets_favoriters_v1",
+		policyKey == "users_likes_v1",
+		policyKey == "users_highlights_v1",
+		policyKey == "users_articles_tweets_v1":
+		moveQueryKey(query, "authToken", "auth_token")
+	case policyKey == "users_mentions_timeline_v1":
+		moveQueryKey(query, "authToken", "auth_token")
+		moveQueryKey(query, "csrfToken", "ct0")
+		moveQueryKey(query, "includeEntities", "include_entities")
+		moveQueryKey(query, "trimUser", "trim_user")
+	case policyKey == "users_account_analytics_v1":
+		moveQueryKey(query, "restId", "rest_id")
+		moveQueryKey(query, "authToken", "auth_token")
+		moveQueryKey(query, "csrfToken", "ct0")
 	}
 
 	return query
+}
+
+func moveQueryKey(query map[string]any, sourceKey, targetKey string) {
+	if _, exists := query[targetKey]; exists {
+		return
+	}
+	value, exists := query[sourceKey]
+	if !exists {
+		return
+	}
+	query[targetKey] = value
+	delete(query, sourceKey)
 }
 
 func normalizeSearchTweetsCount(query map[string]any) {
@@ -748,6 +777,45 @@ func validateRequiredQuery(query map[string]any, requiredParams []string) error 
 		}
 	}
 	return nil
+}
+
+func validateRouteSpecificQuery(policyKey, upstreamPath string, query map[string]any, defaultParams map[string]string) error {
+	switch {
+	case policyKey == "lists_v1", upstreamPath == "/base/apitools/lists":
+		if hasNonEmptyQueryValue(query["userId"]) || hasNonEmptyQueryValue(query["screenName"]) {
+			return nil
+		}
+		return &sanitizeError{message: "one of parameters is required: userId or screenName"}
+	case isZeroParamRoute(policyKey):
+		if hasCallerControlledQueryParams(query, defaultParams) {
+			return &sanitizeError{message: "parameters are not allowed for this route"}
+		}
+	}
+
+	return nil
+}
+
+func isZeroParamRoute(policyKey string) bool {
+	switch policyKey {
+	case "search_explore_v1", "search_news_v1", "search_sports_v1", "search_entertainment_v1":
+		return true
+	default:
+		return false
+	}
+}
+
+func hasCallerControlledQueryParams(query map[string]any, defaultParams map[string]string) bool {
+	defaultKeys := normalizedDefaultParams(defaultParams)
+	for key, value := range query {
+		if !hasNonEmptyQueryValue(value) {
+			continue
+		}
+		if _, exists := defaultKeys[normalizePolicyParamKey(key)]; exists {
+			continue
+		}
+		return true
+	}
+	return false
 }
 
 func hasNonEmptyQueryValue(value any) bool {
@@ -833,12 +901,21 @@ func loggedQuery(query url.Values) string {
 
 	filtered := url.Values{}
 	for key, values := range query {
-		if sharedIsAuthField(key) {
+		if sharedIsAuthField(key) || isRedactedLoggedQueryKey(key) {
 			continue
 		}
 		filtered[key] = slices.Clone(values)
 	}
 	return filtered.Encode()
+}
+
+func isRedactedLoggedQueryKey(key string) bool {
+	switch normalizePolicyParamKey(key) {
+	case "authtoken", "csrftoken", "auth_token", "ct0":
+		return true
+	default:
+		return false
+	}
 }
 
 func requestIP(r *http.Request) string {
