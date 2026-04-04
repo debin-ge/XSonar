@@ -75,6 +75,61 @@ func TestExecutePolicyForwardsRequest(t *testing.T) {
 	}
 }
 
+func TestExecutePolicyAddsHTTPSchemeToProviderBaseURL(t *testing.T) {
+	cfg := shared.DefaultConfig("provider-rpc", 9003)
+	cfg.ProviderBaseURL = "provider.example/api"
+	cfg.ProviderAPIKeyHeader = "apiKey"
+	cfg.ProviderTimeoutMS = 1000
+
+	client := &http.Client{
+		Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+			if req.URL.String() != "https://provider.example/api/base/apitools/usersByIdRestIds?userIds=1%2C2" {
+				t.Fatalf("unexpected upstream url: %s", req.URL.String())
+			}
+			return jsonHTTPResponse(http.StatusOK, `{"ok":true}`), nil
+		}),
+	}
+
+	svc := newProviderServiceWithConfigAndClient(cfg, client, xlog.NewStdout("provider-test"))
+	result, svcErr := svc.executePolicy(context.Background(), executePolicyRequest{
+		PolicyKey:      "users_by_ids_v1",
+		UpstreamMethod: http.MethodGet,
+		UpstreamPath:   "/base/apitools/usersByIdRestIds",
+		Query: map[string]any{
+			"userIds": "1,2",
+		},
+		ProviderAPIKey: "provider-key-1",
+	})
+	if svcErr != nil {
+		t.Fatalf("executePolicy returned error: %+v", svcErr)
+	}
+
+	resultPayload := decodeProviderResult(t, result)
+	if resultPayload.StatusCode != http.StatusOK {
+		t.Fatalf("unexpected status code: %#v", resultPayload.StatusCode)
+	}
+}
+
+func TestExecutePolicyRejectsInvalidProviderBaseURL(t *testing.T) {
+	cfg := shared.DefaultConfig("provider-rpc", 9003)
+	cfg.ProviderBaseURL = "ftp://provider.example/api"
+	cfg.ProviderTimeoutMS = 1000
+
+	svc := newProviderServiceWithConfigAndClient(cfg, &http.Client{}, xlog.NewStdout("provider-test"))
+	_, svcErr := svc.executePolicy(context.Background(), executePolicyRequest{
+		PolicyKey:      "users_by_ids_v1",
+		UpstreamMethod: http.MethodGet,
+		UpstreamPath:   "/base/apitools/usersByIdRestIds",
+		ProviderAPIKey: "provider-key-1",
+	})
+	if svcErr == nil {
+		t.Fatal("expected invalid provider base url to be rejected")
+	}
+	if svcErr.message != "invalid provider_base_url" {
+		t.Fatalf("unexpected error message: %#v", svcErr)
+	}
+}
+
 func TestExecutePolicyRetriesGETOn5XX(t *testing.T) {
 	cfg := shared.DefaultConfig("provider-rpc", 9003)
 	cfg.ProviderBaseURL = "https://provider.example/api"

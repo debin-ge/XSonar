@@ -88,6 +88,8 @@ const (
 	searchTweetsMaxCount     = 20
 )
 
+var sensitiveUpstreamQueryParams = []string{"proxyUrl", "auth_token", "ct0"}
+
 func newGatewayServiceWithClients(logger *xlog.Logger, accessClient gatewayAccessClient, policyClient gatewayPolicyClient, providerClient gatewayProviderClient) *gatewayService {
 	return newGatewayServiceWithMode(logger, accessClient, policyClient, providerClient, "")
 }
@@ -588,7 +590,7 @@ func stringMap(value any) map[string]string {
 func sanitizeUpstreamQuery(query url.Values, allowedParams, deniedParams []string, defaultParams map[string]string) (map[string]any, error) {
 	result := make(map[string]any)
 	allowedSet := normalizedPolicyParamKeys(allowedParams)
-	deniedSet := normalizedPolicyParamKeys(append(append([]string(nil), deniedParams...), "proxyUrl", "auth_token", "ct0"))
+	deniedSet := normalizedPolicyParamKeys(append(append([]string(nil), deniedParams...), sensitiveUpstreamQueryParams...))
 	defaultSet := normalizedDefaultParams(defaultParams)
 	seenKeys := make(map[string]string, len(query))
 
@@ -919,6 +921,15 @@ func loggedQuery(query url.Values) string {
 func isRedactedLoggedQueryKey(key string) bool {
 	switch normalizePolicyParamKey(key) {
 	case "authtoken", "csrftoken", "auth_token", "ct0":
+		return true
+	default:
+		return isSensitiveUpstreamQueryParam(key)
+	}
+}
+
+func isSensitiveUpstreamQueryParam(key string) bool {
+	switch normalizePolicyParamKey(key) {
+	case "proxyurl", "auth_token", "ct0":
 		return true
 	default:
 		return false

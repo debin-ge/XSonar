@@ -1348,6 +1348,12 @@ func TestSanitizeUpstreamQueryRejectsSensitiveParamsCaseInsensitive(t *testing.T
 	if _, err := sanitizeUpstreamQuery(query, nil, []string{"proxyUrl", "auth_token"}, nil); err == nil {
 		t.Fatal("expected auth_token variant to be rejected")
 	}
+
+	query = url.Values{}
+	query.Set("Ct0", "secret-cookie")
+	if _, err := sanitizeUpstreamQuery(query, nil, []string{"proxyUrl", "auth_token"}, nil); err == nil {
+		t.Fatal("expected ct0 variant to be rejected")
+	}
 }
 
 func TestSanitizeUpstreamQueryRejectsCT0CaseInsensitive(t *testing.T) {
@@ -1400,6 +1406,28 @@ func TestSanitizeUpstreamQueryRejectsNormalizedDuplicates(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "duplicate") {
 		t.Fatalf("expected duplicate error, got %v", err)
+	}
+}
+
+func TestLoggedQueryFiltersSensitiveUpstreamParams(t *testing.T) {
+	query := url.Values{}
+	query.Set("words", "ai")
+	query.Set("auth_token", "secret-token")
+	query.Set("ct0", "secret-cookie")
+	query.Set("proxyUrl", "http://evil")
+
+	got := loggedQuery(query)
+	if strings.Contains(got, "auth_token") {
+		t.Fatalf("expected auth_token to be filtered, got %q", got)
+	}
+	if strings.Contains(got, "ct0") {
+		t.Fatalf("expected ct0 to be filtered, got %q", got)
+	}
+	if strings.Contains(got, "proxyUrl") {
+		t.Fatalf("expected proxyUrl to be filtered, got %q", got)
+	}
+	if !strings.Contains(got, "words=ai") {
+		t.Fatalf("expected non-sensitive params to remain, got %q", got)
 	}
 }
 

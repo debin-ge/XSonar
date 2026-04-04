@@ -54,7 +54,6 @@ type providerExecutionResult struct {
 
 func ProviderDefaults() shared.Config {
 	cfg := shared.DefaultConfig("provider-rpc", 9003)
-	cfg.ProviderBaseURL = "https://fapi.uk/api"
 	cfg.ProviderHealthPath = "/"
 	cfg.ProviderAPIKeyHeader = "apiKey"
 	cfg.ProviderTimeoutMS = 8000
@@ -116,9 +115,13 @@ func (s *providerService) executePolicy(ctx context.Context, req executePolicyRe
 	if strings.TrimSpace(s.config.ProviderBaseURL) == "" {
 		return nil, providerInternalError("provider_base_url is not configured")
 	}
+	providerBaseURL, err := normalizeProviderBaseURL(s.config.ProviderBaseURL)
+	if err != nil {
+		return nil, providerInternalError("invalid provider_base_url")
+	}
 
 	method := strings.ToUpper(firstNonEmpty(req.UpstreamMethod, http.MethodGet))
-	targetURL, err := buildUpstreamURL(s.config.ProviderBaseURL, req.UpstreamPath, req.Query)
+	targetURL, err := buildUpstreamURL(providerBaseURL, req.UpstreamPath, req.Query)
 	if err != nil {
 		return nil, providerInvalidRequest("invalid upstream target")
 	}
@@ -210,8 +213,12 @@ func (s *providerService) healthCheckProvider(ctx context.Context, req healthChe
 	if strings.TrimSpace(s.config.ProviderBaseURL) == "" {
 		return nil, providerInternalError("provider_base_url is not configured")
 	}
+	providerBaseURL, err := normalizeProviderBaseURL(s.config.ProviderBaseURL)
+	if err != nil {
+		return nil, providerInternalError("invalid provider_base_url")
+	}
 
-	targetURL, err := buildUpstreamURL(s.config.ProviderBaseURL, firstNonEmpty(s.config.ProviderHealthPath, "/"), nil)
+	targetURL, err := buildUpstreamURL(providerBaseURL, firstNonEmpty(s.config.ProviderHealthPath, "/"), nil)
 	if err != nil {
 		return nil, providerInternalError("invalid provider health target")
 	}
@@ -233,7 +240,7 @@ func (s *providerService) healthCheckProvider(ctx context.Context, req healthChe
 			"status_code":           transportStatusCode(err),
 			"result_code":           transportResultCode(err),
 			"upstream_duration_ms":  time.Since(start).Milliseconds(),
-			"provider_base_url":     s.config.ProviderBaseURL,
+			"provider_base_url":     providerBaseURL,
 			"provider_health_path":  firstNonEmpty(s.config.ProviderHealthPath, "/"),
 			"provider_api_key_name": s.config.ProviderAPIKeyHeader,
 		}
@@ -260,7 +267,7 @@ func (s *providerService) healthCheckProvider(ctx context.Context, req healthChe
 		"status_code":           resp.StatusCode,
 		"result_code":           upstreamResultCode(resp.StatusCode),
 		"upstream_duration_ms":  time.Since(start).Milliseconds(),
-		"provider_base_url":     s.config.ProviderBaseURL,
+		"provider_base_url":     providerBaseURL,
 		"provider_health_path":  firstNonEmpty(s.config.ProviderHealthPath, "/"),
 		"provider_api_key_name": s.config.ProviderAPIKeyHeader,
 	}
@@ -346,6 +353,28 @@ func normalizeProviderConfig(config shared.Config) shared.Config {
 		config.ProviderRetryCount = defaults.ProviderRetryCount
 	}
 	return config
+}
+
+func normalizeProviderBaseURL(baseURL string) (string, error) {
+	normalized := strings.TrimSpace(baseURL)
+	if normalized == "" {
+		return "", nil
+	}
+	if !strings.Contains(normalized, "://") {
+		normalized = "https://" + normalized
+	}
+
+	parsed, err := url.Parse(normalized)
+	if err != nil {
+		return "", err
+	}
+	if parsed.Scheme != "http" && parsed.Scheme != "https" {
+		return "", fmt.Errorf("unsupported provider base url scheme: %s", parsed.Scheme)
+	}
+	if strings.TrimSpace(parsed.Host) == "" {
+		return "", fmt.Errorf("provider base url host is required")
+	}
+	return parsed.String(), nil
 }
 
 func (s *providerService) logProviderRequestError(message string, startedAt time.Time, req executePolicyRequest, method, targetURL string, attempt, statusCode int, resultCode, errorSummary string) {
