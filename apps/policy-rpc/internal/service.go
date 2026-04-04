@@ -437,7 +437,7 @@ func newSeedPolicy(policyKey, displayName, publicMethod, publicPath, upstreamMet
 		AllowedParams:        append([]string(nil), allowedParams...),
 		RequiredParams:       append([]string(nil), requiredParams...),
 		DeniedParams:         append([]string(nil), deniedParams...),
-		DefaultParams:        map[string]string{"resFormat": "json"},
+		DefaultParams:        map[string]string{},
 		ProviderCredentialID: credentialID,
 		Status:               "published",
 		Version:              1,

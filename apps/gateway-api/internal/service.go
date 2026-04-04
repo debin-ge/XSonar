@@ -10,7 +10,6 @@ import (
 	"net/http"
 	"net/url"
 	"slices"
-	"strconv"
 	"strings"
 	"time"
 
@@ -82,11 +81,6 @@ type policyAccessResult struct {
 	allowed   bool
 	decodeErr error
 }
-
-const (
-	searchTweetsDefaultCount = 10
-	searchTweetsMaxCount     = 20
-)
 
 var sensitiveUpstreamQueryParams = []string{"proxyUrl", "auth_token", "ct0"}
 
@@ -591,7 +585,6 @@ func sanitizeUpstreamQuery(query url.Values, allowedParams, deniedParams []strin
 	result := make(map[string]any)
 	allowedSet := normalizedPolicyParamKeys(allowedParams)
 	deniedSet := normalizedPolicyParamKeys(append(append([]string(nil), deniedParams...), sensitiveUpstreamQueryParams...))
-	defaultSet := normalizedDefaultParams(defaultParams)
 	seenKeys := make(map[string]string, len(query))
 
 	for key, values := range query {
@@ -620,12 +613,6 @@ func sanitizeUpstreamQuery(query url.Values, allowedParams, deniedParams []strin
 			continue
 		}
 		result[canonicalKey] = slices.Clone(values)
-	}
-
-	for normalizedKey, item := range defaultSet {
-		if _, exists := seenKeys[normalizedKey]; !exists {
-			result[item.key] = item.value
-		}
 	}
 
 	return result, nil
@@ -678,94 +665,9 @@ func normalizedDefaultParams(values map[string]string) map[string]struct {
 }
 
 func normalizeProviderQuery(policyKey, upstreamPath string, query map[string]any) map[string]any {
-	if len(query) == 0 {
-		return query
-	}
-
-	switch {
-	case policyKey == "search_tweets_v1", upstreamPath == "/base/apitools/search":
-		normalizeSearchTweetsCount(query)
-	case policyKey == "tweets_brief_v1", upstreamPath == "/base/apitools/tweetSimple":
-		moveQueryKey(query, "tweetId", "id")
-	case policyKey == "tweets_detail_v1", upstreamPath == "/base/apitools/tweetTimeline":
-		moveQueryKey(query, "tweetId", "id")
-	case policyKey == "tweets_quotes_v1",
-		policyKey == "tweets_retweeters_v1",
-		policyKey == "tweets_favoriters_v1",
-		policyKey == "users_likes_v1",
-		policyKey == "users_highlights_v1",
-		policyKey == "users_articles_tweets_v1":
-		moveQueryKey(query, "authToken", "auth_token")
-	case policyKey == "users_mentions_timeline_v1":
-		moveQueryKey(query, "authToken", "auth_token")
-		moveQueryKey(query, "csrfToken", "ct0")
-		moveQueryKey(query, "includeEntities", "include_entities")
-		moveQueryKey(query, "trimUser", "trim_user")
-	case policyKey == "users_account_analytics_v1":
-		moveQueryKey(query, "restId", "rest_id")
-		moveQueryKey(query, "authToken", "auth_token")
-		moveQueryKey(query, "csrfToken", "ct0")
-	}
-
+	_ = policyKey
+	_ = upstreamPath
 	return query
-}
-
-func moveQueryKey(query map[string]any, sourceKey, targetKey string) {
-	if _, exists := query[targetKey]; exists {
-		return
-	}
-	value, exists := query[sourceKey]
-	if !exists {
-		return
-	}
-	query[targetKey] = value
-	delete(query, sourceKey)
-}
-
-func normalizeSearchTweetsCount(query map[string]any) {
-	rawCount, exists := query["count"]
-	if !exists {
-		query["count"] = strconv.Itoa(searchTweetsDefaultCount)
-		return
-	}
-
-	count, ok := parsePositiveInt(rawCount)
-	if !ok {
-		query["count"] = strconv.Itoa(searchTweetsDefaultCount)
-		return
-	}
-	if count > searchTweetsMaxCount {
-		query["count"] = strconv.Itoa(searchTweetsMaxCount)
-		return
-	}
-
-	query["count"] = strconv.Itoa(count)
-}
-
-func parsePositiveInt(value any) (int, bool) {
-	switch typed := value.(type) {
-	case string:
-		parsed, err := strconv.Atoi(strings.TrimSpace(typed))
-		if err != nil || parsed <= 0 {
-			return 0, false
-		}
-		return parsed, true
-	case int:
-		return typed, typed > 0
-	case int64:
-		return int(typed), typed > 0
-	case float64:
-		parsed := int(typed)
-		return parsed, typed == float64(parsed) && parsed > 0
-	case json.Number:
-		parsed, err := typed.Int64()
-		if err != nil || parsed <= 0 {
-			return 0, false
-		}
-		return int(parsed), true
-	default:
-		return 0, false
-	}
 }
 
 func validateRequiredQuery(query map[string]any, requiredParams []string) error {

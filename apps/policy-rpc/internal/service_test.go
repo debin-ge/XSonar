@@ -105,8 +105,8 @@ func TestDefaultPoliciesIncludePublicReadonlyProviderRoutes(t *testing.T) {
 		if !slices.Equal(policy.DeniedParams, []string{"proxyUrl", "auth_token", "ct0"}) {
 			t.Fatalf("policy %q denied params = %#v, want %#v", tc.key, policy.DeniedParams, []string{"proxyUrl", "auth_token", "ct0"})
 		}
-		if policy.DefaultParams["resFormat"] != "json" {
-			t.Fatalf("policy %q should inject resFormat=json, got %#v", tc.key, policy.DefaultParams)
+		if len(policy.DefaultParams) != 0 {
+			t.Fatalf("policy %q should not inject default params, got %#v", tc.key, policy.DefaultParams)
 		}
 	}
 }

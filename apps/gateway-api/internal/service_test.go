@@ -145,11 +145,11 @@ func TestGatewayProxySuccess(t *testing.T) {
 			if err := json.Unmarshal([]byte(req.QueryJson), &query); err != nil {
 				t.Fatalf("decode query json: %v", err)
 			}
-			if query["resFormat"] != "json" {
-				t.Fatalf("expected resFormat=json injection, got %#v", query["resFormat"])
-			}
 			if query["userIds"] != "1,2" {
 				t.Fatalf("expected userIds to be passed through, got %#v", query["userIds"])
+			}
+			if len(query) != 1 {
+				t.Fatalf("expected only caller query params to be forwarded, got %#v", query)
 			}
 			return okEnvelope(map[string]any{
 				"status_code":          200,
@@ -335,7 +335,7 @@ func TestGatewayProxyPreservesLargeIntegersFromProviderPayload(t *testing.T) {
 	}
 }
 
-func TestGatewayMapsTweetDetailTweetIDToUpstreamID(t *testing.T) {
+func TestGatewayPreservesTweetDetailQueryParams(t *testing.T) {
 	accessClient := stubJSONClient{
 		postFunc: func(_ context.Context, path string, payload any) (*clients.EnvelopeResponse, error) {
 			switch path {
@@ -396,14 +396,11 @@ func TestGatewayMapsTweetDetailTweetIDToUpstreamID(t *testing.T) {
 			if err := json.Unmarshal([]byte(req.QueryJson), &query); err != nil {
 				t.Fatalf("decode query json: %v", err)
 			}
-			if query["id"] != "1971453180132327700" {
-				t.Fatalf("expected upstream id to be mapped, got %#v", query)
+			expected := map[string]any{
+				"tweetId": "1971453180132327700",
 			}
-			if _, exists := query["tweetId"]; exists {
-				t.Fatalf("expected public tweetId to be removed, got %#v", query)
-			}
-			if query["resFormat"] != "json" {
-				t.Fatalf("expected resFormat=json injection, got %#v", query["resFormat"])
+			if !reflect.DeepEqual(query, expected) {
+				t.Fatalf("expected gateway to forward caller query unchanged, got %#v", query)
 			}
 			return okEnvelope(map[string]any{
 				"status_code":          200,
@@ -613,7 +610,7 @@ func TestGatewayListsRequiresUserIDOrScreenName(t *testing.T) {
 	}
 }
 
-func TestGatewayMapsAccountAnalyticsAliasParamsToUpstreamKeys(t *testing.T) {
+func TestGatewayPreservesAccountAnalyticsQueryParams(t *testing.T) {
 	accessClient := stubJSONClient{
 		postFunc: func(_ context.Context, path string, payload any) (*clients.EnvelopeResponse, error) {
 			switch path {
@@ -675,10 +672,9 @@ func TestGatewayMapsAccountAnalyticsAliasParamsToUpstreamKeys(t *testing.T) {
 				t.Fatalf("decode query json: %v", err)
 			}
 			expected := map[string]any{
-				"rest_id":    "rest-1",
-				"auth_token": "auth-1",
-				"ct0":        "csrf-1",
-				"resFormat":  "json",
+				"restId":    "rest-1",
+				"authToken": "auth-1",
+				"csrfToken": "csrf-1",
 			}
 			if !reflect.DeepEqual(query, expected) {
 				t.Fatalf("unexpected provider query: %#v", query)
@@ -1378,6 +1374,22 @@ func TestSanitizeUpstreamQueryAllowsUnknownParamsWhenAllowlistEmpty(t *testing.T
 	}
 }
 
+func TestSanitizeUpstreamQueryDoesNotInjectDefaultParams(t *testing.T) {
+	query := url.Values{}
+	query.Set("words", "ai")
+
+	result, err := sanitizeUpstreamQuery(query, []string{"words"}, nil, map[string]string{"resFormat": "json"})
+	if err != nil {
+		t.Fatalf("sanitizeUpstreamQuery returned error: %v", err)
+	}
+	expected := map[string]any{
+		"words": "ai",
+	}
+	if !reflect.DeepEqual(result, expected) {
+		t.Fatalf("expected sanitizeUpstreamQuery to preserve caller params only, got %#v", result)
+	}
+}
+
 func TestSanitizeUpstreamQueryCanonicalizesAllowedParamMatches(t *testing.T) {
 	query := url.Values{}
 	query.Set("USERIDS", "1,2")
@@ -1431,17 +1443,18 @@ func TestLoggedQueryFiltersSensitiveUpstreamParams(t *testing.T) {
 	}
 }
 
-func TestNormalizeProviderQuerySetsDefaultCountForSearchTweets(t *testing.T) {
+func TestNormalizeProviderQueryLeavesSearchTweetsWithoutCountUnchanged(t *testing.T) {
 	query := map[string]any{"words": "ai"}
 
 	got := normalizeProviderQuery("search_tweets_v1", "/base/apitools/search", query)
 
-	if got["count"] != "10" {
-		t.Fatalf("expected default count=10, got %#v", got["count"])
+	expected := map[string]any{"words": "ai"}
+	if !reflect.DeepEqual(got, expected) {
+		t.Fatalf("expected search tweets query to be unchanged, got %#v", got)
 	}
 }
 
-func TestNormalizeProviderQueryClampsSearchTweetsCount(t *testing.T) {
+func TestNormalizeProviderQueryLeavesExplicitSearchTweetsCountUnchanged(t *testing.T) {
 	query := map[string]any{
 		"words": "ai",
 		"count": "100",
@@ -1449,12 +1462,16 @@ func TestNormalizeProviderQueryClampsSearchTweetsCount(t *testing.T) {
 
 	got := normalizeProviderQuery("search_tweets_v1", "/base/apitools/search", query)
 
-	if got["count"] != "20" {
-		t.Fatalf("expected clamped count=20, got %#v", got["count"])
+	expected := map[string]any{
+		"words": "ai",
+		"count": "100",
+	}
+	if !reflect.DeepEqual(got, expected) {
+		t.Fatalf("expected explicit count to be preserved, got %#v", got)
 	}
 }
 
-func TestNormalizeProviderQueryRepairsInvalidSearchTweetsCount(t *testing.T) {
+func TestNormalizeProviderQueryLeavesInvalidSearchTweetsCountUnchanged(t *testing.T) {
 	query := map[string]any{
 		"words": "ai",
 		"count": "abc",
@@ -1462,12 +1479,16 @@ func TestNormalizeProviderQueryRepairsInvalidSearchTweetsCount(t *testing.T) {
 
 	got := normalizeProviderQuery("search_tweets_v1", "/base/apitools/search", query)
 
-	if got["count"] != "10" {
-		t.Fatalf("expected repaired count=10, got %#v", got["count"])
+	expected := map[string]any{
+		"words": "ai",
+		"count": "abc",
+	}
+	if !reflect.DeepEqual(got, expected) {
+		t.Fatalf("expected invalid count to be preserved for provider passthrough, got %#v", got)
 	}
 }
 
-func TestNormalizeProviderQueryMapsReadonlyAliasParams(t *testing.T) {
+func TestNormalizeProviderQueryLeavesReadonlyAliasParamsUnchanged(t *testing.T) {
 	tests := []struct {
 		name         string
 		policyKey    string
@@ -1484,8 +1505,8 @@ func TestNormalizeProviderQueryMapsReadonlyAliasParams(t *testing.T) {
 				"cursor":  "cursor-1",
 			},
 			expected: map[string]any{
-				"id":     "tweet-1",
-				"cursor": "cursor-1",
+				"tweetId": "tweet-1",
+				"cursor":  "cursor-1",
 			},
 		},
 		{
@@ -1500,11 +1521,11 @@ func TestNormalizeProviderQueryMapsReadonlyAliasParams(t *testing.T) {
 				"cursor":          "cursor-1",
 			},
 			expected: map[string]any{
-				"auth_token":       "auth-1",
-				"ct0":              "csrf-1",
-				"include_entities": "true",
-				"trim_user":        "false",
-				"cursor":           "cursor-1",
+				"authToken":       "auth-1",
+				"csrfToken":       "csrf-1",
+				"includeEntities": "true",
+				"trimUser":        "false",
+				"cursor":          "cursor-1",
 			},
 		},
 		{
@@ -1517,9 +1538,9 @@ func TestNormalizeProviderQueryMapsReadonlyAliasParams(t *testing.T) {
 				"csrfToken": "csrf-1",
 			},
 			expected: map[string]any{
-				"rest_id":    "rest-1",
-				"auth_token": "auth-1",
-				"ct0":        "csrf-1",
+				"restId":    "rest-1",
+				"authToken": "auth-1",
+				"csrfToken": "csrf-1",
 			},
 		},
 	}
@@ -1552,7 +1573,7 @@ func TestLoggedQueryRedactsSensitiveAliasParams(t *testing.T) {
 	}
 }
 
-func TestGatewaySearchTweetsInjectsNormalizedCount(t *testing.T) {
+func TestGatewaySearchTweetsPreservesExplicitCount(t *testing.T) {
 	var recordedUsage *accessservice.RecordUsageStatRequest
 
 	accessClient := stubJSONClient{
@@ -1614,14 +1635,12 @@ func TestGatewaySearchTweetsInjectsNormalizedCount(t *testing.T) {
 			if err := json.Unmarshal([]byte(req.QueryJson), &query); err != nil {
 				t.Fatalf("decode query json: %v", err)
 			}
-			if query["words"] != "ai gateway optimization" {
-				t.Fatalf("expected words to be passed through, got %#v", query["words"])
+			expected := map[string]any{
+				"words": "ai gateway optimization",
+				"count": "100",
 			}
-			if query["resFormat"] != "json" {
-				t.Fatalf("expected resFormat=json injection, got %#v", query["resFormat"])
-			}
-			if query["count"] != "20" {
-				t.Fatalf("expected count to be normalized to 20, got %#v", query["count"])
+			if !reflect.DeepEqual(query, expected) {
+				t.Fatalf("expected search tweets params to be forwarded unchanged, got %#v", query)
 			}
 			return okEnvelope(map[string]any{
 				"status_code":          200,
@@ -1646,6 +1665,94 @@ func TestGatewaySearchTweetsInjectsNormalizedCount(t *testing.T) {
 	}
 	if recordedUsage == nil || recordedUsage.PolicyKey != "search_tweets_v1" {
 		t.Fatalf("expected usage stat to be recorded, got %#v", recordedUsage)
+	}
+}
+
+func TestGatewaySearchTweetsDoesNotInjectDefaultCount(t *testing.T) {
+	accessClient := stubJSONClient{
+		postFunc: func(_ context.Context, path string, payload any) (*clients.EnvelopeResponse, error) {
+			switch path {
+			case "/rpc/CheckIpBan":
+				return okEnvelope(map[string]any{"blocked": false}), nil
+			case "/rpc/GetAppAuthContext":
+				return okEnvelope(map[string]any{
+					"tenant_id":  "tenant_search",
+					"app_id":     "app_search",
+					"app_key":    "app_key_search",
+					"app_secret": "secret_search",
+					"status":     "active",
+				}), nil
+			case "/rpc/CheckAndReserveQuota":
+				return okEnvelope(map[string]any{"allowed": true}), nil
+			case "/rpc/RecordUsageStat":
+				return okEnvelope(map[string]any{"recorded": true}), nil
+			case "/rpc/ReleaseQuotaOnFailure":
+				return okEnvelope(map[string]any{"released": true}), nil
+			default:
+				return nil, errors.New("unexpected access path: " + path)
+			}
+		},
+	}
+
+	policyClient := stubJSONClient{
+		postFunc: func(_ context.Context, path string, payload any) (*clients.EnvelopeResponse, error) {
+			switch path {
+			case "/rpc/ResolvePolicy":
+				return okEnvelope(map[string]any{
+					"policy_key":       "search_tweets_v1",
+					"upstream_method":  "GET",
+					"upstream_path":    "/base/apitools/search",
+					"allowed_params":   []string{"words", "count"},
+					"required_params":  []string{"words"},
+					"denied_params":    []string{"proxyUrl", "auth_token"},
+					"default_params":   map[string]any{"resFormat": "json"},
+					"provider_name":    "fapi.uk",
+					"provider_api_key": "provider_key_search",
+				}), nil
+			case "/rpc/CheckAppPolicyAccess":
+				return okEnvelope(map[string]any{"allowed": true}), nil
+			default:
+				return nil, errors.New("unexpected policy path: " + path)
+			}
+		},
+	}
+
+	providerClient := stubJSONClient{
+		postFunc: func(_ context.Context, path string, payload any) (*clients.EnvelopeResponse, error) {
+			if path != "/rpc/ExecutePolicy" {
+				return nil, errors.New("unexpected provider path: " + path)
+			}
+			req := payload.(*providerservice.ExecutePolicyRequest)
+			var query map[string]any
+			if err := json.Unmarshal([]byte(req.QueryJson), &query); err != nil {
+				t.Fatalf("decode query json: %v", err)
+			}
+			expected := map[string]any{
+				"words": "ai gateway optimization",
+			}
+			if !reflect.DeepEqual(query, expected) {
+				t.Fatalf("expected search tweets query to omit default params, got %#v", query)
+			}
+			return okEnvelope(map[string]any{
+				"status_code":          200,
+				"result_code":          "UPSTREAM_OK",
+				"body":                 map[string]any{"items": []any{}},
+				"upstream_duration_ms": 15,
+			}), nil
+		},
+	}
+
+	svc := newGatewayServiceWithMode(xlog.NewStdout("gateway-test"), accessClient, policyClient, providerClient, "dev")
+
+	req := httptest.NewRequest(http.MethodGet, "/v1/search/tweets?words=ai+gateway+optimization", nil)
+	req.Header.Set("AppKey", "app_key_search")
+	req.Header.Set("AppSecret", "secret_search")
+	rec := httptest.NewRecorder()
+
+	svc.handleProxy(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
 	}
 }
 
