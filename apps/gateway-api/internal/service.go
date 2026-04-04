@@ -292,7 +292,7 @@ func (s *gatewayService) handleProxy(w http.ResponseWriter, r *http.Request) {
 		writeGatewayError(http.StatusBadRequest, model.CodeInvalidRequest, validationErr.Error(), "PARAM_VALIDATION_FAILED", validationErr.Error())
 		return
 	}
-	if validationErr := validateRouteSpecificQuery(policyKey, stringValue(policyData["upstream_path"]), providerQuery, stringMap(policyData["default_params"])); validationErr != nil {
+	if validationErr := validateRouteSpecificQuery(policyKey, stringValue(policyData["upstream_path"]), r.URL.Query(), providerQuery, stringMap(policyData["default_params"])); validationErr != nil {
 		_ = s.releaseQuota(ctx, appID, requestID)
 		writeGatewayError(http.StatusBadRequest, model.CodeInvalidRequest, validationErr.Error(), "PARAM_VALIDATION_FAILED", validationErr.Error())
 		return
@@ -779,15 +779,15 @@ func validateRequiredQuery(query map[string]any, requiredParams []string) error 
 	return nil
 }
 
-func validateRouteSpecificQuery(policyKey, upstreamPath string, query map[string]any, defaultParams map[string]string) error {
+func validateRouteSpecificQuery(policyKey, upstreamPath string, rawQuery url.Values, query map[string]any, defaultParams map[string]string) error {
 	switch {
-	case policyKey == "lists_v1", upstreamPath == "/base/apitools/lists":
+	case policyKey == "lists_v1":
 		if hasNonEmptyQueryValue(query["userId"]) || hasNonEmptyQueryValue(query["screenName"]) {
 			return nil
 		}
 		return &sanitizeError{message: "one of parameters is required: userId or screenName"}
 	case isZeroParamRoute(policyKey):
-		if hasCallerControlledQueryParams(query, defaultParams) {
+		if hasCallerControlledQueryParams(rawQuery, query, defaultParams) {
 			return &sanitizeError{message: "parameters are not allowed for this route"}
 		}
 	}
@@ -804,13 +804,20 @@ func isZeroParamRoute(policyKey string) bool {
 	}
 }
 
-func hasCallerControlledQueryParams(query map[string]any, defaultParams map[string]string) bool {
-	defaultKeys := normalizedDefaultParams(defaultParams)
-	for key, value := range query {
-		if !hasNonEmptyQueryValue(value) {
+func hasCallerControlledQueryParams(rawQuery url.Values, query map[string]any, defaultParams map[string]string) bool {
+	for key := range rawQuery {
+		if sharedIsAuthField(key) {
 			continue
 		}
+		return true
+	}
+
+	defaultKeys := normalizedDefaultParams(defaultParams)
+	for key, value := range query {
 		if _, exists := defaultKeys[normalizePolicyParamKey(key)]; exists {
+			continue
+		}
+		if !hasNonEmptyQueryValue(value) {
 			continue
 		}
 		return true
