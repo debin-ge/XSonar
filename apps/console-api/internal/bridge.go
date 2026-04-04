@@ -2,8 +2,11 @@ package internal
 
 import (
 	"net/http"
+	"reflect"
+	"strings"
 
 	"github.com/zeromicro/go-zero/rest/httpx"
+	"github.com/zeromicro/go-zero/rest/pathvar"
 	"xsonar/apps/access-rpc/accessservice"
 	"xsonar/apps/console-api/internal/types"
 	"xsonar/apps/policy-rpc/policyservice"
@@ -178,7 +181,7 @@ func (b *Bridge) HandleServiceHealth(w http.ResponseWriter, r *http.Request) {
 
 func parseValidatedRequest[T any](w http.ResponseWriter, r *http.Request, req *T, validate func(*T) error) bool {
 	requestID := shared.EnsureRequestID(w, r)
-	if err := httpx.Parse(r, req); err != nil {
+	if err := httpx.Parse(withPathVars(r, req), req); err != nil {
 		shared.WriteError(w, http.StatusBadRequest, model.CodeInvalidRequest, err.Error(), requestID)
 		return false
 	}
@@ -187,4 +190,62 @@ func parseValidatedRequest[T any](w http.ResponseWriter, r *http.Request, req *T
 		return false
 	}
 	return true
+}
+
+func withPathVars[T any](r *http.Request, req *T) *http.Request {
+	if r == nil || req == nil {
+		return r
+	}
+
+	typ := reflect.TypeOf(req)
+	if typ.Kind() != reflect.Pointer {
+		return r
+	}
+	typ = typ.Elem()
+	if typ.Kind() != reflect.Struct {
+		return r
+	}
+
+	vars := clonePathVars(pathvar.Vars(r))
+	updated := false
+	for index := 0; index < typ.NumField(); index++ {
+		pathKey := parsePathTag(typ.Field(index).Tag.Get("path"))
+		if pathKey == "" {
+			continue
+		}
+		if strings.TrimSpace(vars[pathKey]) != "" {
+			continue
+		}
+		if value := strings.TrimSpace(r.PathValue(pathKey)); value != "" {
+			if vars == nil {
+				vars = make(map[string]string)
+			}
+			vars[pathKey] = value
+			updated = true
+		}
+	}
+	if !updated {
+		return r
+	}
+	return pathvar.WithVars(r, vars)
+}
+
+func clonePathVars(vars map[string]string) map[string]string {
+	if len(vars) == 0 {
+		return nil
+	}
+	cloned := make(map[string]string, len(vars))
+	for key, value := range vars {
+		cloned[key] = value
+	}
+	return cloned
+}
+
+func parsePathTag(tag string) string {
+	tag = strings.TrimSpace(tag)
+	if tag == "" {
+		return ""
+	}
+	parts := strings.SplitN(tag, ",", 2)
+	return strings.TrimSpace(parts[0])
 }

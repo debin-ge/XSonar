@@ -476,6 +476,47 @@ func TestBridgeCreateTenantAppRejectsInvalidQuotaType(t *testing.T) {
 	}
 }
 
+func TestBridgeCreateTenantAppAcceptsStandardPathValue(t *testing.T) {
+	called := false
+	bridge := NewBridge(
+		ConsoleDefaults(),
+		xlog.NewStdout("console-test"),
+		stubJSONClient{
+			postFunc: func(_ context.Context, path string, payload any) (*clients.EnvelopeResponse, error) {
+				called = true
+				if path != "/rpc/CreateTenantApp" {
+					return nil, errors.New("unexpected path: " + path)
+				}
+				req := payload.(*accessservice.CreateTenantAppRequest)
+				if req.TenantId != "tenant_1" {
+					t.Fatalf("expected tenant_1 tenant id, got %#v", req.TenantId)
+				}
+				if req.Name != "Primary App" || req.DailyQuota != 100 || req.QpsLimit != 10 {
+					t.Fatalf("unexpected create tenant app payload: %#v", req)
+				}
+				return okEnvelope(map[string]any{"app_id": "app_1"}), nil
+			},
+		},
+		stubJSONClient{},
+		stubJSONClient{},
+	)
+
+	req := httptest.NewRequest(http.MethodPost, "/admin/v1/tenants/tenant_1/apps", strings.NewReader(`{"name":"Primary App","daily_quota":100,"qps_limit":10}`))
+	req.SetPathValue("id", "tenant_1")
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+mustAdminToken(t))
+	rec := httptest.NewRecorder()
+
+	bridge.HandleCreateTenantApp(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	if !called {
+		t.Fatal("expected create tenant app rpc to be called")
+	}
+}
+
 func okEnvelope(data any) *clients.EnvelopeResponse {
 	payload, _ := json.Marshal(data)
 	return &clients.EnvelopeResponse{
