@@ -2,7 +2,6 @@ package internal
 
 import (
 	"context"
-	"encoding/json"
 	"testing"
 	"time"
 
@@ -12,7 +11,7 @@ import (
 )
 
 func TestCreateTaskRejectsInvalidTaskType(t *testing.T) {
-	svc := newSchedulerService(config.Config{}, xlog.NewStdout("scheduler-rpc-test"))
+	svc, _ := newTestSchedulerService()
 
 	_, svcErr := svc.createTask(context.Background(), createTaskRequest{
 		TaskID:   "task-1",
@@ -24,7 +23,7 @@ func TestCreateTaskRejectsInvalidTaskType(t *testing.T) {
 }
 
 func TestCreateTaskRejectsPriorityOutsideRange(t *testing.T) {
-	svc := newSchedulerService(config.Config{}, xlog.NewStdout("scheduler-rpc-test"))
+	svc, _ := newTestSchedulerService()
 
 	for _, priority := range []int32{-1, 101} {
 		_, svcErr := svc.createTask(context.Background(), createTaskRequest{
@@ -39,7 +38,7 @@ func TestCreateTaskRejectsPriorityOutsideRange(t *testing.T) {
 }
 
 func TestCreateTaskRejectsMissingFrequencyForPeriodic(t *testing.T) {
-	svc := newSchedulerService(config.Config{}, xlog.NewStdout("scheduler-rpc-test"))
+	svc, _ := newTestSchedulerService()
 
 	_, svcErr := svc.createTask(context.Background(), createTaskRequest{
 		TaskID:   "task-1",
@@ -51,7 +50,7 @@ func TestCreateTaskRejectsMissingFrequencyForPeriodic(t *testing.T) {
 }
 
 func TestCreateTaskRejectsMissingSinceUntilForRange(t *testing.T) {
-	svc := newSchedulerService(config.Config{}, xlog.NewStdout("scheduler-rpc-test"))
+	svc, _ := newTestSchedulerService()
 
 	_, svcErr := svc.createTask(context.Background(), createTaskRequest{
 		TaskID:   "task-1",
@@ -63,7 +62,7 @@ func TestCreateTaskRejectsMissingSinceUntilForRange(t *testing.T) {
 }
 
 func TestCreateTaskRejectsDuplicateTaskID(t *testing.T) {
-	svc := newSchedulerService(config.Config{}, xlog.NewStdout("scheduler-rpc-test"))
+	svc, _ := newTestSchedulerService()
 
 	if _, svcErr := svc.createTask(context.Background(), createTaskRequest{
 		TaskID:           "task-1",
@@ -84,17 +83,44 @@ func TestCreateTaskRejectsDuplicateTaskID(t *testing.T) {
 	assertSchedulerError(t, svcErr, model.CodeConflict)
 }
 
-func TestGetTaskReturnsTaskFromStore(t *testing.T) {
-	svc := newSchedulerService(config.Config{}, xlog.NewStdout("scheduler-rpc-test"))
+func TestCreateTaskPreservesCreatedByInStore(t *testing.T) {
+	svc, store := newTestSchedulerService()
 
-	created, svcErr := svc.createTask(context.Background(), createTaskRequest{
+	_, svcErr := svc.createTask(context.Background(), createTaskRequest{
 		TaskID:           "task-1",
 		TaskType:         "periodic",
 		Keyword:          "openai",
 		FrequencySeconds: int32Ptr(60),
+		CreatedBy:        "admin-user-1",
 	})
 	if svcErr != nil {
 		t.Fatalf("createTask returned error: %v", svcErr)
+	}
+
+	if store.lastCreatedTask == nil {
+		t.Fatal("expected create task to reach store")
+	}
+	if store.lastCreatedTask.CreatedBy != "admin-user-1" {
+		t.Fatalf("expected created_by admin-user-1, got %q", store.lastCreatedTask.CreatedBy)
+	}
+}
+
+func TestGetTaskReturnsTaskFromStore(t *testing.T) {
+	svc, store := newTestSchedulerService()
+
+	createdTask := &task{
+		TaskID:           "task-1",
+		TaskType:         "periodic",
+		Keyword:          "openai",
+		Priority:         5,
+		FrequencySeconds: int32Ptr(60),
+		CreatedBy:        "admin-user-1",
+		Status:           schedulerTaskStatusPending,
+		CreatedAt:        time.Date(2026, 4, 11, 10, 0, 0, 0, time.UTC),
+		UpdatedAt:        time.Date(2026, 4, 11, 10, 0, 0, 0, time.UTC),
+	}
+	if _, ok := store.CreateTask(context.Background(), createdTask); !ok {
+		t.Fatal("seed task creation failed")
 	}
 
 	got, getErr := svc.getTask(context.Background(), getTaskRequest{TaskID: "task-1"})
@@ -102,7 +128,6 @@ func TestGetTaskReturnsTaskFromStore(t *testing.T) {
 		t.Fatalf("getTask returned error: %v", getErr)
 	}
 
-	createdTask := created.(*task)
 	gotTask := got.(*task)
 	if gotTask.TaskID != createdTask.TaskID || gotTask.TaskType != createdTask.TaskType {
 		t.Fatalf("unexpected task: got %+v want %+v", gotTask, createdTask)
@@ -110,32 +135,37 @@ func TestGetTaskReturnsTaskFromStore(t *testing.T) {
 }
 
 func TestGetTaskRejectsMissingTaskID(t *testing.T) {
-	svc := newSchedulerService(config.Config{}, xlog.NewStdout("scheduler-rpc-test"))
+	svc, _ := newTestSchedulerService()
 
 	_, svcErr := svc.getTask(context.Background(), getTaskRequest{})
 	assertSchedulerError(t, svcErr, model.CodeInvalidRequest)
 }
 
 func TestListTaskRunsReturnsRunsFromStore(t *testing.T) {
-	svc := newSchedulerService(config.Config{}, xlog.NewStdout("scheduler-rpc-test"))
+	svc, store := newTestSchedulerService()
 
-	_, svcErr := svc.createTask(context.Background(), createTaskRequest{
+	createdTask := &task{
 		TaskID:           "task-1",
 		TaskType:         "periodic",
 		Keyword:          "openai",
+		Priority:         5,
 		FrequencySeconds: int32Ptr(60),
-	})
-	if svcErr != nil {
-		t.Fatalf("createTask returned error: %v", svcErr)
+		CreatedBy:        "admin-user-1",
+		Status:           schedulerTaskStatusPending,
+		CreatedAt:        time.Date(2026, 4, 11, 10, 0, 0, 0, time.UTC),
+		UpdatedAt:        time.Date(2026, 4, 11, 10, 0, 0, 0, time.UTC),
 	}
-	svc.store.addTaskRun(taskRun{
+	if _, ok := store.CreateTask(context.Background(), createdTask); !ok {
+		t.Fatal("seed task creation failed")
+	}
+	store.addTaskRun(taskRun{
 		RunID:       "run-1",
 		TaskID:      "task-1",
 		RunNo:       1,
 		Status:      "succeeded",
 		ScheduledAt: time.Date(2026, 4, 11, 10, 0, 0, 0, time.UTC),
 	})
-	svc.store.addTaskRun(taskRun{
+	store.addTaskRun(taskRun{
 		RunID:       "run-2",
 		TaskID:      "task-1",
 		RunNo:       2,
@@ -159,7 +189,7 @@ func TestListTaskRunsReturnsRunsFromStore(t *testing.T) {
 }
 
 func TestListTaskRunsRejectsMissingTaskID(t *testing.T) {
-	svc := newSchedulerService(config.Config{}, xlog.NewStdout("scheduler-rpc-test"))
+	svc, _ := newTestSchedulerService()
 
 	_, svcErr := svc.listTaskRuns(context.Background(), listTaskRunsRequest{})
 	assertSchedulerError(t, svcErr, model.CodeInvalidRequest)
@@ -170,15 +200,21 @@ func TestSchedulerConfigDefaults(t *testing.T) {
 	if cfg.DispatchScanIntervalMS != 1000 {
 		t.Fatalf("unexpected dispatch scan interval: %d", cfg.DispatchScanIntervalMS)
 	}
-	if cfg.QueueBacklogSoftLimit != 100 || cfg.QueueBacklogHardLimit != 1000 {
+	if cfg.QueueBacklogSoftLimit != 5000 || cfg.QueueBacklogHardLimit != 20000 {
 		t.Fatalf("unexpected queue backlog defaults: %+v", cfg)
 	}
-	if cfg.QueueBacklogMaxLagMS != 60000 || cfg.LeaderLockTTLMS != 30000 {
+	if cfg.QueueBacklogMaxLagMS != 300000 || cfg.LeaderLockTTLMS != 15000 {
 		t.Fatalf("unexpected scheduler timing defaults: %+v", cfg)
 	}
-	if cfg.ListTaskRunsDefaultLimit != 20 {
+	if cfg.ListTaskRunsDefaultLimit != 50 {
 		t.Fatalf("unexpected list task runs default limit: %d", cfg.ListTaskRunsDefaultLimit)
 	}
+}
+
+func newTestSchedulerService() (*schedulerService, *fakeSchedulerStore) {
+	store := newFakeSchedulerStore()
+	svc := newSchedulerServiceWithStore(config.Config{}, xlog.NewStdout("scheduler-rpc-test"), store)
+	return svc, store
 }
 
 func assertSchedulerError(t *testing.T, svcErr *serviceError, wantCode int) {
@@ -194,14 +230,4 @@ func assertSchedulerError(t *testing.T, svcErr *serviceError, wantCode int) {
 
 func int32Ptr(value int32) *int32 {
 	return &value
-}
-
-func decodeSchedulerJSON(t *testing.T, raw string) map[string]any {
-	t.Helper()
-
-	var result map[string]any
-	if err := json.Unmarshal([]byte(raw), &result); err != nil {
-		t.Fatalf("decode json: %v", err)
-	}
-	return result
 }

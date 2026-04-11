@@ -59,6 +59,7 @@ func internalCreateTaskRequest(in *schedulerpb.CreateTaskRequest) schedulerinter
 		Since:            in.GetSince(),
 		Until:            in.GetUntil(),
 		RequiredCount:    in.RequiredCount,
+		CreatedBy:        in.GetCreatedBy(),
 	}
 }
 

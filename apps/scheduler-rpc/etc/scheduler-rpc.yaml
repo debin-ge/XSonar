@@ -3,8 +3,8 @@ ListenOn: 0.0.0.0:9004
 Mode: dev
 Timeout: 5000
 DispatchScanIntervalMS: 1000
-QueueBacklogSoftLimit: 100
-QueueBacklogHardLimit: 1000
-QueueBacklogMaxLagMS: 60000
-LeaderLockTTLMS: 30000
-ListTaskRunsDefaultLimit: 20
+QueueBacklogSoftLimit: 5000
+QueueBacklogHardLimit: 20000
+QueueBacklogMaxLagMS: 300000
+LeaderLockTTLMS: 15000
+ListTaskRunsDefaultLimit: 50

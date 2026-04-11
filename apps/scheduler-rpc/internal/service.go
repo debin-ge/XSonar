@@ -4,9 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
-	"sort"
 	"strings"
-	"sync"
 	"time"
 
 	"xsonar/apps/scheduler-rpc/internal/config"
@@ -23,11 +21,11 @@ const (
 
 const (
 	defaultDispatchScanIntervalMS   = 1000
-	defaultQueueBacklogSoftLimit    = 100
-	defaultQueueBacklogHardLimit    = 1000
-	defaultQueueBacklogMaxLagMS     = 60000
-	defaultLeaderLockTTLMS          = 30000
-	defaultListTaskRunsDefaultLimit = 20
+	defaultQueueBacklogSoftLimit    = 5000
+	defaultQueueBacklogHardLimit    = 20000
+	defaultQueueBacklogMaxLagMS     = 300000
+	defaultLeaderLockTTLMS          = 15000
+	defaultListTaskRunsDefaultLimit = 50
 )
 
 type serviceError struct {
@@ -45,13 +43,7 @@ type SchedulerService interface {
 type schedulerService struct {
 	cfg    config.Config
 	logger *xlog.Logger
-	store  *schedulerStore
-}
-
-type schedulerStore struct {
-	mu       sync.RWMutex
-	tasks    map[string]*task
-	taskRuns map[string][]taskRun
+	store  schedulerStore
 }
 
 type createTaskRequest struct {
@@ -79,41 +71,6 @@ type listTaskRunsRequest struct {
 }
 
 type ListTaskRunsRequest = listTaskRunsRequest
-
-type task struct {
-	TaskID           string     `json:"task_id"`
-	TaskType         string     `json:"task_type"`
-	Keyword          string     `json:"keyword"`
-	Priority         int32      `json:"priority"`
-	FrequencySeconds *int32     `json:"frequency_seconds,omitempty"`
-	Since            string     `json:"since,omitempty"`
-	Until            string     `json:"until,omitempty"`
-	RequiredCount    *int64     `json:"required_count,omitempty"`
-	CreatedBy        string     `json:"created_by"`
-	Status           string     `json:"status"`
-	CreatedAt        time.Time  `json:"created_at"`
-	UpdatedAt        time.Time  `json:"updated_at"`
-	NextRunAt        *time.Time `json:"next_run_at,omitempty"`
-	LastRunAt        *time.Time `json:"last_run_at,omitempty"`
-}
-
-type taskRun struct {
-	RunID          string     `json:"run_id"`
-	TaskID         string     `json:"task_id"`
-	RunNo          int64      `json:"run_no"`
-	Status         string     `json:"status"`
-	StopReason     string     `json:"stop_reason,omitempty"`
-	ScheduledAt    time.Time  `json:"scheduled_at"`
-	StartedAt      *time.Time `json:"started_at,omitempty"`
-	EndedAt        *time.Time `json:"ended_at,omitempty"`
-	OutputPath     string     `json:"output_path,omitempty"`
-	PageCount      int64      `json:"page_count"`
-	FetchedCount   int64      `json:"fetched_count"`
-	NewCount       int64      `json:"new_count"`
-	DuplicateCount int64      `json:"duplicate_count"`
-	NextCursor     string     `json:"next_cursor,omitempty"`
-	ErrorMessage   string     `json:"error_message,omitempty"`
-}
 
 func defaultConfig() config.Config {
 	return config.Config{
@@ -150,14 +107,21 @@ func normalizeSchedulerConfig(cfg config.Config) config.Config {
 }
 
 func newSchedulerService(cfg config.Config, logger *xlog.Logger) *schedulerService {
+	return newSchedulerServiceWithStore(cfg, logger, nil)
+}
+
+func newSchedulerServiceWithStore(cfg config.Config, logger *xlog.Logger, store schedulerStore) *schedulerService {
 	if logger == nil {
 		logger = xlog.NewStdout("scheduler-rpc")
+	}
+	if store == nil {
+		store = newSchedulerStore()
 	}
 
 	return &schedulerService{
 		cfg:    normalizeSchedulerConfig(cfg),
 		logger: logger,
-		store:  newSchedulerStore(),
+		store:  store,
 	}
 }
 
@@ -165,72 +129,8 @@ func NewSchedulerService(cfg config.Config, logger *xlog.Logger) SchedulerServic
 	return newSchedulerService(cfg, logger)
 }
 
-func newSchedulerStore() *schedulerStore {
-	return &schedulerStore{
-		tasks:    make(map[string]*task),
-		taskRuns: make(map[string][]taskRun),
-	}
-}
-
-func (s *schedulerStore) createTask(item *task) (*task, bool) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	if _, exists := s.tasks[item.TaskID]; exists {
-		return nil, false
-	}
-
-	clone := cloneTask(item)
-	s.tasks[item.TaskID] = clone
-	return cloneTask(clone), true
-}
-
-func (s *schedulerStore) getTask(taskID string) (*task, bool) {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-
-	item, exists := s.tasks[taskID]
-	if !exists {
-		return nil, false
-	}
-	return cloneTask(item), true
-}
-
-func (s *schedulerStore) addTaskRun(run taskRun) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	runs := append(s.taskRuns[run.TaskID], *cloneTaskRun(&run))
-	s.taskRuns[run.TaskID] = runs
-}
-
-func (s *schedulerStore) listTaskRuns(taskID string, limit int) ([]taskRun, bool) {
-	s.mu.RLock()
-	runs := s.taskRuns[taskID]
-	taskExists := s.tasks[taskID] != nil
-	s.mu.RUnlock()
-
-	if !taskExists {
-		return nil, false
-	}
-
-	items := make([]taskRun, 0, len(runs))
-	for _, run := range runs {
-		items = append(items, *cloneTaskRun(&run))
-	}
-
-	sort.SliceStable(items, func(i, j int) bool {
-		if items[i].ScheduledAt.Equal(items[j].ScheduledAt) {
-			return items[i].RunNo > items[j].RunNo
-		}
-		return items[i].ScheduledAt.After(items[j].ScheduledAt)
-	})
-
-	if limit > 0 && len(items) > limit {
-		items = items[:limit]
-	}
-
-	return items, true
+func NewSchedulerServiceWithStore(cfg config.Config, logger *xlog.Logger, store SchedulerStore) SchedulerService {
+	return newSchedulerServiceWithStore(cfg, logger, store)
 }
 
 func (s *schedulerService) createTask(ctx context.Context, req createTaskRequest) (any, *serviceError) {
@@ -276,7 +176,7 @@ func (s *schedulerService) createTask(ctx context.Context, req createTaskRequest
 		UpdatedAt:        now,
 	}
 
-	created, ok := s.store.createTask(item)
+	created, ok := s.store.CreateTask(ctx, item)
 	if !ok {
 		return nil, schedulerConflict("task already exists")
 	}
@@ -296,7 +196,7 @@ func (s *schedulerService) getTask(ctx context.Context, req getTaskRequest) (any
 		return nil, schedulerInvalidRequest("task_id is required")
 	}
 
-	item, ok := s.store.getTask(taskID)
+	item, ok := s.store.GetTask(ctx, taskID)
 	if !ok {
 		return nil, schedulerNotFound("task not found")
 	}
@@ -316,7 +216,7 @@ func (s *schedulerService) listTaskRuns(ctx context.Context, req listTaskRunsReq
 		return nil, schedulerInvalidRequest("task_id is required")
 	}
 
-	items, ok := s.store.listTaskRuns(taskID, s.cfg.ListTaskRunsDefaultLimit)
+	items, ok := s.store.ListTaskRuns(ctx, taskID, s.cfg.ListTaskRunsDefaultLimit)
 	if !ok {
 		return nil, schedulerNotFound("task not found")
 	}
@@ -369,52 +269,4 @@ func schedulerConflict(message string) *serviceError {
 
 func schedulerNotFound(message string) *serviceError {
 	return &serviceError{statusCode: http.StatusNotFound, code: model.CodeNotFound, message: message}
-}
-
-func cloneTask(src *task) *task {
-	if src == nil {
-		return nil
-	}
-
-	dst := *src
-	dst.FrequencySeconds = cloneInt32Ptr(src.FrequencySeconds)
-	dst.RequiredCount = cloneInt64Ptr(src.RequiredCount)
-	dst.NextRunAt = cloneTimePtr(src.NextRunAt)
-	dst.LastRunAt = cloneTimePtr(src.LastRunAt)
-	return &dst
-}
-
-func cloneTaskRun(src *taskRun) *taskRun {
-	if src == nil {
-		return nil
-	}
-
-	dst := *src
-	dst.StartedAt = cloneTimePtr(src.StartedAt)
-	dst.EndedAt = cloneTimePtr(src.EndedAt)
-	return &dst
-}
-
-func cloneInt32Ptr(src *int32) *int32 {
-	if src == nil {
-		return nil
-	}
-	value := *src
-	return &value
-}
-
-func cloneInt64Ptr(src *int64) *int64 {
-	if src == nil {
-		return nil
-	}
-	value := *src
-	return &value
-}
-
-func cloneTimePtr(src *time.Time) *time.Time {
-	if src == nil {
-		return nil
-	}
-	value := *src
-	return &value
 }
