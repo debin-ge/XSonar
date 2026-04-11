@@ -21,10 +21,11 @@ message CreateTaskRequest {
   string task_type = 2;
   string keyword = 3;
   int32 priority = 4;
-  int32 frequency_seconds = 5;
+  optional int32 frequency_seconds = 5;
+  // Provider-native boundary values stay caller-owned; these are intentionally strings.
   string since = 6;
   string until = 7;
-  int64 required_count = 8;
+  optional int64 required_count = 8;
   string created_by = 9;
 }
 

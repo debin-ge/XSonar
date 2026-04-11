@@ -87,13 +87,14 @@ type CreateTaskRequest struct {
 	TaskType         string                 `protobuf:"bytes,2,opt,name=task_type,json=taskType,proto3" json:"task_type,omitempty"`
 	Keyword          string                 `protobuf:"bytes,3,opt,name=keyword,proto3" json:"keyword,omitempty"`
 	Priority         int32                  `protobuf:"varint,4,opt,name=priority,proto3" json:"priority,omitempty"`
-	FrequencySeconds int32                  `protobuf:"varint,5,opt,name=frequency_seconds,json=frequencySeconds,proto3" json:"frequency_seconds,omitempty"`
-	Since            string                 `protobuf:"bytes,6,opt,name=since,proto3" json:"since,omitempty"`
-	Until            string                 `protobuf:"bytes,7,opt,name=until,proto3" json:"until,omitempty"`
-	RequiredCount    int64                  `protobuf:"varint,8,opt,name=required_count,json=requiredCount,proto3" json:"required_count,omitempty"`
-	CreatedBy        string                 `protobuf:"bytes,9,opt,name=created_by,json=createdBy,proto3" json:"created_by,omitempty"`
-	unknownFields    protoimpl.UnknownFields
-	sizeCache        protoimpl.SizeCache
+	FrequencySeconds *int32                 `protobuf:"varint,5,opt,name=frequency_seconds,json=frequencySeconds,proto3,oneof" json:"frequency_seconds,omitempty"`
+	// Provider-native boundary values stay caller-owned; these are intentionally strings.
+	Since         string `protobuf:"bytes,6,opt,name=since,proto3" json:"since,omitempty"`
+	Until         string `protobuf:"bytes,7,opt,name=until,proto3" json:"until,omitempty"`
+	RequiredCount *int64 `protobuf:"varint,8,opt,name=required_count,json=requiredCount,proto3,oneof" json:"required_count,omitempty"`
+	CreatedBy     string `protobuf:"bytes,9,opt,name=created_by,json=createdBy,proto3" json:"created_by,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *CreateTaskRequest) Reset() {
@@ -155,8 +156,8 @@ func (x *CreateTaskRequest) GetPriority() int32 {
 }
 
 func (x *CreateTaskRequest) GetFrequencySeconds() int32 {
-	if x != nil {
-		return x.FrequencySeconds
+	if x != nil && x.FrequencySeconds != nil {
+		return *x.FrequencySeconds
 	}
 	return 0
 }
@@ -176,8 +177,8 @@ func (x *CreateTaskRequest) GetUntil() string {
 }
 
 func (x *CreateTaskRequest) GetRequiredCount() int64 {
-	if x != nil {
-		return x.RequiredCount
+	if x != nil && x.RequiredCount != nil {
+		return *x.RequiredCount
 	}
 	return 0
 }
@@ -285,18 +286,20 @@ const file_apps_scheduler_rpc_scheduler_proto_rawDesc = "" +
 	"\fJsonResponse\x12\x12\n" +
 	"\x04code\x18\x01 \x01(\x05R\x04code\x12\x18\n" +
 	"\amessage\x18\x02 \x01(\tR\amessage\x12\x1b\n" +
-	"\tdata_json\x18\x03 \x01(\tR\bdataJson\"\x9e\x02\n" +
+	"\tdata_json\x18\x03 \x01(\tR\bdataJson\"\xd1\x02\n" +
 	"\x11CreateTaskRequest\x12\x17\n" +
 	"\atask_id\x18\x01 \x01(\tR\x06taskId\x12\x1b\n" +
 	"\ttask_type\x18\x02 \x01(\tR\btaskType\x12\x18\n" +
 	"\akeyword\x18\x03 \x01(\tR\akeyword\x12\x1a\n" +
-	"\bpriority\x18\x04 \x01(\x05R\bpriority\x12+\n" +
-	"\x11frequency_seconds\x18\x05 \x01(\x05R\x10frequencySeconds\x12\x14\n" +
+	"\bpriority\x18\x04 \x01(\x05R\bpriority\x120\n" +
+	"\x11frequency_seconds\x18\x05 \x01(\x05H\x00R\x10frequencySeconds\x88\x01\x01\x12\x14\n" +
 	"\x05since\x18\x06 \x01(\tR\x05since\x12\x14\n" +
-	"\x05until\x18\a \x01(\tR\x05until\x12%\n" +
-	"\x0erequired_count\x18\b \x01(\x03R\rrequiredCount\x12\x1d\n" +
+	"\x05until\x18\a \x01(\tR\x05until\x12*\n" +
+	"\x0erequired_count\x18\b \x01(\x03H\x01R\rrequiredCount\x88\x01\x01\x12\x1d\n" +
 	"\n" +
-	"created_by\x18\t \x01(\tR\tcreatedBy\")\n" +
+	"created_by\x18\t \x01(\tR\tcreatedByB\x14\n" +
+	"\x12_frequency_secondsB\x11\n" +
+	"\x0f_required_count\")\n" +
 	"\x0eGetTaskRequest\x12\x17\n" +
 	"\atask_id\x18\x01 \x01(\tR\x06taskId\".\n" +
 	"\x13ListTaskRunsRequest\x12\x17\n" +
@@ -345,6 +348,7 @@ func file_apps_scheduler_rpc_scheduler_proto_init() {
 	if File_apps_scheduler_rpc_scheduler_proto != nil {
 		return
 	}
+	file_apps_scheduler_rpc_scheduler_proto_msgTypes[1].OneofWrappers = []any{}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{

@@ -21,6 +21,9 @@ CREATE TABLE IF NOT EXISTS collector.tasks (
     updated_at TIMESTAMPTZ NOT NULL
 );
 
+CREATE INDEX IF NOT EXISTS idx_collector_tasks_status_next_run_at
+    ON collector.tasks (status, next_run_at);
+
 CREATE TABLE IF NOT EXISTS collector.task_runs (
     run_id TEXT PRIMARY KEY,
     task_id TEXT NOT NULL REFERENCES collector.tasks(task_id),
