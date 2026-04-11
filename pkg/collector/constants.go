@@ -2,7 +2,7 @@ package collector
 
 import "fmt"
 
-const keyPrefix = "xsonar:collector"
+const keyPrefix = "collector"
 
 // TaskTypePeriodic identifies a recurring collector task.
 const TaskTypePeriodic = "periodic"
@@ -51,20 +51,20 @@ const RunStatusAbandoned = "abandoned"
 
 // SchedulerLeaderLockKey returns the Redis key used for scheduler leader election.
 func SchedulerLeaderLockKey() string {
-	return keyPrefix + ":scheduler:leader-lock"
+	return keyPrefix + ":scheduler:leader"
 }
 
 // RunsStreamKey returns the Redis stream key used to fan out pending runs.
 func RunsStreamKey() string {
-	return keyPrefix + ":runs:stream"
+	return keyPrefix + ":runs"
 }
 
 // RunLeaseKey returns the Redis key used to store a run lease.
 func RunLeaseKey(runID string) string {
-	return fmt.Sprintf("%s:runs:%s:lease", keyPrefix, runID)
+	return fmt.Sprintf("%s:run:lease:%s", keyPrefix, runID)
 }
 
 // WorkerHeartbeatKey returns the Redis key used to store a worker heartbeat.
 func WorkerHeartbeatKey(workerID string) string {
-	return fmt.Sprintf("%s:workers:%s:heartbeat", keyPrefix, workerID)
+	return fmt.Sprintf("%s:worker:heartbeat:%s", keyPrefix, workerID)
 }

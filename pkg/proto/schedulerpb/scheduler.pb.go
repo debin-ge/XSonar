@@ -236,8 +236,6 @@ func (x *GetTaskRequest) GetTaskId() string {
 type ListTaskRunsRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	TaskId        string                 `protobuf:"bytes,1,opt,name=task_id,json=taskId,proto3" json:"task_id,omitempty"`
-	PageSize      int32                  `protobuf:"varint,2,opt,name=page_size,json=pageSize,proto3" json:"page_size,omitempty"`
-	PageToken     string                 `protobuf:"bytes,3,opt,name=page_token,json=pageToken,proto3" json:"page_token,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -279,20 +277,6 @@ func (x *ListTaskRunsRequest) GetTaskId() string {
 	return ""
 }
 
-func (x *ListTaskRunsRequest) GetPageSize() int32 {
-	if x != nil {
-		return x.PageSize
-	}
-	return 0
-}
-
-func (x *ListTaskRunsRequest) GetPageToken() string {
-	if x != nil {
-		return x.PageToken
-	}
-	return ""
-}
-
 var File_apps_scheduler_rpc_scheduler_proto protoreflect.FileDescriptor
 
 const file_apps_scheduler_rpc_scheduler_proto_rawDesc = "" +
@@ -314,12 +298,9 @@ const file_apps_scheduler_rpc_scheduler_proto_rawDesc = "" +
 	"\n" +
 	"created_by\x18\t \x01(\tR\tcreatedBy\")\n" +
 	"\x0eGetTaskRequest\x12\x17\n" +
-	"\atask_id\x18\x01 \x01(\tR\x06taskId\"j\n" +
+	"\atask_id\x18\x01 \x01(\tR\x06taskId\".\n" +
 	"\x13ListTaskRunsRequest\x12\x17\n" +
-	"\atask_id\x18\x01 \x01(\tR\x06taskId\x12\x1b\n" +
-	"\tpage_size\x18\x02 \x01(\x05R\bpageSize\x12\x1d\n" +
-	"\n" +
-	"page_token\x18\x03 \x01(\tR\tpageToken2\x9b\x02\n" +
+	"\atask_id\x18\x01 \x01(\tR\x06taskId2\x9b\x02\n" +
 	"\x10SchedulerService\x12W\n" +
 	"\n" +
 	"CreateTask\x12&.xsonar.scheduler.v1.CreateTaskRequest\x1a!.xsonar.scheduler.v1.JsonResponse\x12Q\n" +
