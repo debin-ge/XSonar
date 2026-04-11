@@ -299,6 +299,35 @@ func TestGatewayCreateCollectorTaskMapsSchedulerConflictTo409(t *testing.T) {
 	}
 }
 
+func TestGatewayCreateCollectorTaskRejectsOversizedBody(t *testing.T) {
+	schedulerClient := stubJSONClient{
+		postFunc: func(_ context.Context, path string, payload any) (*clients.EnvelopeResponse, error) {
+			t.Fatalf("scheduler should not be called for oversized body: %s", path)
+			return nil, nil
+		},
+	}
+	svc := newGatewayServiceWithAdmin(
+		xlog.NewStdout("gateway-test"),
+		schedulerClient,
+		"test-secret",
+		"test-issuer",
+	)
+	token := mustSignAdminJWT(t, "test-secret", "test-issuer", "admin-user-1")
+	oversizedKeyword := strings.Repeat("x", 1<<20)
+	body := `{"task_id":"task-1","task_type":"periodic","keyword":"` + oversizedKeyword + `"}`
+
+	req := httptest.NewRequest(http.MethodPost, "/admin/v1/collector/tasks", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+token)
+	rec := httptest.NewRecorder()
+
+	svc.handleCreateCollectorTask(rec, req)
+
+	if rec.Code != http.StatusRequestEntityTooLarge {
+		t.Fatalf("expected 413, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
 func TestGatewayCollectorAdminGetRoutesForwardToScheduler(t *testing.T) {
 	tests := []struct {
 		name         string

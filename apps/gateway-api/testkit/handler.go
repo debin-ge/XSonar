@@ -46,15 +46,15 @@ func NewHandlerWithClientsAndMode(logger *xlog.Logger, accessClient clients.Acce
 		"GET /v1/search/trending",
 		"GET /v1/search/trends",
 		"POST /admin/v1/collector/tasks",
-		"GET /admin/v1/collector/tasks/:id",
-		"GET /admin/v1/collector/tasks/:id/runs",
+		"GET /admin/v1/collector/tasks/{id}",
+		"GET /admin/v1/collector/tasks/{id}/runs",
 	} {
 		switch route {
 		case "POST /admin/v1/collector/tasks":
 			mux.HandleFunc(route, bridge.HandleCreateCollectorTask)
-		case "GET /admin/v1/collector/tasks/:id":
+		case "GET /admin/v1/collector/tasks/{id}":
 			mux.HandleFunc(route, bridge.HandleGetCollectorTask)
-		case "GET /admin/v1/collector/tasks/:id/runs":
+		case "GET /admin/v1/collector/tasks/{id}/runs":
 			mux.HandleFunc(route, bridge.HandleListCollectorTaskRuns)
 		default:
 			mux.HandleFunc(route, bridge.HandleProxy)

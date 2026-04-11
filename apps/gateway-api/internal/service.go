@@ -6,6 +6,7 @@ import (
 	"crypto/subtle"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"io"
 	"net"
 	"net/http"
@@ -97,6 +98,8 @@ type policyAccessResult struct {
 }
 
 var sensitiveUpstreamQueryParams = []string{"proxyUrl", "auth_token", "ct0"}
+
+const maxCreateCollectorTaskBodyBytes int64 = 1 << 20
 
 func newGatewayServiceWithClients(logger *xlog.Logger, accessClient gatewayAccessClient, policyClient gatewayPolicyClient, providerClient gatewayProviderClient) *gatewayService {
 	return newGatewayServiceWithModeAndAdmin(logger, accessClient, policyClient, providerClient, nil, "", "", "")
@@ -410,8 +413,14 @@ func (s *gatewayService) handleCreateCollectorTask(w http.ResponseWriter, r *htt
 		return
 	}
 
+	r.Body = http.MaxBytesReader(w, r.Body, maxCreateCollectorTaskBodyBytes)
 	body, err := io.ReadAll(r.Body)
 	if err != nil {
+		var maxBytesErr *http.MaxBytesError
+		if errors.As(err, &maxBytesErr) {
+			shared.WriteError(w, http.StatusRequestEntityTooLarge, model.CodeInvalidRequest, "request body is too large", requestID)
+			return
+		}
 		shared.WriteError(w, http.StatusBadRequest, model.CodeInvalidRequest, "invalid request body", requestID)
 		return
 	}
