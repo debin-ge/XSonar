@@ -1,0 +1,10 @@
+Name: scheduler-rpc
+ListenOn: 0.0.0.0:9004
+Mode: dev
+Timeout: 5000
+DispatchScanIntervalMS: 1000
+QueueBacklogSoftLimit: 100
+QueueBacklogHardLimit: 1000
+QueueBacklogMaxLagMS: 60000
+LeaderLockTTLMS: 30000
+ListTaskRunsDefaultLimit: 20
