@@ -17,6 +17,7 @@ import (
 	"xsonar/apps/access-rpc/accessservice"
 	"xsonar/apps/policy-rpc/policyservice"
 	"xsonar/apps/provider-rpc/providerservice"
+	"xsonar/apps/scheduler-rpc/schedulerservice"
 	"xsonar/pkg/clients"
 	"xsonar/pkg/model"
 	"xsonar/pkg/shared"
@@ -68,6 +69,18 @@ func (s stubJSONClient) CheckAppPolicyAccess(ctx context.Context, req *policyser
 
 func (s stubJSONClient) ExecutePolicy(ctx context.Context, req *providerservice.ExecutePolicyRequest) (*clients.EnvelopeResponse, error) {
 	return s.call(ctx, "/rpc/ExecutePolicy", req)
+}
+
+func (s stubJSONClient) CreateTask(ctx context.Context, req *schedulerservice.CreateTaskRequest) (*clients.EnvelopeResponse, error) {
+	return s.call(ctx, "/rpc/CreateTask", req)
+}
+
+func (s stubJSONClient) GetTask(ctx context.Context, req *schedulerservice.GetTaskRequest) (*clients.EnvelopeResponse, error) {
+	return s.call(ctx, "/rpc/GetTask", req)
+}
+
+func (s stubJSONClient) ListTaskRuns(ctx context.Context, req *schedulerservice.ListTaskRunsRequest) (*clients.EnvelopeResponse, error) {
+	return s.call(ctx, "/rpc/ListTaskRuns", req)
 }
 
 func setProductionAuthHeaders(req *http.Request, appKey, timestamp, nonce, signature string) {
@@ -194,6 +207,165 @@ func TestGatewayProxySuccess(t *testing.T) {
 	}
 	if recordedUsage == nil || recordedUsage.PolicyKey != "users_by_ids_v1" {
 		t.Fatalf("expected usage stat to be recorded, got %#v", recordedUsage)
+	}
+}
+
+func TestGatewayCreateCollectorTaskRejectsMissingBearerJWT(t *testing.T) {
+	svc := newGatewayServiceWithAdmin(
+		xlog.NewStdout("gateway-test"),
+		stubJSONClient{},
+		"test-secret",
+		"test-issuer",
+	)
+
+	req := httptest.NewRequest(http.MethodPost, "/admin/v1/collector/tasks", strings.NewReader(`{"task_id":"task-1","task_type":"periodic","keyword":"openai"}`))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+
+	svc.handleCreateCollectorTask(rec, req)
+
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("expected 401, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestGatewayCreateCollectorTaskUsesAdminJWTSubjectAsCreatedBy(t *testing.T) {
+	var recorded *schedulerservice.CreateTaskRequest
+	schedulerClient := stubJSONClient{
+		postFunc: func(_ context.Context, path string, payload any) (*clients.EnvelopeResponse, error) {
+			if path != "/rpc/CreateTask" {
+				return nil, errors.New("unexpected scheduler path: " + path)
+			}
+			recorded = payload.(*schedulerservice.CreateTaskRequest)
+			return okEnvelope(map[string]any{"task_id": "task-1"}), nil
+		},
+	}
+	svc := newGatewayServiceWithAdmin(
+		xlog.NewStdout("gateway-test"),
+		schedulerClient,
+		"test-secret",
+		"test-issuer",
+	)
+	token := mustSignAdminJWT(t, "test-secret", "test-issuer", "admin-user-1")
+
+	req := httptest.NewRequest(http.MethodPost, "/admin/v1/collector/tasks", strings.NewReader(`{"task_id":"task-1","task_type":"periodic","keyword":"openai","priority":5,"frequency_seconds":60}`))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+token)
+	rec := httptest.NewRecorder()
+
+	svc.handleCreateCollectorTask(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	if recorded == nil {
+		t.Fatal("expected scheduler request to be recorded")
+	}
+	if recorded.CreatedBy != "admin-user-1" {
+		t.Fatalf("expected created_by admin-user-1, got %q", recorded.CreatedBy)
+	}
+}
+
+func TestGatewayCreateCollectorTaskMapsSchedulerConflictTo409(t *testing.T) {
+	schedulerClient := stubJSONClient{
+		postFunc: func(_ context.Context, path string, payload any) (*clients.EnvelopeResponse, error) {
+			if path != "/rpc/CreateTask" {
+				return nil, errors.New("unexpected scheduler path: " + path)
+			}
+			return &clients.EnvelopeResponse{
+				Code:    model.CodeConflict,
+				Message: "task already exists",
+				Data:    json.RawMessage(`{"task_id":"task-1"}`),
+			}, errors.New("scheduler conflict")
+		},
+	}
+	svc := newGatewayServiceWithAdmin(
+		xlog.NewStdout("gateway-test"),
+		schedulerClient,
+		"test-secret",
+		"test-issuer",
+	)
+	token := mustSignAdminJWT(t, "test-secret", "test-issuer", "admin-user-1")
+
+	req := httptest.NewRequest(http.MethodPost, "/admin/v1/collector/tasks", strings.NewReader(`{"task_id":"task-1","task_type":"periodic","keyword":"openai"}`))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+token)
+	rec := httptest.NewRecorder()
+
+	svc.handleCreateCollectorTask(rec, req)
+
+	if rec.Code != http.StatusConflict {
+		t.Fatalf("expected 409, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestGatewayCollectorAdminGetRoutesForwardToScheduler(t *testing.T) {
+	tests := []struct {
+		name         string
+		url          string
+		handler      func(*gatewayService, http.ResponseWriter, *http.Request)
+		expectedPath string
+		expectedTask string
+	}{
+		{
+			name:         "get task detail",
+			url:          "/admin/v1/collector/tasks/task-1",
+			handler:      (*gatewayService).handleGetCollectorTask,
+			expectedPath: "/rpc/GetTask",
+			expectedTask: "task-1",
+		},
+		{
+			name:         "get task runs",
+			url:          "/admin/v1/collector/tasks/task-1/runs",
+			handler:      (*gatewayService).handleListCollectorTaskRuns,
+			expectedPath: "/rpc/ListTaskRuns",
+			expectedTask: "task-1",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var calledPath string
+			var calledTaskID string
+			schedulerClient := stubJSONClient{
+				postFunc: func(_ context.Context, path string, payload any) (*clients.EnvelopeResponse, error) {
+					calledPath = path
+					switch req := payload.(type) {
+					case *schedulerservice.GetTaskRequest:
+						calledTaskID = req.TaskId
+					case *schedulerservice.ListTaskRunsRequest:
+						calledTaskID = req.TaskId
+					default:
+						t.Fatalf("unexpected scheduler payload type %T", payload)
+					}
+					return okEnvelope(map[string]any{"task_id": calledTaskID}), nil
+				},
+			}
+			svc := newGatewayServiceWithAdmin(
+				xlog.NewStdout("gateway-test"),
+				schedulerClient,
+				"test-secret",
+				"test-issuer",
+			)
+			token := mustSignAdminJWT(t, "test-secret", "test-issuer", "admin-user-1")
+
+			req := httptest.NewRequest(http.MethodGet, tt.url, nil)
+			req.SetPathValue("id", tt.expectedTask)
+			req.Header.Set("Authorization", "Bearer "+token)
+			rec := httptest.NewRecorder()
+
+			tt.handler(svc, rec, req)
+
+			if rec.Code != http.StatusOK {
+				t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+			}
+			if calledPath != tt.expectedPath {
+				t.Fatalf("expected path %s, got %s", tt.expectedPath, calledPath)
+			}
+			if calledTaskID != tt.expectedTask {
+				t.Fatalf("expected task id %s, got %s", tt.expectedTask, calledTaskID)
+			}
+		})
 	}
 }
 
@@ -1828,7 +2000,7 @@ func TestGatewayDoesNotBlockOnUsageStatRecording(t *testing.T) {
 	defer recorder.Close()
 	defer close(releaseRecordUsage)
 
-	svc := newGatewayServiceWithModeAndUsageStats(xlog.NewStdout("gateway-test"), accessClient, policyClient, providerClient, recorder, "dev")
+	svc := newGatewayServiceWithModeAndUsageStats(xlog.NewStdout("gateway-test"), accessClient, policyClient, providerClient, nil, "", "", recorder, "dev")
 
 	req := httptest.NewRequest(http.MethodGet, "/v1/search/tweets?words=ai+async+recording", nil)
 	req.Header.Set("AppKey", "app_key_async")
@@ -2048,6 +2220,15 @@ func okEnvelope(data any) *clients.EnvelopeResponse {
 		Message: "ok",
 		Data:    payload,
 	}
+}
+
+func mustSignAdminJWT(t *testing.T, secret, issuer, subject string) string {
+	t.Helper()
+	token, err := shared.SignJWT(secret, issuer, subject, "platform_admin", time.Hour, time.Now())
+	if err != nil {
+		t.Fatalf("sign jwt: %v", err)
+	}
+	return token
 }
 
 func decodeSingleLogLine(t *testing.T, payload []byte) map[string]any {

@@ -6,6 +6,7 @@ import (
 	"crypto/subtle"
 	"encoding/hex"
 	"encoding/json"
+	"io"
 	"net"
 	"net/http"
 	"net/url"
@@ -14,12 +15,16 @@ import (
 	"time"
 
 	"xsonar/apps/access-rpc/accessservice"
+	"xsonar/apps/gateway-api/internal/types"
 	"xsonar/apps/policy-rpc/policyservice"
 	"xsonar/apps/provider-rpc/providerservice"
+	"xsonar/apps/scheduler-rpc/schedulerservice"
 	"xsonar/pkg/clients"
 	"xsonar/pkg/model"
 	"xsonar/pkg/shared"
 	"xsonar/pkg/xlog"
+
+	"github.com/zeromicro/go-zero/rest/pathvar"
 )
 
 type gatewayAccessClient interface {
@@ -40,13 +45,22 @@ type gatewayProviderClient interface {
 	ExecutePolicy(ctx context.Context, req *providerservice.ExecutePolicyRequest) (*clients.EnvelopeResponse, error)
 }
 
+type gatewaySchedulerClient interface {
+	CreateTask(ctx context.Context, req *schedulerservice.CreateTaskRequest) (*clients.EnvelopeResponse, error)
+	GetTask(ctx context.Context, req *schedulerservice.GetTaskRequest) (*clients.EnvelopeResponse, error)
+	ListTaskRuns(ctx context.Context, req *schedulerservice.ListTaskRunsRequest) (*clients.EnvelopeResponse, error)
+}
+
 type gatewayService struct {
 	logger          *xlog.Logger
 	accessClient    gatewayAccessClient
 	policyClient    gatewayPolicyClient
 	providerClient  gatewayProviderClient
+	schedulerClient gatewaySchedulerClient
 	usageStats      usageStatRecorder
 	developmentAuth bool
+	jwtSecret       string
+	jwtIssuer       string
 }
 
 type providerExecutionPayload struct {
@@ -85,14 +99,32 @@ type policyAccessResult struct {
 var sensitiveUpstreamQueryParams = []string{"proxyUrl", "auth_token", "ct0"}
 
 func newGatewayServiceWithClients(logger *xlog.Logger, accessClient gatewayAccessClient, policyClient gatewayPolicyClient, providerClient gatewayProviderClient) *gatewayService {
-	return newGatewayServiceWithMode(logger, accessClient, policyClient, providerClient, "")
+	return newGatewayServiceWithModeAndAdmin(logger, accessClient, policyClient, providerClient, nil, "", "", "")
 }
 
 func newGatewayServiceWithMode(logger *xlog.Logger, accessClient gatewayAccessClient, policyClient gatewayPolicyClient, providerClient gatewayProviderClient, mode string) *gatewayService {
-	return newGatewayServiceWithModeAndUsageStats(logger, accessClient, policyClient, providerClient, newInlineUsageStatRecorder(accessClient), mode)
+	return newGatewayServiceWithModeAndAdmin(logger, accessClient, policyClient, providerClient, nil, "", "", mode)
 }
 
-func newGatewayServiceWithModeAndUsageStats(logger *xlog.Logger, accessClient gatewayAccessClient, policyClient gatewayPolicyClient, providerClient gatewayProviderClient, usageStats usageStatRecorder, mode string) *gatewayService {
+func newGatewayServiceWithAdmin(logger *xlog.Logger, schedulerClient gatewaySchedulerClient, jwtSecret, jwtIssuer string) *gatewayService {
+	return newGatewayServiceWithModeAndAdmin(logger, nil, nil, nil, schedulerClient, jwtSecret, jwtIssuer, "")
+}
+
+func newGatewayServiceWithModeAndAdmin(logger *xlog.Logger, accessClient gatewayAccessClient, policyClient gatewayPolicyClient, providerClient gatewayProviderClient, schedulerClient gatewaySchedulerClient, jwtSecret, jwtIssuer, mode string) *gatewayService {
+	return newGatewayServiceWithModeAndUsageStats(
+		logger,
+		accessClient,
+		policyClient,
+		providerClient,
+		schedulerClient,
+		jwtSecret,
+		jwtIssuer,
+		newInlineUsageStatRecorder(accessClient),
+		mode,
+	)
+}
+
+func newGatewayServiceWithModeAndUsageStats(logger *xlog.Logger, accessClient gatewayAccessClient, policyClient gatewayPolicyClient, providerClient gatewayProviderClient, schedulerClient gatewaySchedulerClient, jwtSecret, jwtIssuer string, usageStats usageStatRecorder, mode string) *gatewayService {
 	if usageStats == nil {
 		usageStats = newInlineUsageStatRecorder(accessClient)
 	}
@@ -101,8 +133,11 @@ func newGatewayServiceWithModeAndUsageStats(logger *xlog.Logger, accessClient ga
 		accessClient:    accessClient,
 		policyClient:    policyClient,
 		providerClient:  providerClient,
+		schedulerClient: schedulerClient,
 		usageStats:      usageStats,
 		developmentAuth: isDevelopmentMode(mode),
+		jwtSecret:       jwtSecret,
+		jwtIssuer:       jwtIssuer,
 	}
 }
 
@@ -363,6 +398,93 @@ func (s *gatewayService) handleProxy(w http.ResponseWriter, r *http.Request) {
 	_ = replayResp
 }
 
+func (s *gatewayService) handleCreateCollectorTask(w http.ResponseWriter, r *http.Request) {
+	subject, ok := s.requireAdminAuthSubject(w, r)
+	if !ok {
+		return
+	}
+
+	requestID := shared.EnsureRequestID(w, r)
+	if s.schedulerClient == nil {
+		shared.WriteError(w, http.StatusBadGateway, model.CodeInternalError, "scheduler client is unavailable", requestID)
+		return
+	}
+
+	body, err := io.ReadAll(r.Body)
+	if err != nil {
+		shared.WriteError(w, http.StatusBadRequest, model.CodeInvalidRequest, "invalid request body", requestID)
+		return
+	}
+
+	var req types.CreateCollectorTaskReq
+	if err := json.Unmarshal(body, &req); err != nil {
+		shared.WriteError(w, http.StatusBadRequest, model.CodeInvalidRequest, "invalid request body", requestID)
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+	defer cancel()
+
+	response, callErr := s.schedulerClient.CreateTask(ctx, &schedulerservice.CreateTaskRequest{
+		TaskId:           req.TaskID,
+		TaskType:         req.TaskType,
+		Keyword:          req.Keyword,
+		Priority:         req.Priority,
+		FrequencySeconds: req.FrequencySeconds,
+		Since:            req.Since,
+		Until:            req.Until,
+		RequiredCount:    req.RequiredCount,
+		CreatedBy:        subject,
+	})
+	writeAdminDownstreamResult(w, requestID, response, callErr)
+}
+
+func (s *gatewayService) handleGetCollectorTask(w http.ResponseWriter, r *http.Request) {
+	if _, ok := s.requireAdminAuthSubject(w, r); !ok {
+		return
+	}
+
+	requestID := shared.EnsureRequestID(w, r)
+	taskID := gatewayPathParam(r, "id")
+	if taskID == "" {
+		shared.WriteError(w, http.StatusBadRequest, model.CodeInvalidRequest, "task id is required", requestID)
+		return
+	}
+	if s.schedulerClient == nil {
+		shared.WriteError(w, http.StatusBadGateway, model.CodeInternalError, "scheduler client is unavailable", requestID)
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+	defer cancel()
+
+	response, callErr := s.schedulerClient.GetTask(ctx, &schedulerservice.GetTaskRequest{TaskId: taskID})
+	writeAdminDownstreamResult(w, requestID, response, callErr)
+}
+
+func (s *gatewayService) handleListCollectorTaskRuns(w http.ResponseWriter, r *http.Request) {
+	if _, ok := s.requireAdminAuthSubject(w, r); !ok {
+		return
+	}
+
+	requestID := shared.EnsureRequestID(w, r)
+	taskID := gatewayPathParam(r, "id")
+	if taskID == "" {
+		shared.WriteError(w, http.StatusBadRequest, model.CodeInvalidRequest, "task id is required", requestID)
+		return
+	}
+	if s.schedulerClient == nil {
+		shared.WriteError(w, http.StatusBadGateway, model.CodeInternalError, "scheduler client is unavailable", requestID)
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+	defer cancel()
+
+	response, callErr := s.schedulerClient.ListTaskRuns(ctx, &schedulerservice.ListTaskRunsRequest{TaskId: taskID})
+	writeAdminDownstreamResult(w, requestID, response, callErr)
+}
+
 func (s *gatewayService) releaseQuota(ctx context.Context, appID, requestID string) error {
 	_, err := s.accessClient.ReleaseQuotaOnFailure(ctx, &accessservice.ReleaseQuotaOnFailureRequest{
 		AppId:     appID,
@@ -486,6 +608,37 @@ func rawGatewayData(data json.RawMessage) any {
 	return decoded
 }
 
+func writeAdminDownstreamResult(w http.ResponseWriter, requestID string, response *clients.EnvelopeResponse, err error) {
+	if err != nil {
+		if response == nil {
+			shared.WriteError(w, http.StatusBadGateway, model.CodeInternalError, err.Error(), requestID)
+			return
+		}
+		shared.WriteEnvelope(w, adminStatusFromCode(response.Code), response.Code, response.Message, rawGatewayData(response.Data), requestID)
+		return
+	}
+	if response == nil {
+		shared.WriteError(w, http.StatusBadGateway, model.CodeInternalError, "empty downstream response", requestID)
+		return
+	}
+	shared.WriteEnvelope(w, adminStatusFromCode(response.Code), response.Code, response.Message, rawGatewayData(response.Data), requestID)
+}
+
+func (s *gatewayService) requireAdminAuthSubject(w http.ResponseWriter, r *http.Request) (string, bool) {
+	requestID := shared.EnsureRequestID(w, r)
+	token := shared.ExtractBearerToken(r.Header.Get("Authorization"))
+	if token == "" {
+		shared.WriteError(w, http.StatusUnauthorized, model.CodeUnauthorized, "missing or invalid admin token", requestID)
+		return "", false
+	}
+	claims, err := shared.ParseAndValidateJWT(s.jwtSecret, token, time.Now())
+	if err != nil || claims.Issuer != s.jwtIssuer || claims.Role != "platform_admin" || claims.Subject == "" {
+		shared.WriteError(w, http.StatusUnauthorized, model.CodeUnauthorized, "missing or invalid admin token", requestID)
+		return "", false
+	}
+	return claims.Subject, true
+}
+
 func statusFromCode(code int) int {
 	switch code {
 	case model.CodeInvalidRequest:
@@ -503,6 +656,26 @@ func statusFromCode(code int) int {
 	default:
 		return http.StatusBadGateway
 	}
+}
+
+func adminStatusFromCode(code int) int {
+	if code == model.CodeOK {
+		return http.StatusOK
+	}
+	return statusFromCode(code)
+}
+
+func gatewayPathParam(r *http.Request, key string) string {
+	if r == nil {
+		return ""
+	}
+	if value := strings.TrimSpace(r.PathValue(key)); value != "" {
+		return value
+	}
+	if value := strings.TrimSpace(pathvar.Vars(r)[key]); value != "" {
+		return value
+	}
+	return ""
 }
 
 func decodeObject(data json.RawMessage) (map[string]any, error) {

@@ -9,11 +9,11 @@ import (
 )
 
 func NewHandlerWithClients(logger *xlog.Logger, accessClient clients.AccessRPC, policyClient clients.PolicyRPC, providerClient clients.ProviderRPC) http.Handler {
-	return NewHandlerWithClientsAndMode(logger, accessClient, policyClient, providerClient, "")
+	return NewHandlerWithClientsAndMode(logger, accessClient, policyClient, providerClient, nil, "", "", "")
 }
 
-func NewHandlerWithClientsAndMode(logger *xlog.Logger, accessClient clients.AccessRPC, policyClient clients.PolicyRPC, providerClient clients.ProviderRPC, mode string) http.Handler {
-	bridge := gatewayinternal.NewBridgeWithMode(logger, accessClient, policyClient, providerClient, mode)
+func NewHandlerWithClientsAndMode(logger *xlog.Logger, accessClient clients.AccessRPC, policyClient clients.PolicyRPC, providerClient clients.ProviderRPC, schedulerClient clients.SchedulerRPC, jwtSecret, jwtIssuer, mode string) http.Handler {
+	bridge := gatewayinternal.NewBridgeWithModeAndAdmin(logger, accessClient, policyClient, providerClient, schedulerClient, jwtSecret, jwtIssuer, mode)
 	mux := http.NewServeMux()
 	for _, route := range []string{
 		"GET /v1/communities",
@@ -45,8 +45,20 @@ func NewHandlerWithClientsAndMode(logger *xlog.Logger, accessClient clients.Acce
 		"GET /v1/search/tweets",
 		"GET /v1/search/trending",
 		"GET /v1/search/trends",
+		"POST /admin/v1/collector/tasks",
+		"GET /admin/v1/collector/tasks/:id",
+		"GET /admin/v1/collector/tasks/:id/runs",
 	} {
-		mux.HandleFunc(route, bridge.HandleProxy)
+		switch route {
+		case "POST /admin/v1/collector/tasks":
+			mux.HandleFunc(route, bridge.HandleCreateCollectorTask)
+		case "GET /admin/v1/collector/tasks/:id":
+			mux.HandleFunc(route, bridge.HandleGetCollectorTask)
+		case "GET /admin/v1/collector/tasks/:id/runs":
+			mux.HandleFunc(route, bridge.HandleListCollectorTaskRuns)
+		default:
+			mux.HandleFunc(route, bridge.HandleProxy)
+		}
 	}
 	return mux
 }

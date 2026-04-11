@@ -23,6 +23,7 @@ func NewServiceContext(c config.Config) *ServiceContext {
 	accessClient := clients.NewAccessRPC(c.AccessRPC)
 	policyClient := clients.NewPolicyRPC(c.PolicyRPC)
 	providerClient := clients.NewProviderRPC(c.ProviderRPC)
+	schedulerClient := clients.NewSchedulerRPC(c.SchedulerRPC)
 
 	return &ServiceContext{
 		Config: c,
@@ -32,6 +33,9 @@ func NewServiceContext(c config.Config) *ServiceContext {
 			accessClient,
 			policyClient,
 			providerClient,
+			schedulerClient,
+			c.JWTSecret,
+			c.JWTIssuer,
 			c.Mode,
 			c.UsageStatQueueSize,
 			c.UsageStatWorkers,

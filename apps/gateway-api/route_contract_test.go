@@ -18,35 +18,35 @@ func TestGatewaySwaggerDeclaresExactQueryContractForAllPublicRoutes(t *testing.T
 	paths := loadGatewaySwaggerPaths(t, "dev")
 
 	expected := map[string]map[string]bool{
-		"/v1/communities":              {"screenName": true},
-		"/v1/lists":                    {"screenName": false, "userId": false},
-		"/v1/search/box":               {"searchType": false, "words": true},
-		"/v1/search/entertainment":     {},
-		"/v1/search/explore":           {},
-		"/v1/search/news":              {},
-		"/v1/search/sports":            {},
-		"/v1/search/trending":          {},
-		"/v1/search/trends":            {"id": true},
-		"/v1/search/tweets":            {"any": false, "count": false, "cursor": false, "from": false, "likes": false, "mentioning": false, "none": false, "phrase": false, "product": false, "replies": false, "retweets": false, "since": false, "tag": false, "to": false, "until": false, "words": true},
-		"/v1/tweets/brief":             {"cursor": false, "tweetId": true},
-		"/v1/tweets/by-ids":            {"tweetIds": true},
-		"/v1/tweets/detail":            {"cursor": false, "tweetId": true},
-		"/v1/tweets/favoriters":        {"authToken": false, "cursor": false, "tweetId": true},
-		"/v1/tweets/quotes":            {"authToken": false, "cursor": false, "tweetId": true},
-		"/v1/tweets/replies":           {"cursor": false, "userId": true},
-		"/v1/tweets/retweeters":        {"authToken": false, "cursor": false, "tweetId": true},
-		"/v1/tweets/timeline":          {"cursor": false, "userId": true},
-		"/v1/users/account-analytics":  {"authToken": true, "csrfToken": false, "restId": true},
-		"/v1/users/articles-tweets":    {"authToken": false, "cursor": false, "userId": true},
-		"/v1/users/by-id":              {"cursor": false, "userId": true},
-		"/v1/users/by-ids":             {"userIds": true},
-		"/v1/users/by-username":        {"screenName": true},
-		"/v1/users/followers":          {"cursor": false, "userId": true},
-		"/v1/users/followings":         {"cursor": false, "userId": true},
-		"/v1/users/highlights":         {"authToken": false, "cursor": false, "userId": true},
-		"/v1/users/likes":              {"authToken": false, "cursor": false, "userId": true},
-		"/v1/users/mentions-timeline":  {"authToken": true, "csrfToken": false, "includeEntities": false, "maxId": false, "sinceId": false, "trimUser": false},
-		"/v1/users/username-changes":   {"screenName": true},
+		"/v1/communities":             {"screenName": true},
+		"/v1/lists":                   {"screenName": false, "userId": false},
+		"/v1/search/box":              {"searchType": false, "words": true},
+		"/v1/search/entertainment":    {},
+		"/v1/search/explore":          {},
+		"/v1/search/news":             {},
+		"/v1/search/sports":           {},
+		"/v1/search/trending":         {},
+		"/v1/search/trends":           {"id": true},
+		"/v1/search/tweets":           {"any": false, "count": false, "cursor": false, "from": false, "likes": false, "mentioning": false, "none": false, "phrase": false, "product": false, "replies": false, "retweets": false, "since": false, "tag": false, "to": false, "until": false, "words": true},
+		"/v1/tweets/brief":            {"cursor": false, "tweetId": true},
+		"/v1/tweets/by-ids":           {"tweetIds": true},
+		"/v1/tweets/detail":           {"cursor": false, "tweetId": true},
+		"/v1/tweets/favoriters":       {"authToken": false, "cursor": false, "tweetId": true},
+		"/v1/tweets/quotes":           {"authToken": false, "cursor": false, "tweetId": true},
+		"/v1/tweets/replies":          {"cursor": false, "userId": true},
+		"/v1/tweets/retweeters":       {"authToken": false, "cursor": false, "tweetId": true},
+		"/v1/tweets/timeline":         {"cursor": false, "userId": true},
+		"/v1/users/account-analytics": {"authToken": true, "csrfToken": false, "restId": true},
+		"/v1/users/articles-tweets":   {"authToken": false, "cursor": false, "userId": true},
+		"/v1/users/by-id":             {"cursor": false, "userId": true},
+		"/v1/users/by-ids":            {"userIds": true},
+		"/v1/users/by-username":       {"screenName": true},
+		"/v1/users/followers":         {"cursor": false, "userId": true},
+		"/v1/users/followings":        {"cursor": false, "userId": true},
+		"/v1/users/highlights":        {"authToken": false, "cursor": false, "userId": true},
+		"/v1/users/likes":             {"authToken": false, "cursor": false, "userId": true},
+		"/v1/users/mentions-timeline": {"authToken": true, "csrfToken": false, "includeEntities": false, "maxId": false, "sinceId": false, "trimUser": false},
+		"/v1/users/username-changes":  {"screenName": true},
 	}
 
 	if len(paths) != len(expected) {
@@ -68,10 +68,24 @@ func TestGeneratedRoutesMatchSwaggerPaths(t *testing.T) {
 	}
 	slices.Sort(expected)
 
-	actual := extractRoutePathsFromSource(t, filepath.Join("internal", "handler", "routes.go"), regexp.MustCompile(`Path:\s+"([^"]+)"`))
+	actual := extractRoutePathsFromSource(t, filepath.Join("internal", "handler", "routes.go"), regexp.MustCompile(`Path:\s+"(/v1/[^"]+)"`))
 
 	if !reflect.DeepEqual(actual, expected) {
 		t.Fatalf("generated routes do not match swagger paths:\nactual=%#v\nexpected=%#v", actual, expected)
+	}
+}
+
+func TestManualAdminCollectorRoutesExistSeparatelyFromSwaggerContract(t *testing.T) {
+	actual := extractRoutePathsFromSource(t, filepath.Join("internal", "handler", "routes.go"), regexp.MustCompile(`Method:\s+http\.Method(?:Get|Post),[\s\S]*?Path:\s+"(/admin/v1/collector/tasks[^"]*)"`))
+	expected := []string{
+		"/admin/v1/collector/tasks",
+		"/admin/v1/collector/tasks/:id",
+		"/admin/v1/collector/tasks/:id/runs",
+	}
+
+	slices.Sort(expected)
+	if !reflect.DeepEqual(actual, expected) {
+		t.Fatalf("manual admin routes mismatch:\nactual=%#v\nexpected=%#v", actual, expected)
 	}
 }
 

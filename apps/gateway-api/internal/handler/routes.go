@@ -161,4 +161,23 @@ func RegisterHandlers(server *rest.Server, serverCtx *svc.ServiceContext) {
 			},
 		},
 	)
+	server.AddRoutes(
+		[]rest.Route{
+			{
+				Method:  http.MethodPost,
+				Path:    "/admin/v1/collector/tasks",
+				Handler: serverCtx.Bridge.HandleCreateCollectorTask,
+			},
+			{
+				Method:  http.MethodGet,
+				Path:    "/admin/v1/collector/tasks/:id",
+				Handler: serverCtx.Bridge.HandleGetCollectorTask,
+			},
+			{
+				Method:  http.MethodGet,
+				Path:    "/admin/v1/collector/tasks/:id/runs",
+				Handler: serverCtx.Bridge.HandleListCollectorTaskRuns,
+			},
+		},
+	)
 }
