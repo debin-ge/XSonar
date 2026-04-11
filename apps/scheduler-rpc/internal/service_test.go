@@ -138,8 +138,8 @@ func TestGetTaskReturnsTaskFromStore(t *testing.T) {
 		CreatedAt:        time.Date(2026, 4, 11, 10, 0, 0, 0, time.UTC),
 		UpdatedAt:        time.Date(2026, 4, 11, 10, 0, 0, 0, time.UTC),
 	}
-	if _, ok := store.CreateTask(context.Background(), createdTask); !ok {
-		t.Fatal("seed task creation failed")
+	if _, svcErr := store.CreateTask(context.Background(), createdTask); svcErr != nil {
+		t.Fatalf("seed task creation failed: %v", svcErr)
 	}
 
 	got, getErr := svc.getTask(context.Background(), getTaskRequest{TaskID: "task-1"})
@@ -174,8 +174,8 @@ func TestListTaskRunsReturnsRunsFromStore(t *testing.T) {
 		CreatedAt:        time.Date(2026, 4, 11, 10, 0, 0, 0, time.UTC),
 		UpdatedAt:        time.Date(2026, 4, 11, 10, 0, 0, 0, time.UTC),
 	}
-	if _, ok := store.CreateTask(context.Background(), createdTask); !ok {
-		t.Fatal("seed task creation failed")
+	if _, svcErr := store.CreateTask(context.Background(), createdTask); svcErr != nil {
+		t.Fatalf("seed task creation failed: %v", svcErr)
 	}
 	store.addTaskRun(taskRun{
 		RunID:       "run-1",

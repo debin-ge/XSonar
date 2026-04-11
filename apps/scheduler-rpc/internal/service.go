@@ -3,9 +3,13 @@ package internal
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"strings"
 	"time"
+
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 
 	"xsonar/apps/scheduler-rpc/internal/config"
 	"xsonar/pkg/model"
@@ -14,9 +18,29 @@ import (
 )
 
 const (
-	schedulerTaskTypePeriodic  = "periodic"
-	schedulerTaskTypeRange     = "range"
-	schedulerTaskStatusPending = "pending"
+	TaskTypePeriodic = "periodic"
+	TaskTypeRange    = "range"
+
+	TaskStatusPending   = "pending"
+	TaskStatusRunning   = "running"
+	TaskStatusSucceeded = "succeeded"
+	TaskStatusPartial   = "partial"
+	TaskStatusFailed    = "failed"
+	TaskStatusPaused    = "paused"
+
+	RunStatusQueued    = "queued"
+	RunStatusLeased    = "leased"
+	RunStatusRunning   = "running"
+	RunStatusSucceeded = "succeeded"
+	RunStatusPartial   = "partial"
+	RunStatusFailed    = "failed"
+	RunStatusAbandoned = "abandoned"
+)
+
+const (
+	schedulerTaskTypePeriodic  = TaskTypePeriodic
+	schedulerTaskTypeRange     = TaskTypeRange
+	schedulerTaskStatusPending = TaskStatusPending
 )
 
 const (
@@ -38,6 +62,7 @@ type SchedulerService interface {
 	CreateTask(ctx context.Context, req CreateTaskRequest) (any, *serviceError)
 	GetTask(ctx context.Context, req GetTaskRequest) (any, *serviceError)
 	ListTaskRuns(ctx context.Context, req ListTaskRunsRequest) (any, *serviceError)
+	Close(ctx context.Context) error
 }
 
 type schedulerService struct {
@@ -114,12 +139,29 @@ func newSchedulerServiceWithStore(cfg config.Config, logger *xlog.Logger, store 
 	if logger == nil {
 		logger = xlog.NewStdout("scheduler-rpc")
 	}
+
+	cfg = normalizeSchedulerConfig(cfg)
 	if store == nil {
 		store = newSchedulerStore()
+
+		storeCfg := loadSchedulerStoreConfig()
+		if err := validateSchedulerStoreConfig(storeCfg); err != nil {
+			panic(err)
+		}
+		if storeCfg.Backend == "pgredis" {
+			persistentStore, err := newPGRedisStore(storeCfg, logger)
+			if err != nil {
+				logger.Error("scheduler-rpc persistent backend unavailable, falling back to memory", map[string]any{
+					"error": err.Error(),
+				})
+			} else {
+				store = persistentStore
+			}
+		}
 	}
 
 	return &schedulerService{
-		cfg:    normalizeSchedulerConfig(cfg),
+		cfg:    cfg,
 		logger: logger,
 		store:  store,
 	}
@@ -133,9 +175,18 @@ func NewSchedulerServiceWithStore(cfg config.Config, logger *xlog.Logger, store 
 	return newSchedulerServiceWithStore(cfg, logger, store)
 }
 
-func (s *schedulerService) createTask(ctx context.Context, req createTaskRequest) (any, *serviceError) {
-	_ = ctx
+func newService(logger *xlog.Logger) *schedulerService {
+	return newSchedulerService(config.Config{}, logger)
+}
 
+func (s *schedulerService) Close(ctx context.Context) error {
+	if s == nil || s.store == nil {
+		return nil
+	}
+	return s.store.Close(ctx)
+}
+
+func (s *schedulerService) createTask(ctx context.Context, req createTaskRequest) (any, *serviceError) {
 	if strings.TrimSpace(req.TaskID) == "" {
 		return nil, schedulerInvalidRequest("task_id is required")
 	}
@@ -174,16 +225,17 @@ func (s *schedulerService) createTask(ctx context.Context, req createTaskRequest
 		Until:            strings.TrimSpace(req.Until),
 		RequiredCount:    cloneInt64Ptr(req.RequiredCount),
 		CreatedBy:        strings.TrimSpace(req.CreatedBy),
+		CompletedCount:   0,
 		Status:           schedulerTaskStatusPending,
 		CreatedAt:        now,
 		UpdatedAt:        now,
+		NextRunAt:        cloneTimePtr(&now),
 	}
 
-	created, ok := s.store.CreateTask(ctx, item)
-	if !ok {
-		return nil, schedulerConflict("task already exists")
+	created, svcErr := s.store.CreateTask(ctx, item)
+	if svcErr != nil {
+		return nil, svcErr
 	}
-
 	return created, nil
 }
 
@@ -192,18 +244,15 @@ func (s *schedulerService) CreateTask(ctx context.Context, req CreateTaskRequest
 }
 
 func (s *schedulerService) getTask(ctx context.Context, req getTaskRequest) (any, *serviceError) {
-	_ = ctx
-
 	taskID := strings.TrimSpace(req.TaskID)
 	if taskID == "" {
 		return nil, schedulerInvalidRequest("task_id is required")
 	}
 
-	item, ok := s.store.GetTask(ctx, taskID)
-	if !ok {
-		return nil, schedulerNotFound("task not found")
+	item, svcErr := s.store.GetTask(ctx, taskID)
+	if svcErr != nil {
+		return nil, svcErr
 	}
-
 	return item, nil
 }
 
@@ -212,18 +261,15 @@ func (s *schedulerService) GetTask(ctx context.Context, req GetTaskRequest) (any
 }
 
 func (s *schedulerService) listTaskRuns(ctx context.Context, req listTaskRunsRequest) (any, *serviceError) {
-	_ = ctx
-
 	taskID := strings.TrimSpace(req.TaskID)
 	if taskID == "" {
 		return nil, schedulerInvalidRequest("task_id is required")
 	}
 
-	items, ok := s.store.ListTaskRuns(ctx, taskID, s.cfg.ListTaskRunsDefaultLimit)
-	if !ok {
-		return nil, schedulerNotFound("task not found")
+	items, svcErr := s.store.ListTaskRuns(ctx, taskID, s.cfg.ListTaskRunsDefaultLimit)
+	if svcErr != nil {
+		return nil, svcErr
 	}
-
 	return map[string]any{"items": items}, nil
 }
 
@@ -262,6 +308,27 @@ func marshalSchedulerData(data any) string {
 	return string(payload)
 }
 
+func schedulerServiceErrorFromErr(err error) *serviceError {
+	if err == nil {
+		return nil
+	}
+	if isDuplicateKeyError(err) {
+		return schedulerConflict("task already exists")
+	}
+	if errors.Is(err, pgx.ErrNoRows) {
+		return schedulerNotFound("task not found")
+	}
+	return internalSchedulerError(err.Error())
+}
+
+func isDuplicateKeyError(err error) bool {
+	var pgErr *pgconn.PgError
+	if errors.As(err, &pgErr) && pgErr.Code == "23505" {
+		return true
+	}
+	return false
+}
+
 func schedulerInvalidRequest(message string) *serviceError {
 	return &serviceError{statusCode: http.StatusBadRequest, code: model.CodeInvalidRequest, message: message}
 }
@@ -272,4 +339,20 @@ func schedulerConflict(message string) *serviceError {
 
 func schedulerNotFound(message string) *serviceError {
 	return &serviceError{statusCode: http.StatusNotFound, code: model.CodeNotFound, message: message}
+}
+
+func internalSchedulerError(message string) *serviceError {
+	return &serviceError{statusCode: http.StatusInternalServerError, code: model.CodeInternalError, message: message}
+}
+
+func invalidSchedulerRequest(message string) *serviceError {
+	return schedulerInvalidRequest(message)
+}
+
+func conflictSchedulerError(message string) *serviceError {
+	return schedulerConflict(message)
+}
+
+func notFoundSchedulerError(message string) *serviceError {
+	return schedulerNotFound(message)
 }

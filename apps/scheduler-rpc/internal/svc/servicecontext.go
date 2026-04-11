@@ -1,6 +1,8 @@
 package svc
 
 import (
+	"context"
+
 	"xsonar/apps/scheduler-rpc/internal"
 	"xsonar/apps/scheduler-rpc/internal/config"
 	"xsonar/pkg/xlog"
@@ -23,8 +25,16 @@ func NewServiceContext(c config.Config) *ServiceContext {
 }
 
 func (s *ServiceContext) Close() error {
-	if s == nil || s.Logger == nil {
+	if s == nil {
 		return nil
 	}
-	return s.Logger.Close()
+	if s.Service != nil {
+		if err := s.Service.Close(context.Background()); err != nil {
+			return err
+		}
+	}
+	if s.Logger != nil {
+		return s.Logger.Close()
+	}
+	return nil
 }
