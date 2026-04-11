@@ -1,0 +1,39 @@
+syntax = "proto3";
+
+package xsonar.scheduler.v1;
+
+option go_package = "xsonar/pkg/proto/schedulerpb";
+
+service SchedulerService {
+  rpc CreateTask(CreateTaskRequest) returns (JsonResponse);
+  rpc GetTask(GetTaskRequest) returns (JsonResponse);
+  rpc ListTaskRuns(ListTaskRunsRequest) returns (JsonResponse);
+}
+
+message JsonResponse {
+  int32 code = 1;
+  string message = 2;
+  string data_json = 3;
+}
+
+message CreateTaskRequest {
+  string task_id = 1;
+  string task_type = 2;
+  string keyword = 3;
+  int32 priority = 4;
+  int32 frequency_seconds = 5;
+  string since = 6;
+  string until = 7;
+  int64 required_count = 8;
+  string created_by = 9;
+}
+
+message GetTaskRequest {
+  string task_id = 1;
+}
+
+message ListTaskRunsRequest {
+  string task_id = 1;
+  int32 page_size = 2;
+  string page_token = 3;
+}

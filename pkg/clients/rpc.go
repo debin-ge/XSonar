@@ -5,8 +5,10 @@ import (
 	"encoding/json"
 
 	"xsonar/apps/access-rpc/accessservice"
+	"xsonar/apps/collector-worker-rpc/collectorworkerservice"
 	"xsonar/apps/policy-rpc/policyservice"
 	"xsonar/apps/provider-rpc/providerservice"
+	"xsonar/apps/scheduler-rpc/schedulerservice"
 	"xsonar/pkg/model"
 
 	"github.com/zeromicro/go-zero/zrpc"
@@ -47,6 +49,18 @@ type ProviderRPC interface {
 	HealthCheckProvider(ctx context.Context, req *providerservice.HealthCheckProviderRequest) (*EnvelopeResponse, error)
 }
 
+type SchedulerRPC interface {
+	Health(ctx context.Context) (*EnvelopeResponse, error)
+	CreateTask(ctx context.Context, req *schedulerservice.CreateTaskRequest) (*EnvelopeResponse, error)
+	GetTask(ctx context.Context, req *schedulerservice.GetTaskRequest) (*EnvelopeResponse, error)
+	ListTaskRuns(ctx context.Context, req *schedulerservice.ListTaskRunsRequest) (*EnvelopeResponse, error)
+}
+
+type CollectorWorkerRPC interface {
+	Health(ctx context.Context) (*EnvelopeResponse, error)
+	GetWorkerState(ctx context.Context, req *collectorworkerservice.GetWorkerStateRequest) (*EnvelopeResponse, error)
+}
+
 type accessRPCClient struct {
 	rpcClient zrpc.Client
 	client    accessservice.AccessService
@@ -60,6 +74,16 @@ type policyRPCClient struct {
 type providerRPCClient struct {
 	rpcClient zrpc.Client
 	client    providerservice.ProviderService
+}
+
+type schedulerRPCClient struct {
+	rpcClient zrpc.Client
+	client    schedulerservice.SchedulerService
+}
+
+type collectorWorkerRPCClient struct {
+	rpcClient zrpc.Client
+	client    collectorworkerservice.CollectorWorkerService
 }
 
 type jsonRPCResponse interface {
@@ -89,6 +113,22 @@ func NewProviderRPC(conf zrpc.RpcClientConf) ProviderRPC {
 	return &providerRPCClient{
 		rpcClient: cli,
 		client:    providerservice.NewProviderService(cli),
+	}
+}
+
+func NewSchedulerRPC(conf zrpc.RpcClientConf) SchedulerRPC {
+	cli := zrpc.MustNewClient(conf)
+	return &schedulerRPCClient{
+		rpcClient: cli,
+		client:    schedulerservice.NewSchedulerService(cli),
+	}
+}
+
+func NewCollectorWorkerRPC(conf zrpc.RpcClientConf) CollectorWorkerRPC {
+	cli := zrpc.MustNewClient(conf)
+	return &collectorWorkerRPCClient{
+		rpcClient: cli,
+		client:    collectorworkerservice.NewCollectorWorkerService(cli),
 	}
 }
 
@@ -211,6 +251,34 @@ func (c *providerRPCClient) ExecutePolicy(ctx context.Context, req *providerserv
 
 func (c *providerRPCClient) HealthCheckProvider(ctx context.Context, req *providerservice.HealthCheckProviderRequest) (*EnvelopeResponse, error) {
 	resp, err := c.client.HealthCheckProvider(ctx, req)
+	return rpcEnvelope(resp, err)
+}
+
+func (c *schedulerRPCClient) Health(ctx context.Context) (*EnvelopeResponse, error) {
+	return grpcHealthEnvelope(ctx, c.rpcClient)
+}
+
+func (c *schedulerRPCClient) CreateTask(ctx context.Context, req *schedulerservice.CreateTaskRequest) (*EnvelopeResponse, error) {
+	resp, err := c.client.CreateTask(ctx, req)
+	return rpcEnvelope(resp, err)
+}
+
+func (c *schedulerRPCClient) GetTask(ctx context.Context, req *schedulerservice.GetTaskRequest) (*EnvelopeResponse, error) {
+	resp, err := c.client.GetTask(ctx, req)
+	return rpcEnvelope(resp, err)
+}
+
+func (c *schedulerRPCClient) ListTaskRuns(ctx context.Context, req *schedulerservice.ListTaskRunsRequest) (*EnvelopeResponse, error) {
+	resp, err := c.client.ListTaskRuns(ctx, req)
+	return rpcEnvelope(resp, err)
+}
+
+func (c *collectorWorkerRPCClient) Health(ctx context.Context) (*EnvelopeResponse, error) {
+	return grpcHealthEnvelope(ctx, c.rpcClient)
+}
+
+func (c *collectorWorkerRPCClient) GetWorkerState(ctx context.Context, req *collectorworkerservice.GetWorkerStateRequest) (*EnvelopeResponse, error) {
+	resp, err := c.client.GetWorkerState(ctx, req)
 	return rpcEnvelope(resp, err)
 }
 
