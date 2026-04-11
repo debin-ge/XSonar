@@ -140,13 +140,13 @@ func (s *FakeSchedulerStore) CreateTask(_ context.Context, item *task) (*task, b
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	s.lastCreatedTask = cloneTask(item)
 	if _, exists := s.tasks[item.TaskID]; exists {
 		return nil, false
 	}
 
 	clone := cloneTask(item)
 	s.tasks[item.TaskID] = clone
+	s.lastCreatedTask = cloneTask(clone)
 	return cloneTask(clone), true
 }
 

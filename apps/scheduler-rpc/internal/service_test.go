@@ -14,9 +14,10 @@ func TestCreateTaskRejectsInvalidTaskType(t *testing.T) {
 	svc, _ := newTestSchedulerService()
 
 	_, svcErr := svc.createTask(context.Background(), createTaskRequest{
-		TaskID:   "task-1",
-		TaskType: "invalid",
-		Keyword:  "openai",
+		TaskID:    "task-1",
+		TaskType:  "invalid",
+		Keyword:   "openai",
+		CreatedBy: "admin-user-1",
 	})
 
 	assertSchedulerError(t, svcErr, model.CodeInvalidRequest)
@@ -32,6 +33,7 @@ func TestCreateTaskRejectsPriorityOutsideRange(t *testing.T) {
 			Keyword:          "openai",
 			Priority:         priority,
 			FrequencySeconds: int32Ptr(60),
+			CreatedBy:        "admin-user-1",
 		})
 		assertSchedulerError(t, svcErr, model.CodeInvalidRequest)
 	}
@@ -41,9 +43,10 @@ func TestCreateTaskRejectsMissingFrequencyForPeriodic(t *testing.T) {
 	svc, _ := newTestSchedulerService()
 
 	_, svcErr := svc.createTask(context.Background(), createTaskRequest{
-		TaskID:   "task-1",
-		TaskType: "periodic",
-		Keyword:  "openai",
+		TaskID:    "task-1",
+		TaskType:  "periodic",
+		Keyword:   "openai",
+		CreatedBy: "admin-user-1",
 	})
 
 	assertSchedulerError(t, svcErr, model.CodeInvalidRequest)
@@ -53,9 +56,23 @@ func TestCreateTaskRejectsMissingSinceUntilForRange(t *testing.T) {
 	svc, _ := newTestSchedulerService()
 
 	_, svcErr := svc.createTask(context.Background(), createTaskRequest{
-		TaskID:   "task-1",
-		TaskType: "range",
-		Keyword:  "openai",
+		TaskID:    "task-1",
+		TaskType:  "range",
+		Keyword:   "openai",
+		CreatedBy: "admin-user-1",
+	})
+
+	assertSchedulerError(t, svcErr, model.CodeInvalidRequest)
+}
+
+func TestCreateTaskRejectsMissingCreatedBy(t *testing.T) {
+	svc, _ := newTestSchedulerService()
+
+	_, svcErr := svc.createTask(context.Background(), createTaskRequest{
+		TaskID:           "task-1",
+		TaskType:         "periodic",
+		Keyword:          "openai",
+		FrequencySeconds: int32Ptr(60),
 	})
 
 	assertSchedulerError(t, svcErr, model.CodeInvalidRequest)
@@ -69,6 +86,7 @@ func TestCreateTaskRejectsDuplicateTaskID(t *testing.T) {
 		TaskType:         "periodic",
 		Keyword:          "openai",
 		FrequencySeconds: int32Ptr(60),
+		CreatedBy:        "admin-user-1",
 	}); svcErr != nil {
 		t.Fatalf("seed createTask returned error: %v", svcErr)
 	}
@@ -78,6 +96,7 @@ func TestCreateTaskRejectsDuplicateTaskID(t *testing.T) {
 		TaskType:         "periodic",
 		Keyword:          "openai",
 		FrequencySeconds: int32Ptr(60),
+		CreatedBy:        "admin-user-1",
 	})
 
 	assertSchedulerError(t, svcErr, model.CodeConflict)

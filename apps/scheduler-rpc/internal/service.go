@@ -142,6 +142,9 @@ func (s *schedulerService) createTask(ctx context.Context, req createTaskRequest
 	if strings.TrimSpace(req.Keyword) == "" {
 		return nil, schedulerInvalidRequest("keyword is required")
 	}
+	if strings.TrimSpace(req.CreatedBy) == "" {
+		return nil, schedulerInvalidRequest("created_by is required")
+	}
 	if req.Priority < 0 || req.Priority > 100 {
 		return nil, schedulerInvalidRequest("priority must be between 0 and 100")
 	}
