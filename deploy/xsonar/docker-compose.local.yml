@@ -18,3 +18,11 @@ services:
   provider-rpc:
     volumes:
       - ../../deploy/configs/local/provider-rpc.yaml:/app/config/provider-rpc.yaml:ro
+
+  scheduler-rpc:
+    volumes:
+      - ../../deploy/configs/local/scheduler-rpc.yaml:/app/config/scheduler-rpc.yaml:ro
+
+  collector-worker-rpc:
+    volumes:
+      - ../../deploy/configs/local/collector-worker-rpc.yaml:/app/config/collector-worker-rpc.yaml:ro

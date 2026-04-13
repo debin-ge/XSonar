@@ -30,6 +30,8 @@ services:
         condition: service_healthy
       provider-rpc:
         condition: service_healthy
+      scheduler-rpc:
+        condition: service_healthy
       redis:
         condition: service_healthy
     ports:
@@ -135,6 +137,59 @@ services:
       - ../../runtime/logs/provider-rpc:/app/runtime/logs/provider-rpc
     healthcheck:
       test: ["CMD-SHELL", "nc -z 127.0.0.1 $${PROVIDER_RPC_LISTEN_ON##*:} || exit 1"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    networks:
+      - xsonar-net
+
+  scheduler-rpc:
+    build:
+      context: ../..
+      dockerfile: deploy/docker/scheduler-rpc.Dockerfile
+    env_file:
+      - ${ENV_FILE:-.env}
+    environment:
+      <<: *common-app-env
+      CONFIG: /app/config/scheduler-rpc.yaml
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - ../../runtime/logs/scheduler-rpc:/app/runtime/logs/scheduler-rpc
+    healthcheck:
+      test: ["CMD-SHELL", "nc -z 127.0.0.1 $${SCHEDULER_RPC_LISTEN_ON##*:} || exit 1"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    networks:
+      - xsonar-net
+
+  collector-worker-rpc:
+    build:
+      context: ../..
+      dockerfile: deploy/docker/collector-worker-rpc.Dockerfile
+    env_file:
+      - ${ENV_FILE:-.env}
+    environment:
+      <<: *common-app-env
+      CONFIG: /app/config/collector-worker-rpc.yaml
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      policy-rpc:
+        condition: service_healthy
+      provider-rpc:
+        condition: service_healthy
+    volumes:
+      - ../../runtime/collector:/app/runtime/collector
+      - ../../runtime/logs/collector-worker-rpc:/app/runtime/logs/collector-worker-rpc
+    healthcheck:
+      test: ["CMD-SHELL", "nc -z 127.0.0.1 $${COLLECTOR_WORKER_RPC_LISTEN_ON##*:} || exit 1"]
       interval: 10s
       timeout: 3s
       retries: 5
