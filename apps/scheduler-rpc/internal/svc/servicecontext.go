@@ -24,6 +24,13 @@ func NewServiceContext(c config.Config) *ServiceContext {
 	}
 }
 
+func (s *ServiceContext) Start() {
+	if s == nil || s.Service == nil {
+		return
+	}
+	s.Service.Start(context.Background())
+}
+
 func (s *ServiceContext) Close() error {
 	if s == nil {
 		return nil

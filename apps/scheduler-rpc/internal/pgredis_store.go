@@ -311,6 +311,34 @@ func (s *pgRedisStore) ListTaskRuns(ctx context.Context, taskID string, limit in
 	return items, nil
 }
 
+func (s *pgRedisStore) ListDueTasks(ctx context.Context, now time.Time, limit int) ([]task, *serviceError) {
+	if s == nil || s.db == nil {
+		return nil, internalSchedulerError("scheduler database is not configured")
+	}
+	if limit <= 0 {
+		limit = defaultDispatchBatchSize
+	}
+
+	rows, err := s.db.Query(ctx, schedulerListDueTasksSQL, now.UTC(), limit)
+	if err != nil {
+		return nil, schedulerServiceErrorFromErr(err)
+	}
+	defer rows.Close()
+
+	items := make([]task, 0, limit)
+	for rows.Next() {
+		item, scanErr := scanTaskRow(rows)
+		if scanErr != nil {
+			return nil, schedulerServiceErrorFromErr(scanErr)
+		}
+		items = append(items, *item)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, schedulerServiceErrorFromErr(err)
+	}
+	return items, nil
+}
+
 func (s *pgRedisStore) CreateRun(ctx context.Context, item *taskRun) (*taskRun, *serviceError) {
 	if s == nil || s.db == nil {
 		return nil, internalSchedulerError("scheduler database is not configured")
@@ -353,6 +381,50 @@ func (s *pgRedisStore) CreateRun(ctx context.Context, item *taskRun) (*taskRun, 
 	return created, nil
 }
 
+func (s *pgRedisStore) NextRunNo(ctx context.Context, taskID string) (int64, *serviceError) {
+	if s == nil || s.db == nil {
+		return 0, internalSchedulerError("scheduler database is not configured")
+	}
+
+	var runNo int64
+	row := s.db.QueryRow(ctx, schedulerNextRunNoSQL, strings.TrimSpace(taskID))
+	if err := row.Scan(&runNo); err != nil {
+		return 0, schedulerServiceErrorFromErr(err)
+	}
+	return runNo, nil
+}
+
+func (s *pgRedisStore) HasOpenRun(ctx context.Context, taskID string) (bool, *serviceError) {
+	if s == nil || s.db == nil {
+		return false, internalSchedulerError("scheduler database is not configured")
+	}
+
+	var exists bool
+	row := s.db.QueryRow(ctx, schedulerHasOpenRunSQL, strings.TrimSpace(taskID))
+	if err := row.Scan(&exists); err != nil {
+		return false, schedulerServiceErrorFromErr(err)
+	}
+	return exists, nil
+}
+
+func (s *pgRedisStore) UpdateTaskDispatch(ctx context.Context, taskID, status string, nextRunAt *time.Time) (*task, *serviceError) {
+	if s == nil || s.db == nil {
+		return nil, internalSchedulerError("scheduler database is not configured")
+	}
+
+	var next any
+	if nextRunAt != nil {
+		next = nextRunAt.UTC()
+	}
+
+	row := s.db.QueryRow(ctx, schedulerUpdateTaskDispatchSQL, strings.TrimSpace(taskID), strings.TrimSpace(status), next)
+	item, err := scanTaskRow(row)
+	if err != nil {
+		return nil, schedulerServiceErrorFromErr(err)
+	}
+	return item, nil
+}
+
 func (s *pgRedisStore) MarkTaskRunning(ctx context.Context, taskID, runID string, startedAt time.Time) (*task, *serviceError) {
 	if s == nil || s.db == nil {
 		return nil, internalSchedulerError("scheduler database is not configured")
@@ -386,6 +458,42 @@ func (s *pgRedisStore) MarkTaskRunning(ctx context.Context, taskID, runID string
 		return nil, schedulerServiceErrorFromErr(err)
 	}
 	return item, nil
+}
+
+func (s *pgRedisStore) QueueBacklog(ctx context.Context, now time.Time) (queueBacklog, error) {
+	if s == nil || s.db == nil {
+		return queueBacklog{}, errors.New("scheduler database is not configured")
+	}
+
+	var backlog queueBacklog
+	var oldestScheduledAt sql.NullTime
+	row := s.db.QueryRow(ctx, schedulerQueueBacklogSQL)
+	if err := row.Scan(&backlog.PendingCount, &oldestScheduledAt); err != nil {
+		return queueBacklog{}, err
+	}
+	if oldestScheduledAt.Valid {
+		backlog.OldestAge = now.UTC().Sub(oldestScheduledAt.Time.UTC())
+		if backlog.OldestAge < 0 {
+			backlog.OldestAge = 0
+		}
+	}
+	return backlog, nil
+}
+
+func (s *pgRedisStore) EnqueueRun(ctx context.Context, runID string) error {
+	if s == nil || s.redis == nil {
+		return errors.New("scheduler redis is not configured")
+	}
+	if strings.TrimSpace(runID) == "" {
+		return errors.New("run_id is required")
+	}
+
+	return s.redis.XAdd(ctx, &redis.XAddArgs{
+		Stream: collector.RunsStreamKey(),
+		Values: map[string]any{
+			"run_id": strings.TrimSpace(runID),
+		},
+	}).Err()
 }
 
 func scanTaskRow(row schedulerRow) (*task, error) {
@@ -600,6 +708,46 @@ ORDER BY run_no DESC, run_id DESC
 LIMIT $2
 `
 
+const schedulerListDueTasksSQL = `
+SELECT
+    task_id,
+    task_type,
+    keyword,
+    created_by,
+    priority,
+    frequency_seconds,
+    since,
+    until,
+    required_count,
+    completed_count,
+    status,
+    next_run_at,
+    last_run_at,
+    created_at,
+    updated_at
+FROM collector.tasks
+WHERE status = 'pending'
+  AND next_run_at IS NOT NULL
+  AND next_run_at <= $1
+ORDER BY priority ASC, next_run_at ASC, task_id ASC
+LIMIT $2
+`
+
+const schedulerNextRunNoSQL = `
+SELECT COALESCE(MAX(run_no), 0) + 1
+FROM collector.task_runs
+WHERE task_id = $1
+`
+
+const schedulerHasOpenRunSQL = `
+SELECT EXISTS (
+    SELECT 1
+    FROM collector.task_runs
+    WHERE task_id = $1
+      AND status IN ('queued', 'leased', 'running')
+)
+`
+
 const schedulerCreateRunSQL = `
 INSERT INTO collector.task_runs (
     run_id,
@@ -651,6 +799,30 @@ RETURNING
     duplicate_count,
     next_cursor,
     error_message
+`
+
+const schedulerUpdateTaskDispatchSQL = `
+UPDATE collector.tasks
+SET status = $2,
+    next_run_at = COALESCE($3::timestamptz, next_run_at),
+    updated_at = NOW()
+WHERE task_id = $1
+RETURNING
+    task_id,
+    task_type,
+    keyword,
+    created_by,
+    priority,
+    frequency_seconds,
+    since,
+    until,
+    required_count,
+    completed_count,
+    status,
+    next_run_at,
+    last_run_at,
+    created_at,
+    updated_at
 `
 
 const schedulerMarkTaskRunningSQL = `
@@ -727,6 +899,14 @@ SELECT
     created_at,
     updated_at
 FROM updated_task
+`
+
+const schedulerQueueBacklogSQL = `
+SELECT
+    COUNT(*),
+    MIN(scheduled_at)
+FROM collector.task_runs
+WHERE status IN ('queued', 'leased', 'running')
 `
 
 func firstNonEmpty(values ...string) string {

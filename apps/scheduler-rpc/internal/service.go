@@ -59,6 +59,7 @@ type serviceError struct {
 }
 
 type SchedulerService interface {
+	Start(ctx context.Context)
 	CreateTask(ctx context.Context, req CreateTaskRequest) (any, *serviceError)
 	GetTask(ctx context.Context, req GetTaskRequest) (any, *serviceError)
 	ListTaskRuns(ctx context.Context, req ListTaskRunsRequest) (any, *serviceError)
@@ -66,9 +67,10 @@ type SchedulerService interface {
 }
 
 type schedulerService struct {
-	cfg    config.Config
-	logger *xlog.Logger
-	store  schedulerStore
+	cfg        config.Config
+	logger     *xlog.Logger
+	store      schedulerStore
+	dispatcher *dispatcher
 }
 
 type createTaskRequest struct {
@@ -158,9 +160,10 @@ func newSchedulerServiceWithStore(cfg config.Config, logger *xlog.Logger, store 
 	}
 
 	return &schedulerService{
-		cfg:    cfg,
-		logger: logger,
-		store:  store,
+		cfg:        cfg,
+		logger:     logger,
+		store:      store,
+		dispatcher: newDispatcher(cfg, logger, store),
 	}
 }
 
@@ -176,9 +179,19 @@ func newService(logger *xlog.Logger) *schedulerService {
 	return newSchedulerService(config.Config{}, logger)
 }
 
+func (s *schedulerService) Start(ctx context.Context) {
+	if s == nil || s.dispatcher == nil {
+		return
+	}
+	s.dispatcher.start(ctx)
+}
+
 func (s *schedulerService) Close(ctx context.Context) error {
 	if s == nil || s.store == nil {
 		return nil
+	}
+	if s.dispatcher != nil {
+		s.dispatcher.stop()
 	}
 	return s.store.Close(ctx)
 }

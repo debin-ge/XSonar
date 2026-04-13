@@ -29,6 +29,7 @@ func main() {
 	}
 
 	ctx := svc.NewServiceContext(c)
+	ctx.Start()
 	defer func() { _ = ctx.Close() }()
 
 	s := zrpc.MustNewServer(c.RpcServerConf, func(grpcServer *grpc.Server) {
