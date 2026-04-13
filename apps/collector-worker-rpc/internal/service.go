@@ -3,6 +3,7 @@ package internal
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"strings"
 	"sync"
@@ -53,14 +54,15 @@ type getWorkerStateRequest struct {
 type GetWorkerStateRequest = getWorkerStateRequest
 
 type workerRunner struct {
-	logger         *xlog.Logger
-	policyClient   clients.PolicyRPC
-	providerClient clients.ProviderRPC
-	workerID       string
-	queueStream    string
-	queueGroup     string
-	outputRootDir  string
-	queueBlock     time.Duration
+	logger        *xlog.Logger
+	workerID      string
+	queueStream   string
+	queueGroup    string
+	outputRootDir string
+	queueBlock    time.Duration
+	worker        *worker
+	storeCloser   func() error
+	queueCloser   func() error
 
 	running atomic.Bool
 	healthy atomic.Bool
@@ -69,6 +71,7 @@ type workerRunner struct {
 	stopOnce  sync.Once
 	cancel    context.CancelFunc
 	wg        sync.WaitGroup
+	stopErr   error
 }
 
 func normalizeCollectorWorkerConfig(cfg config.Config) config.Config {
@@ -100,7 +103,11 @@ func normalizeCollectorWorkerConfig(cfg config.Config) config.Config {
 }
 
 func NewCollectorWorkerService(cfg config.Config, logger *xlog.Logger, policyClient clients.PolicyRPC, providerClient clients.ProviderRPC) CollectorWorkerService {
-	return newCollectorWorkerServiceWithRunner(cfg, logger, newWorkerRunner(cfg, logger, policyClient, providerClient))
+	runner, err := newConfiguredWorkerRunner(cfg, logger, policyClient, providerClient)
+	if err != nil {
+		panic(err)
+	}
+	return newCollectorWorkerServiceWithRunner(cfg, logger, runner)
 }
 
 func newCollectorWorkerServiceWithRunner(cfg config.Config, logger *xlog.Logger, runner *workerRunner) *collectorWorkerService {
@@ -130,8 +137,7 @@ func (s *collectorWorkerService) Close(context.Context) error {
 	if s == nil || s.runner == nil {
 		return nil
 	}
-	s.runner.stop()
-	return nil
+	return s.runner.stop()
 }
 
 func (s *collectorWorkerService) getWorkerState(_ context.Context, req getWorkerStateRequest) (any, *serviceError) {
@@ -160,15 +166,39 @@ func newWorkerRunner(cfg config.Config, logger *xlog.Logger, policyClient client
 	}
 
 	return &workerRunner{
-		logger:         logger,
-		policyClient:   policyClient,
-		providerClient: providerClient,
-		workerID:       workerID,
-		queueStream:    cfg.QueueStream,
-		queueGroup:     cfg.QueueGroup,
-		outputRootDir:  cfg.OutputRootDir,
-		queueBlock:     time.Duration(cfg.QueueBlockMS) * time.Millisecond,
+		logger:        logger,
+		workerID:      workerID,
+		queueStream:   cfg.QueueStream,
+		queueGroup:    cfg.QueueGroup,
+		outputRootDir: cfg.OutputRootDir,
+		queueBlock:    time.Duration(cfg.QueueBlockMS) * time.Millisecond,
 	}
+}
+
+func newConfiguredWorkerRunner(cfg config.Config, logger *xlog.Logger, policyClient clients.PolicyRPC, providerClient clients.ProviderRPC) (*workerRunner, error) {
+	runtime := newWorkerRunner(cfg, logger, policyClient, providerClient)
+	storeCfg := loadWorkerStoreConfig()
+	if err := validateWorkerStoreConfig(storeCfg); err != nil {
+		return nil, err
+	}
+	if storeCfg.Backend != "pgredis" || policyClient == nil || providerClient == nil {
+		return runtime, nil
+	}
+
+	store, err := newPGRedisWorkerStore(storeCfg, logger)
+	if err != nil {
+		return nil, err
+	}
+	queue, err := newRedisRunQueue(storeCfg, runtime.queueStream, runtime.queueGroup)
+	if err != nil {
+		_ = store.Close()
+		return nil, err
+	}
+
+	runtime.worker = newWorker(cfg, logger, store, queue, newRunner(cfg, logger, store, policyClient, providerClient, runtime.workerID), runtime.workerID)
+	runtime.storeCloser = store.Close
+	runtime.queueCloser = queue.Close
+	return runtime, nil
 }
 
 func (r *workerRunner) start(ctx context.Context) {
@@ -186,6 +216,28 @@ func (r *workerRunner) start(ctx context.Context) {
 		go func() {
 			defer r.wg.Done()
 
+			if r.worker != nil {
+				for {
+					if runCtx.Err() != nil {
+						return
+					}
+					if err := r.worker.processOnce(runCtx); err != nil {
+						if runCtx.Err() != nil {
+							return
+						}
+						r.logger.Error("collector worker loop failed", map[string]any{
+							"worker_id": r.workerID,
+							"error":     err.Error(),
+						})
+						select {
+						case <-runCtx.Done():
+							return
+						case <-time.After(200 * time.Millisecond):
+						}
+					}
+				}
+			}
+
 			ticker := time.NewTicker(r.queueBlock)
 			defer ticker.Stop()
 
@@ -200,9 +252,9 @@ func (r *workerRunner) start(ctx context.Context) {
 	})
 }
 
-func (r *workerRunner) stop() {
+func (r *workerRunner) stop() error {
 	if r == nil {
-		return
+		return nil
 	}
 
 	r.stopOnce.Do(func() {
@@ -212,7 +264,9 @@ func (r *workerRunner) stop() {
 		r.wg.Wait()
 		r.running.Store(false)
 		r.healthy.Store(false)
+		r.stopErr = joinCloseErrors(r.queueCloser, r.storeCloser)
 	})
+	return r.stopErr
 }
 
 func (r *workerRunner) snapshot() map[string]any {
@@ -277,4 +331,17 @@ func collectorWorkerInternalError(message string) *serviceError {
 		code:       model.CodeInternalError,
 		message:    message,
 	}
+}
+
+func joinCloseErrors(closers ...func() error) error {
+	var combined error
+	for _, closeFn := range closers {
+		if closeFn == nil {
+			continue
+		}
+		if err := closeFn(); err != nil {
+			combined = errors.Join(combined, err)
+		}
+	}
+	return combined
 }
