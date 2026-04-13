@@ -130,7 +130,9 @@ func TestCollectorTaskChainDeployWiring(t *testing.T) {
 	)
 	assertFileContains(t, filepath.Join(repoRoot, "deploy/xsonar/docker-compose.yml"),
 		"scheduler-rpc:",
+		"SCHEDULER_RPC_LISTEN_ON: \"${SCHEDULER_RPC_LISTEN_ON:-0.0.0.0:9004}\"",
 		"collector-worker-rpc:",
+		"COLLECTOR_WORKER_RPC_LISTEN_ON: \"${COLLECTOR_WORKER_RPC_LISTEN_ON:-0.0.0.0:9005}\"",
 		"scheduler-rpc:\n        condition: service_healthy",
 		"../../runtime/collector:/app/runtime/collector",
 	)
