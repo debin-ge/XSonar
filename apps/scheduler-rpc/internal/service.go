@@ -151,12 +151,9 @@ func newSchedulerServiceWithStore(cfg config.Config, logger *xlog.Logger, store 
 		if storeCfg.Backend == "pgredis" {
 			persistentStore, err := newPGRedisStore(storeCfg, logger)
 			if err != nil {
-				logger.Error("scheduler-rpc persistent backend unavailable, falling back to memory", map[string]any{
-					"error": err.Error(),
-				})
-			} else {
-				store = persistentStore
+				panic(err)
 			}
+			store = persistentStore
 		}
 	}
 
@@ -318,7 +315,7 @@ func schedulerServiceErrorFromErr(err error) *serviceError {
 	if errors.Is(err, pgx.ErrNoRows) {
 		return schedulerNotFound("task not found")
 	}
-	return internalSchedulerError(err.Error())
+	return internalSchedulerError("scheduler internal error")
 }
 
 func isDuplicateKeyError(err error) bool {

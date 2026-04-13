@@ -168,13 +168,13 @@ func (s *memorySchedulerStore) CreateRun(_ context.Context, item *taskRun) (*tas
 	if s.tasks[taskID] == nil {
 		return nil, schedulerNotFound("task not found")
 	}
+	if item.RunNo <= 0 {
+		return nil, schedulerInvalidRequest("run_no is required")
+	}
 
 	clone := cloneTaskRun(item)
 	if strings.TrimSpace(clone.RunID) == "" {
 		clone.RunID = shared.NewID("run")
-	}
-	if clone.RunNo == 0 {
-		clone.RunNo = int64(len(s.taskRuns[taskID]) + 1)
 	}
 	if clone.Status == "" {
 		clone.Status = RunStatusQueued
@@ -323,13 +323,13 @@ func (s *FakeSchedulerStore) CreateRun(ctx context.Context, item *taskRun) (*tas
 	if s.tasks[taskID] == nil {
 		return nil, schedulerNotFound("task not found")
 	}
+	if item.RunNo <= 0 {
+		return nil, schedulerInvalidRequest("run_no is required")
+	}
 
 	clone := cloneTaskRun(item)
 	if strings.TrimSpace(clone.RunID) == "" {
 		clone.RunID = shared.NewID("run")
-	}
-	if clone.RunNo == 0 {
-		clone.RunNo = int64(len(s.taskRuns[taskID]) + 1)
 	}
 	if clone.Status == "" {
 		clone.Status = RunStatusQueued

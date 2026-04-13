@@ -80,6 +80,57 @@ func TestNewServicePanicsWhenPGRedisConfigIsIncomplete(t *testing.T) {
 	_ = newService(xlog.NewStdout("scheduler-rpc-test"))
 }
 
+func TestNewServicePanicsWhenPGRedisBackendCannotInitialize(t *testing.T) {
+	t.Setenv("COMMON_STORE_BACKEND", "pgredis")
+	t.Setenv("COMMON_POSTGRES_DSN", "postgres://scheduler:secret@127.0.0.1:1/xsonar?sslmode=disable")
+	t.Setenv("COMMON_REDIS_ADDR", "127.0.0.1:1")
+
+	defer func() {
+		if recovered := recover(); recovered == nil {
+			t.Fatal("expected unreachable pgredis backend to panic")
+		}
+	}()
+
+	_ = newService(xlog.NewStdout("scheduler-rpc-test"))
+}
+
+func TestLoadSchedulerStoreConfigPanicsOnInvalidRedisSettings(t *testing.T) {
+	tests := []struct {
+		name     string
+		setupEnv func(t *testing.T)
+	}{
+		{
+			name: "invalid redis db",
+			setupEnv: func(t *testing.T) {
+				t.Setenv("COMMON_REDIS_DB", "invalid")
+			},
+		},
+		{
+			name: "invalid leader ttl",
+			setupEnv: func(t *testing.T) {
+				t.Setenv("COMMON_LEADER_LOCK_TTL_MS", "invalid")
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Setenv("COMMON_STORE_BACKEND", "pgredis")
+			t.Setenv("COMMON_POSTGRES_DSN", "postgres://scheduler:secret@127.0.0.1:5432/xsonar")
+			t.Setenv("COMMON_REDIS_ADDR", "127.0.0.1:6379")
+			tt.setupEnv(t)
+
+			defer func() {
+				if recovered := recover(); recovered == nil {
+					t.Fatal("expected invalid redis setting to panic")
+				}
+			}()
+
+			_ = loadSchedulerStoreConfig()
+		})
+	}
+}
+
 func TestSchedulerDuplicateKeyErrorMapsToConflict(t *testing.T) {
 	svcErr := schedulerServiceErrorFromErr(&pgconn.PgError{Code: "23505"})
 	if svcErr == nil {
@@ -94,6 +145,8 @@ func TestSchedulerDuplicateKeyErrorMapsToConflict(t *testing.T) {
 
 	if got := schedulerServiceErrorFromErr(errors.New("other failure")); got == nil || got.code == model.CodeConflict {
 		t.Fatalf("expected unrelated errors to map to a non-conflict scheduler error, got %#v", got)
+	} else if got.message == "other failure" {
+		t.Fatalf("expected internal errors to hide raw detail, got %#v", got)
 	}
 }
 
@@ -368,6 +421,72 @@ func TestSchedulerListTaskRunsUsesRequestedLimit(t *testing.T) {
 	}
 	if got[0].RunID != "run_1" || got[0].TaskID != "task_1" {
 		t.Fatalf("unexpected task run view: %#v", got[0])
+	}
+}
+
+func TestSchedulerCreateRunRejectsMissingRunNo(t *testing.T) {
+	store := &pgRedisStore{
+		db: fakeSchedulerDB{},
+	}
+
+	_, svcErr := store.CreateRun(context.Background(), &taskRun{
+		TaskID:      "task_1",
+		Status:      RunStatusQueued,
+		ScheduledAt: time.Date(2026, 4, 11, 10, 0, 0, 0, time.UTC),
+	})
+
+	if svcErr == nil {
+		t.Fatal("expected missing run_no to be rejected")
+	}
+	if svcErr.code != model.CodeInvalidRequest {
+		t.Fatalf("expected invalid request code, got %d", svcErr.code)
+	}
+}
+
+func TestSchedulerMarkTaskRunningWithRunUsesSingleAtomicQuery(t *testing.T) {
+	fakeNow := time.Date(2026, 4, 11, 10, 15, 0, 0, time.UTC)
+	store := &pgRedisStore{
+		db: fakeSchedulerDB{
+			execFn: func(context.Context, string, ...any) (pgconn.CommandTag, error) {
+				t.Fatal("expected MarkTaskRunning with run_id to avoid standalone Exec calls")
+				return pgconn.CommandTag{}, nil
+			},
+			queryRowFn: func(ctx context.Context, query string, args ...any) schedulerRow {
+				if !strings.Contains(query, "WITH updated_run AS") {
+					t.Fatalf("expected atomic CTE update sql, got %q", query)
+				}
+				if args[0] != "task_1" || args[1] != "run_1" {
+					t.Fatalf("unexpected args: %#v", args)
+				}
+				return fakeSchedulerRow{
+					scanFn: func(dest ...any) error {
+						assignTaskRowValues(dest, task{
+							TaskID:           "task_1",
+							TaskType:         TaskTypePeriodic,
+							Keyword:          "openai",
+							CreatedBy:        "admin",
+							Priority:         10,
+							FrequencySeconds: pgInt32Ptr(30),
+							Status:           TaskStatusRunning,
+						}, fakeNow)
+						*(dest[10].(*string)) = TaskStatusRunning
+						*(dest[12].(*sql.NullTime)) = sql.NullTime{Time: fakeNow, Valid: true}
+						return nil
+					},
+				}
+			},
+		},
+	}
+
+	got, svcErr := store.MarkTaskRunning(context.Background(), "task_1", "run_1", fakeNow)
+	if svcErr != nil {
+		t.Fatalf("MarkTaskRunning returned error: %v", svcErr)
+	}
+	if got.Status != TaskStatusRunning {
+		t.Fatalf("expected running task status, got %q", got.Status)
+	}
+	if got.LastRunAt == nil || !got.LastRunAt.Equal(fakeNow) {
+		t.Fatalf("expected last_run_at to be populated, got %#v", got.LastRunAt)
 	}
 }
 

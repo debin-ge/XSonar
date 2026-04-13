@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/redis/go-redis/v9"
@@ -101,18 +102,22 @@ func loadSchedulerStoreConfig() schedulerStoreConfig {
 		os.Getenv("SCHEDULER_RPC_REDIS_DB"),
 		os.Getenv("COMMON_REDIS_DB"),
 	)); redisDBValue != "" {
-		if parsed, err := strconv.Atoi(redisDBValue); err == nil {
-			cfg.RedisDB = parsed
+		parsed, err := strconv.Atoi(redisDBValue)
+		if err != nil {
+			panic(fmt.Sprintf("invalid redis db %q", redisDBValue))
 		}
+		cfg.RedisDB = parsed
 	}
 
 	if ttlValue := strings.TrimSpace(firstNonEmpty(
 		os.Getenv("SCHEDULER_RPC_LEADER_LOCK_TTL_MS"),
 		os.Getenv("COMMON_LEADER_LOCK_TTL_MS"),
 	)); ttlValue != "" {
-		if parsed, err := strconv.Atoi(ttlValue); err == nil && parsed > 0 {
-			cfg.LeaderLockTTL = time.Duration(parsed) * time.Millisecond
+		parsed, err := strconv.Atoi(ttlValue)
+		if err != nil || parsed <= 0 {
+			panic(fmt.Sprintf("invalid leader lock ttl %q", ttlValue))
 		}
+		cfg.LeaderLockTTL = time.Duration(parsed) * time.Millisecond
 	}
 
 	if cfg.Backend == "" {
@@ -324,11 +329,8 @@ func (s *pgRedisStore) CreateRun(ctx context.Context, item *taskRun) (*taskRun, 
 		runID = shared.NewID("run")
 	}
 	runNo := item.RunNo
-	if runNo == 0 {
-		row := s.db.QueryRow(ctx, schedulerNextRunNoSQL, taskID)
-		if err := row.Scan(&runNo); err != nil {
-			return nil, schedulerServiceErrorFromErr(err)
-		}
+	if runNo <= 0 {
+		return nil, schedulerInvalidRequest("run_no is required")
 	}
 
 	status := strings.TrimSpace(item.Status)
@@ -364,24 +366,26 @@ func (s *pgRedisStore) MarkTaskRunning(ctx context.Context, taskID, runID string
 
 	startedAt = startedAt.UTC()
 	if runID != "" {
-		tag, err := s.db.Exec(ctx, schedulerMarkRunRunningSQL, taskID, runID, startedAt)
-		if err != nil {
-			return nil, schedulerServiceErrorFromErr(err)
+		row := s.db.QueryRow(ctx, schedulerMarkTaskRunningWithRunSQL, taskID, runID, startedAt)
+		item, err := scanTaskRow(row)
+		if err == nil {
+			return item, nil
 		}
-		if tag.RowsAffected() == 0 {
+		if errors.Is(err, pgx.ErrNoRows) {
+			if _, taskErr := s.GetTask(ctx, taskID); taskErr != nil {
+				return nil, taskErr
+			}
 			return nil, schedulerNotFound("run not found")
 		}
+		return nil, schedulerServiceErrorFromErr(err)
 	}
 
-	tag, err := s.db.Exec(ctx, schedulerMarkTaskRunningSQL, taskID, startedAt)
+	row := s.db.QueryRow(ctx, schedulerMarkTaskRunningSQL, taskID, startedAt)
+	item, err := scanTaskRow(row)
 	if err != nil {
 		return nil, schedulerServiceErrorFromErr(err)
 	}
-	if tag.RowsAffected() == 0 {
-		return nil, schedulerNotFound("task not found")
-	}
-
-	return s.GetTask(ctx, taskID)
+	return item, nil
 }
 
 func scanTaskRow(row schedulerRow) (*task, error) {
@@ -596,12 +600,6 @@ ORDER BY run_no DESC, run_id DESC
 LIMIT $2
 `
 
-const schedulerNextRunNoSQL = `
-SELECT COALESCE(MAX(run_no), 0) + 1
-FROM collector.task_runs
-WHERE task_id = $1
-`
-
 const schedulerCreateRunSQL = `
 INSERT INTO collector.task_runs (
     run_id,
@@ -655,20 +653,80 @@ RETURNING
     error_message
 `
 
-const schedulerMarkRunRunningSQL = `
-UPDATE collector.task_runs
-SET status = 'running',
-    started_at = $3
-WHERE task_id = $1
-  AND run_id = $2
-`
-
 const schedulerMarkTaskRunningSQL = `
 UPDATE collector.tasks
 SET status = 'running',
     last_run_at = $2,
     updated_at = NOW()
 WHERE task_id = $1
+RETURNING
+    task_id,
+    task_type,
+    keyword,
+    created_by,
+    priority,
+    frequency_seconds,
+    since,
+    until,
+    required_count,
+    completed_count,
+    status,
+    next_run_at,
+    last_run_at,
+    created_at,
+    updated_at
+`
+
+const schedulerMarkTaskRunningWithRunSQL = `
+WITH updated_run AS (
+    UPDATE collector.task_runs
+    SET status = 'running',
+        started_at = $3
+    WHERE task_id = $1
+      AND run_id = $2
+    RETURNING 1
+),
+updated_task AS (
+    UPDATE collector.tasks
+    SET status = 'running',
+        last_run_at = $3,
+        updated_at = NOW()
+    WHERE task_id = $1
+      AND EXISTS (SELECT 1 FROM updated_run)
+    RETURNING
+        task_id,
+        task_type,
+        keyword,
+        created_by,
+        priority,
+        frequency_seconds,
+        since,
+        until,
+        required_count,
+        completed_count,
+        status,
+        next_run_at,
+        last_run_at,
+        created_at,
+        updated_at
+)
+SELECT
+    task_id,
+    task_type,
+    keyword,
+    created_by,
+    priority,
+    frequency_seconds,
+    since,
+    until,
+    required_count,
+    completed_count,
+    status,
+    next_run_at,
+    last_run_at,
+    created_at,
+    updated_at
+FROM updated_task
 `
 
 func firstNonEmpty(values ...string) string {
