@@ -187,6 +187,170 @@ func TestRunnerRangeRunPublishesSingleFinalFile(t *testing.T) {
 	}
 }
 
+func TestRunnerStopsRangeRunWhenRequiredCountReached(t *testing.T) {
+	root := t.TempDir()
+	requiredCount := int64(2)
+	store := newMemoryWorkerStore()
+	store.seedRunTask(runTaskView{
+		Task: workerTask{
+			TaskID:         "task_range_required_1",
+			TaskType:       TaskTypeRange,
+			Keyword:        "openai",
+			RequiredCount:  &requiredCount,
+			CompletedCount: 0,
+			Status:         TaskStatusPending,
+		},
+		Run: workerRun{
+			RunID:       "run_range_required_1",
+			TaskID:      "task_range_required_1",
+			RunNo:       1,
+			Status:      RunStatusQueued,
+			ScheduledAt: time.Date(2026, 4, 13, 10, 0, 0, 0, time.UTC),
+		},
+	})
+
+	provider := &fakeProviderExecutor{
+		responses: []providerPage{
+			{
+				Body: map[string]any{
+					"tweets": []map[string]any{
+						{"id": "post_1", "text": "one"},
+						{"id": "post_2", "text": "two"},
+						{"id": "post_3", "text": "three"},
+					},
+					"next_cursor": "cursor_1",
+				},
+			},
+		},
+	}
+	runner := newRunner(testRunnerConfig(root, 20), xlog.NewStdout("collector-worker-rpc-test"), store, fakePolicyResolver{}, provider, "worker-1")
+
+	if err := runner.run(context.Background(), "run_range_required_1"); err != nil {
+		t.Fatalf("run returned error: %v", err)
+	}
+
+	view, err := store.LoadRunTask(context.Background(), "run_range_required_1")
+	if err != nil {
+		t.Fatalf("LoadRunTask returned error: %v", err)
+	}
+	if view.Run.StopReason != "required_count_reached" {
+		t.Fatalf("expected stop_reason required_count_reached, got %q", view.Run.StopReason)
+	}
+	if view.Run.NewCount != 2 {
+		t.Fatalf("expected new_count 2, got %d", view.Run.NewCount)
+	}
+	if view.Task.CompletedCount != 2 {
+		t.Fatalf("expected completed_count 2, got %d", view.Task.CompletedCount)
+	}
+	if provider.calls != 1 {
+		t.Fatalf("expected provider to stop after 1 page, got %d calls", provider.calls)
+	}
+	data, err := os.ReadFile(view.Run.OutputPath)
+	if err != nil {
+		t.Fatalf("ReadFile returned error: %v", err)
+	}
+	if len(strings.Split(strings.TrimSpace(string(data)), "\n")) != 2 {
+		t.Fatalf("expected 2 NDJSON lines, got %q", string(data))
+	}
+}
+
+func TestRunnerStopsPeriodicTaskWhenRequiredCountReached(t *testing.T) {
+	root := t.TempDir()
+	requiredCount := int64(2)
+	store := newMemoryWorkerStore()
+	store.seedRunTask(runTaskView{
+		Task: workerTask{
+			TaskID:         "task_periodic_required_1",
+			TaskType:       TaskTypePeriodic,
+			Keyword:        "openai",
+			RequiredCount:  &requiredCount,
+			CompletedCount: 1,
+			Status:         TaskStatusPending,
+		},
+		Run: workerRun{
+			RunID:       "run_periodic_required_1",
+			TaskID:      "task_periodic_required_1",
+			RunNo:       2,
+			Status:      RunStatusQueued,
+			ScheduledAt: time.Date(2026, 4, 13, 10, 0, 0, 0, time.UTC),
+		},
+	})
+
+	runner := newRunner(testRunnerConfig(root, 20), xlog.NewStdout("collector-worker-rpc-test"), store, fakePolicyResolver{}, &fakeProviderExecutor{
+		responses: []providerPage{
+			{
+				Body: map[string]any{
+					"tweets": []map[string]any{
+						{"id": "post_2", "text": "two"},
+						{"id": "post_3", "text": "three"},
+					},
+					"next_cursor": "cursor_1",
+				},
+			},
+		},
+	}, "worker-1")
+
+	if err := runner.run(context.Background(), "run_periodic_required_1"); err != nil {
+		t.Fatalf("run returned error: %v", err)
+	}
+
+	view, err := store.LoadRunTask(context.Background(), "run_periodic_required_1")
+	if err != nil {
+		t.Fatalf("LoadRunTask returned error: %v", err)
+	}
+	if view.Run.StopReason != "required_count_reached" {
+		t.Fatalf("expected stop_reason required_count_reached, got %q", view.Run.StopReason)
+	}
+	if view.Task.Status != TaskStatusSucceeded {
+		t.Fatalf("expected task status succeeded, got %q", view.Task.Status)
+	}
+	if view.Task.CompletedCount != 2 {
+		t.Fatalf("expected completed_count 2, got %d", view.Task.CompletedCount)
+	}
+}
+
+func TestRunnerRecordsKeywordUsageWithMonthStartDate(t *testing.T) {
+	root := t.TempDir()
+	store := &capturingWorkerStore{memoryWorkerStore: newMemoryWorkerStore()}
+	store.seedRunTask(runTaskView{
+		Task: workerTask{
+			TaskID:   "task_usage_month_1",
+			TaskType: TaskTypeRange,
+			Keyword:  "openai",
+			Status:   TaskStatusPending,
+		},
+		Run: workerRun{
+			RunID:       "run_usage_month_1",
+			TaskID:      "task_usage_month_1",
+			RunNo:       1,
+			Status:      RunStatusQueued,
+			ScheduledAt: time.Date(2026, 4, 13, 10, 0, 0, 0, time.UTC),
+		},
+	})
+
+	runner := newRunner(testRunnerConfig(root, 20), xlog.NewStdout("collector-worker-rpc-test"), store, fakePolicyResolver{}, &fakeProviderExecutor{
+		responses: []providerPage{
+			{
+				Body: map[string]any{
+					"tweets": []map[string]any{{"id": "post_1", "text": "one"}},
+				},
+			},
+		},
+	}, "worker-1")
+
+	if err := runner.run(context.Background(), "run_usage_month_1"); err != nil {
+		t.Fatalf("run returned error: %v", err)
+	}
+
+	want := time.Date(time.Now().UTC().Year(), time.Now().UTC().Month(), 1, 0, 0, 0, 0, time.UTC).Format("2006-01-02")
+	if len(store.recordedUsageMonths) != 1 {
+		t.Fatalf("expected 1 usage month record, got %d", len(store.recordedUsageMonths))
+	}
+	if store.recordedUsageMonths[0] != want {
+		t.Fatalf("expected usage month %q, got %q", want, store.recordedUsageMonths[0])
+	}
+}
+
 func TestRunnerResumesExistingPartFileAfterLeaseTakeover(t *testing.T) {
 	root := t.TempDir()
 	finalPath := filepath.Join(root, "task_range_1", "task_range_1.ndjson")
@@ -265,6 +429,16 @@ func (fakePolicyResolver) ResolvePolicy(ctx context.Context, req *policyservice.
 type fakeProviderExecutor struct {
 	responses []providerPage
 	calls     int
+}
+
+type capturingWorkerStore struct {
+	*memoryWorkerStore
+	recordedUsageMonths []string
+}
+
+func (s *capturingWorkerStore) RecordKeywordMonthlyUsage(ctx context.Context, keyword, usageMonth, postID, taskID string, seenAt time.Time) (bool, error) {
+	s.recordedUsageMonths = append(s.recordedUsageMonths, usageMonth)
+	return s.memoryWorkerStore.RecordKeywordMonthlyUsage(ctx, keyword, usageMonth, postID, taskID, seenAt)
 }
 
 func (f *fakeProviderExecutor) ExecutePolicy(ctx context.Context, req *providerservice.ExecutePolicyRequest) (*clients.EnvelopeResponse, error) {

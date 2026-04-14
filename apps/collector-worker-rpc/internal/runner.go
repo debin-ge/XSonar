@@ -23,6 +23,7 @@ const (
 	collectorPolicyMethod = http.MethodGet
 	collectorPolicyKey    = "search_tweets_v1"
 	stopReasonPageLimit   = "page_limit"
+	stopReasonRequired    = "required_count_reached"
 )
 
 type policyResolver interface {
@@ -161,6 +162,10 @@ func (r *runner) run(ctx context.Context, runID string) error {
 	}
 
 	stopReason := ""
+	requiredCount := int64(0)
+	if view.Task.RequiredCount != nil && *view.Task.RequiredCount > 0 {
+		requiredCount = *view.Task.RequiredCount
+	}
 	for {
 		providerPayload, err := r.fetchPage(ctx, policy, view.Task, nextCursor)
 		if err != nil {
@@ -176,7 +181,8 @@ func (r *runner) run(ctx context.Context, runID string) error {
 		fetchedCount += int64(len(page.Posts))
 
 		seenAt := time.Now().UTC()
-		usageMonth := seenAt.Format("2006-01")
+		usageMonth := time.Date(seenAt.Year(), seenAt.Month(), 1, 0, 0, 0, 0, time.UTC).Format("2006-01-02")
+		requiredReached := false
 		for _, post := range page.Posts {
 			if _, err := r.store.RecordKeywordMonthlyUsage(ctx, view.Task.Keyword, usageMonth, post.PostID, view.Task.TaskID, seenAt); err != nil {
 				return err
@@ -203,6 +209,11 @@ func (r *runner) run(ctx context.Context, runID string) error {
 			}); err != nil {
 				return err
 			}
+			if requiredCount > 0 && view.Task.CompletedCount+newCount >= requiredCount {
+				stopReason = stopReasonRequired
+				requiredReached = true
+				break
+			}
 		}
 
 		nextCursor = strings.TrimSpace(page.NextCursor)
@@ -220,6 +231,9 @@ func (r *runner) run(ctx context.Context, runID string) error {
 			return err
 		}
 
+		if requiredReached {
+			break
+		}
 		if view.Task.TaskType == TaskTypePeriodic && pageCount >= r.periodicRunMaxPages {
 			stopReason = stopReasonPageLimit
 			break
@@ -235,7 +249,7 @@ func (r *runner) run(ctx context.Context, runID string) error {
 	committed = true
 
 	taskStatus := TaskStatusSucceeded
-	if view.Task.TaskType == TaskTypePeriodic {
+	if view.Task.TaskType == TaskTypePeriodic && stopReason != stopReasonRequired {
 		taskStatus = TaskStatusPending
 	}
 	completedCount := view.Task.CompletedCount + newCount

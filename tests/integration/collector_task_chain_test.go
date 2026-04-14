@@ -129,10 +129,13 @@ func TestCollectorTaskChainDeployWiring(t *testing.T) {
 		"/app/collector-worker-rpc",
 	)
 	assertFileContains(t, filepath.Join(repoRoot, "deploy/xsonar/docker-compose.yml"),
+		"GATEWAY_API_JWT_SECRET: \"${GATEWAY_API_JWT_SECRET:-${CONSOLE_API_JWT_SECRET:-change-me-console-jwt-secret}}\"",
+		"GATEWAY_API_JWT_ISSUER: \"${GATEWAY_API_JWT_ISSUER:-${CONSOLE_API_JWT_ISSUER:-xsonar-console}}\"",
 		"scheduler-rpc:",
 		"SCHEDULER_RPC_LISTEN_ON: \"${SCHEDULER_RPC_LISTEN_ON:-0.0.0.0:9004}\"",
 		"collector-worker-rpc:",
 		"COLLECTOR_WORKER_RPC_LISTEN_ON: \"${COLLECTOR_WORKER_RPC_LISTEN_ON:-0.0.0.0:9005}\"",
+		"COLLECTOR_WORKER_RPC_PROVIDER_RPC_TIMEOUT: \"${COLLECTOR_WORKER_RPC_PROVIDER_RPC_TIMEOUT:-10000}\"",
 		"scheduler-rpc:\n        condition: service_healthy",
 		"../../runtime/collector:/app/runtime/collector",
 	)
@@ -141,10 +144,13 @@ func TestCollectorTaskChainDeployWiring(t *testing.T) {
 		"../../deploy/configs/local/collector-worker-rpc.yaml:/app/config/collector-worker-rpc.yaml:ro",
 	)
 	assertFileContains(t, filepath.Join(repoRoot, "deploy/xsonar/.env.example"),
+		"GATEWAY_API_JWT_SECRET=change-me-console-jwt-secret",
+		"GATEWAY_API_JWT_ISSUER=xsonar-console",
 		"SCHEDULER_RPC_NAME=scheduler-rpc",
 		"SCHEDULER_RPC_LISTEN_ON=0.0.0.0:9004",
 		"COLLECTOR_WORKER_RPC_NAME=collector-worker-rpc",
 		"COLLECTOR_WORKER_RPC_LISTEN_ON=0.0.0.0:9005",
+		"COLLECTOR_WORKER_RPC_PROVIDER_RPC_TIMEOUT=10000",
 	)
 }
 

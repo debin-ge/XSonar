@@ -23,6 +23,8 @@ services:
     environment:
       <<: *common-app-env
       CONFIG: /app/config/gateway-api.yaml
+      GATEWAY_API_JWT_SECRET: "${GATEWAY_API_JWT_SECRET:-${CONSOLE_API_JWT_SECRET:-change-me-console-jwt-secret}}"
+      GATEWAY_API_JWT_ISSUER: "${GATEWAY_API_JWT_ISSUER:-${CONSOLE_API_JWT_ISSUER:-xsonar-console}}"
     depends_on:
       access-rpc:
         condition: service_healthy
@@ -178,6 +180,7 @@ services:
       <<: *common-app-env
       CONFIG: /app/config/collector-worker-rpc.yaml
       COLLECTOR_WORKER_RPC_LISTEN_ON: "${COLLECTOR_WORKER_RPC_LISTEN_ON:-0.0.0.0:9005}"
+      COLLECTOR_WORKER_RPC_PROVIDER_RPC_TIMEOUT: "${COLLECTOR_WORKER_RPC_PROVIDER_RPC_TIMEOUT:-10000}"
     depends_on:
       postgres:
         condition: service_healthy
