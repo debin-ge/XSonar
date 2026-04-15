@@ -4,17 +4,23 @@ import (
 	"net/http"
 
 	consoleinternal "xsonar/apps/console-api/internal"
+	consoleconfig "xsonar/apps/console-api/internal/config"
 	"xsonar/pkg/clients"
-	"xsonar/pkg/shared"
 	"xsonar/pkg/xlog"
 )
 
 func NewHandlerWithClients(logger *xlog.Logger, accessClient clients.AccessRPC, policyClient clients.PolicyRPC, providerClient clients.ProviderRPC) http.Handler {
-	return NewHandlerWithConfigAndAllClients(logger, consoleinternal.ConsoleDefaults(), accessClient, policyClient, providerClient)
+	return NewHandlerWithConfigAndAllClients(logger, consoleconfig.ConsoleConfig{
+		JWTSecret:        "xsonar-console-dev-secret",
+		JWTIssuer:        "xsonar-console",
+		JWTTTLMinutes:    120,
+		GatewayJWTSecret: "xsonar-gateway-dev-secret",
+		GatewayJWTIssuer: "xsonar-gateway",
+	}, accessClient, policyClient, providerClient)
 }
 
-func NewHandlerWithConfigAndAllClients(logger *xlog.Logger, config shared.Config, accessClient clients.AccessRPC, policyClient clients.PolicyRPC, providerClient clients.ProviderRPC) http.Handler {
-	bridge := consoleinternal.NewBridge(config, logger, accessClient, policyClient, providerClient)
+func NewHandlerWithConfigAndAllClients(logger *xlog.Logger, cfg consoleconfig.ConsoleConfig, accessClient clients.AccessRPC, policyClient clients.PolicyRPC, providerClient clients.ProviderRPC) http.Handler {
+	bridge := consoleinternal.NewBridge(cfg, logger, accessClient, policyClient, providerClient)
 	mux := http.NewServeMux()
 	mux.HandleFunc("POST /admin/v1/auth/login", bridge.HandleLogin)
 	mux.HandleFunc("POST /admin/v1/gateway/token", bridge.HandleIssueGatewayToken)

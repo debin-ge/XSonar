@@ -19,3 +19,21 @@ type Config struct {
 	GatewayJWTSecret string `json:",default=xsonar-gateway-dev-secret"`
 	GatewayJWTIssuer string `json:",default=xsonar-gateway"`
 }
+
+type ConsoleConfig struct {
+	JWTSecret        string
+	JWTIssuer        string
+	JWTTTLMinutes    int
+	GatewayJWTSecret string
+	GatewayJWTIssuer string
+}
+
+func (c Config) ToConsoleConfig() ConsoleConfig {
+	return ConsoleConfig{
+		JWTSecret:        c.JWTSecret,
+		JWTIssuer:        c.JWTIssuer,
+		JWTTTLMinutes:    c.JWTTTLMinutes,
+		GatewayJWTSecret: c.GatewayJWTSecret,
+		GatewayJWTIssuer: c.GatewayJWTIssuer,
+	}
+}

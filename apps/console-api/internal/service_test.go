@@ -13,6 +13,7 @@ import (
 
 	"github.com/zeromicro/go-zero/rest/pathvar"
 	"xsonar/apps/access-rpc/accessservice"
+	"xsonar/apps/console-api/internal/config"
 	"xsonar/apps/policy-rpc/policyservice"
 	"xsonar/apps/provider-rpc/providerservice"
 	"xsonar/pkg/clients"
@@ -142,7 +143,7 @@ func (s stubJSONClient) ExecutePolicy(ctx context.Context, req *providerservice.
 
 func TestConsoleLoginProxy(t *testing.T) {
 	svc := newConsoleServiceWithConfigAndAllClients(
-		ConsoleDefaults(),
+		testConsoleConfig(),
 		xlog.NewStdout("console-test"),
 		stubJSONClient{
 			postFunc: func(_ context.Context, path string, payload any) (*clients.EnvelopeResponse, error) {
@@ -184,7 +185,7 @@ func TestConsoleLoginProxy(t *testing.T) {
 	if response.Code != model.CodeOK || response.Data.Token == "" {
 		t.Fatalf("unexpected response: %+v", response)
 	}
-	claims, err := shared.ParseAndValidateJWT(ConsoleDefaults().JWTSecret, response.Data.Token, time.Now())
+	claims, err := shared.ParseAndValidateJWT("xsonar-console-dev-secret", response.Data.Token, time.Now())
 	if err != nil {
 		t.Fatalf("expected valid jwt token, got error: %v", err)
 	}
@@ -194,9 +195,13 @@ func TestConsoleLoginProxy(t *testing.T) {
 }
 
 func TestConsoleIssueGatewayTokenReturnsGatewayJWT(t *testing.T) {
-	cfg := ConsoleDefaults()
-	cfg.GatewayJWTSecret = "gateway-secret"
-	cfg.GatewayJWTIssuer = "gateway-issuer"
+	cfg := config.ConsoleConfig{
+		JWTSecret:        "xsonar-console-dev-secret",
+		JWTIssuer:        "xsonar-console",
+		JWTTTLMinutes:    120,
+		GatewayJWTSecret: "gateway-secret",
+		GatewayJWTIssuer: "gateway-issuer",
+	}
 
 	svc := newConsoleServiceWithConfigAndAllClients(
 		cfg,
@@ -276,9 +281,13 @@ func TestConsoleIssueGatewayTokenReturnsGatewayJWT(t *testing.T) {
 }
 
 func TestConsoleIssueGatewayTokenSupportsInfiniteTTL(t *testing.T) {
-	cfg := ConsoleDefaults()
-	cfg.GatewayJWTSecret = "gateway-secret"
-	cfg.GatewayJWTIssuer = "gateway-issuer"
+	cfg := config.ConsoleConfig{
+		JWTSecret:        "xsonar-console-dev-secret",
+		JWTIssuer:        "xsonar-console",
+		JWTTTLMinutes:    120,
+		GatewayJWTSecret: "gateway-secret",
+		GatewayJWTIssuer: "gateway-issuer",
+	}
 
 	svc := newConsoleServiceWithConfigAndAllClients(
 		cfg,
@@ -347,7 +356,7 @@ func TestConsoleIssueGatewayTokenSupportsInfiniteTTL(t *testing.T) {
 
 func TestConsoleGetTenantDetailAggregatesTenantAndApps(t *testing.T) {
 	svc := newConsoleServiceWithConfigAndAllClients(
-		ConsoleDefaults(),
+		testConsoleConfig(),
 		xlog.NewStdout("console-test"),
 		stubJSONClient{
 			getFunc: func(_ context.Context, path string, query url.Values) (*clients.EnvelopeResponse, error) {
@@ -378,7 +387,7 @@ func TestConsoleGetTenantDetailAggregatesTenantAndApps(t *testing.T) {
 
 	req := httptest.NewRequest(http.MethodGet, "/admin/v1/tenants/tenant_1", nil)
 	req = pathvar.WithVars(req, map[string]string{"id": "tenant_1"})
-	token, err := shared.SignJWT(ConsoleDefaults().JWTSecret, ConsoleDefaults().JWTIssuer, "user_1", "platform_admin", time.Hour, time.Now())
+	token, err := shared.SignJWT("xsonar-console-dev-secret", "xsonar-console", "user_1", "platform_admin", time.Hour, time.Now())
 	if err != nil {
 		t.Fatalf("sign jwt: %v", err)
 	}
@@ -408,7 +417,7 @@ func TestConsoleGetTenantDetailAggregatesTenantAndApps(t *testing.T) {
 }
 
 func TestConsoleRequiresAdminToken(t *testing.T) {
-	svc := newConsoleServiceWithConfigAndAllClients(ConsoleDefaults(), xlog.NewStdout("console-test"), stubJSONClient{}, stubJSONClient{}, stubJSONClient{})
+	svc := newConsoleServiceWithConfigAndAllClients(testConsoleConfig(), xlog.NewStdout("console-test"), stubJSONClient{}, stubJSONClient{}, stubJSONClient{})
 	req := httptest.NewRequest(http.MethodGet, "/admin/v1/tenants", nil)
 	rec := httptest.NewRecorder()
 
@@ -421,7 +430,7 @@ func TestConsoleRequiresAdminToken(t *testing.T) {
 
 func TestConsoleServiceHealthIncludesProviderAndUpstream(t *testing.T) {
 	svc := newConsoleServiceWithConfigAndAllClients(
-		ConsoleDefaults(),
+		testConsoleConfig(),
 		xlog.NewStdout("console-test"),
 		stubJSONClient{
 			getFunc: func(_ context.Context, path string, query url.Values) (*clients.EnvelopeResponse, error) {
@@ -516,7 +525,7 @@ func TestConsoleServiceHealthIncludesProviderAndUpstream(t *testing.T) {
 func TestBridgeCreateTenantRejectsOversizedName(t *testing.T) {
 	called := false
 	bridge := NewBridge(
-		ConsoleDefaults(),
+		testConsoleConfig(),
 		xlog.NewStdout("console-test"),
 		stubJSONClient{
 			postFunc: func(_ context.Context, path string, payload any) (*clients.EnvelopeResponse, error) {
@@ -546,7 +555,7 @@ func TestBridgeCreateTenantRejectsOversizedName(t *testing.T) {
 func TestBridgeCreateTenantAppRejectsInvalidQuotaType(t *testing.T) {
 	called := false
 	bridge := NewBridge(
-		ConsoleDefaults(),
+		testConsoleConfig(),
 		xlog.NewStdout("console-test"),
 		stubJSONClient{
 			postFunc: func(_ context.Context, path string, payload any) (*clients.EnvelopeResponse, error) {
@@ -577,7 +586,7 @@ func TestBridgeCreateTenantAppRejectsInvalidQuotaType(t *testing.T) {
 func TestBridgeCreateTenantAppAcceptsStandardPathValue(t *testing.T) {
 	called := false
 	bridge := NewBridge(
-		ConsoleDefaults(),
+		testConsoleConfig(),
 		xlog.NewStdout("console-test"),
 		stubJSONClient{
 			postFunc: func(_ context.Context, path string, payload any) (*clients.EnvelopeResponse, error) {
@@ -626,9 +635,19 @@ func okEnvelope(data any) *clients.EnvelopeResponse {
 
 func mustAdminToken(t *testing.T) string {
 	t.Helper()
-	token, err := shared.SignJWT(ConsoleDefaults().JWTSecret, ConsoleDefaults().JWTIssuer, "user_1", "platform_admin", time.Hour, time.Now())
+	token, err := shared.SignJWT("xsonar-console-dev-secret", "xsonar-console", "user_1", "platform_admin", time.Hour, time.Now())
 	if err != nil {
 		t.Fatalf("sign jwt: %v", err)
 	}
 	return token
+}
+
+func testConsoleConfig() config.ConsoleConfig {
+	return config.ConsoleConfig{
+		JWTSecret:        "xsonar-console-dev-secret",
+		JWTIssuer:        "xsonar-console",
+		JWTTTLMinutes:    120,
+		GatewayJWTSecret: "xsonar-gateway-dev-secret",
+		GatewayJWTIssuer: "xsonar-gateway",
+	}
 }

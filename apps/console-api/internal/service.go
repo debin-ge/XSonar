@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"xsonar/apps/access-rpc/accessservice"
+	"xsonar/apps/console-api/internal/config"
 	"xsonar/apps/console-api/internal/types"
 	"xsonar/apps/policy-rpc/policyservice"
 	"xsonar/apps/provider-rpc/providerservice"
@@ -44,30 +45,20 @@ type consoleProviderClient interface {
 
 type consoleService struct {
 	logger         *xlog.Logger
-	config         shared.Config
+	config         config.ConsoleConfig
 	accessClient   consoleAccessClient
 	policyClient   consolePolicyClient
 	providerClient consoleProviderClient
 }
 
-func ConsoleDefaults() shared.Config {
-	cfg := shared.DefaultConfig("console-api", 8081)
-	cfg.JWTSecret = "xsonar-console-dev-secret"
-	cfg.JWTIssuer = "xsonar-console"
-	cfg.JWTTTLMinutes = 120
-	cfg.GatewayJWTSecret = "xsonar-gateway-dev-secret"
-	cfg.GatewayJWTIssuer = "xsonar-gateway"
-	return cfg
-}
-
-func newConsoleServiceWithConfigAndAllClients(config shared.Config, logger *xlog.Logger, accessClient consoleAccessClient, policyClient consolePolicyClient, providerClient consoleProviderClient) *consoleService {
+func newConsoleServiceWithConfigAndAllClients(cfg config.ConsoleConfig, logger *xlog.Logger, accessClient consoleAccessClient, policyClient consolePolicyClient, providerClient consoleProviderClient) *consoleService {
 	if providerClient == nil {
 		panic("provider client is required")
 	}
 
 	return &consoleService{
 		logger:         logger,
-		config:         normalizeConsoleConfig(config),
+		config:         cfg,
 		accessClient:   accessClient,
 		policyClient:   policyClient,
 		providerClient: providerClient,
@@ -653,56 +644,6 @@ func probeProviderUpstreamHealth(ctx context.Context, client consoleProviderClie
 		item["error"] = err.Error()
 	}
 	return item
-}
-
-func normalizeConsoleConfig(config shared.Config) shared.Config {
-	defaults := ConsoleDefaults()
-	if config.ServiceName == "" {
-		config.ServiceName = defaults.ServiceName
-	}
-	if config.HTTPHost == "" {
-		config.HTTPHost = defaults.HTTPHost
-	}
-	if config.HTTPPort == 0 {
-		config.HTTPPort = defaults.HTTPPort
-	}
-	if config.LogDir == "" {
-		config.LogDir = defaults.LogDir
-	}
-	if config.MetricsPath == "" {
-		config.MetricsPath = defaults.MetricsPath
-	}
-	if config.HealthPath == "" {
-		config.HealthPath = defaults.HealthPath
-	}
-	if config.InfoPath == "" {
-		config.InfoPath = defaults.InfoPath
-	}
-	if config.ReadTimeoutMS <= 0 {
-		config.ReadTimeoutMS = defaults.ReadTimeoutMS
-	}
-	if config.WriteTimeoutMS <= 0 {
-		config.WriteTimeoutMS = defaults.WriteTimeoutMS
-	}
-	if config.ShutdownTimeoutMS <= 0 {
-		config.ShutdownTimeoutMS = defaults.ShutdownTimeoutMS
-	}
-	if config.JWTSecret == "" {
-		config.JWTSecret = defaults.JWTSecret
-	}
-	if config.JWTIssuer == "" {
-		config.JWTIssuer = defaults.JWTIssuer
-	}
-	if config.JWTTTLMinutes <= 0 {
-		config.JWTTTLMinutes = defaults.JWTTTLMinutes
-	}
-	if config.GatewayJWTSecret == "" {
-		config.GatewayJWTSecret = defaults.GatewayJWTSecret
-	}
-	if config.GatewayJWTIssuer == "" {
-		config.GatewayJWTIssuer = defaults.GatewayJWTIssuer
-	}
-	return config
 }
 
 func stringValue(value any) string {
