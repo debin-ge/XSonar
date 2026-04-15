@@ -849,6 +849,9 @@ func normalizeProviderQuery(policyKey, upstreamPath string, query map[string]any
 	if policyKey == "search_tweets_v1" && upstreamPath == "/base/apitools/search" && !hasNonEmptyQueryValue(query["product"]) {
 		query["product"] = "Top"
 	}
+	if !hasNonEmptyQueryValue(query["resFormat"]) {
+		query["resFormat"] = "json"
+	}
 	return query
 }
 

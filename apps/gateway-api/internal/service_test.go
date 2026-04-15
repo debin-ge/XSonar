@@ -161,8 +161,11 @@ func TestGatewayProxySuccess(t *testing.T) {
 			if query["userIds"] != "1,2" {
 				t.Fatalf("expected userIds to be passed through, got %#v", query["userIds"])
 			}
-			if len(query) != 1 {
-				t.Fatalf("expected only caller query params to be forwarded, got %#v", query)
+			if len(query) != 2 {
+				t.Fatalf("expected only caller query params plus resFormat to be forwarded, got %#v", query)
+			}
+			if query["resFormat"] != "json" {
+				t.Fatalf("expected resFormat=json default, got %#v", query["resFormat"])
 			}
 			return okEnvelope(map[string]any{
 				"status_code":          200,
@@ -576,10 +579,11 @@ func TestGatewayPreservesTweetDetailQueryParams(t *testing.T) {
 				t.Fatalf("decode query json: %v", err)
 			}
 			expected := map[string]any{
-				"tweetId": "1971453180132327700",
+				"tweetId":   "1971453180132327700",
+				"resFormat": "json",
 			}
 			if !reflect.DeepEqual(query, expected) {
-				t.Fatalf("expected gateway to forward caller query unchanged, got %#v", query)
+				t.Fatalf("expected gateway to forward caller query unchanged plus resFormat, got %#v", query)
 			}
 			return okEnvelope(map[string]any{
 				"status_code":          200,
@@ -854,6 +858,7 @@ func TestGatewayPreservesAccountAnalyticsQueryParams(t *testing.T) {
 				"restId":    "rest-1",
 				"authToken": "auth-1",
 				"csrfToken": "csrf-1",
+				"resFormat": "json",
 			}
 			if !reflect.DeepEqual(query, expected) {
 				t.Fatalf("unexpected provider query: %#v", query)
@@ -1611,11 +1616,12 @@ func TestNormalizeProviderQueryLeavesSearchTweetsWithoutCountUnchanged(t *testin
 	got := normalizeProviderQuery("search_tweets_v1", "/base/apitools/search", query)
 
 	expected := map[string]any{
-		"words":   "ai",
-		"product": "Top",
+		"words":     "ai",
+		"product":   "Top",
+		"resFormat": "json",
 	}
 	if !reflect.DeepEqual(got, expected) {
-		t.Fatalf("expected search tweets query to default product=Top, got %#v", got)
+		t.Fatalf("expected search tweets query to default product=Top and resFormat=json, got %#v", got)
 	}
 }
 
@@ -1629,9 +1635,10 @@ func TestNormalizeProviderQueryLeavesExplicitSearchTweetsCountUnchanged(t *testi
 	got := normalizeProviderQuery("search_tweets_v1", "/base/apitools/search", query)
 
 	expected := map[string]any{
-		"words":   "ai",
-		"count":   "100",
-		"product": "Latest",
+		"words":     "ai",
+		"count":     "100",
+		"product":   "Latest",
+		"resFormat": "json",
 	}
 	if !reflect.DeepEqual(got, expected) {
 		t.Fatalf("expected explicit search tweets params to be preserved, got %#v", got)
@@ -1647,9 +1654,10 @@ func TestNormalizeProviderQueryLeavesInvalidSearchTweetsCountUnchanged(t *testin
 	got := normalizeProviderQuery("search_tweets_v1", "/base/apitools/search", query)
 
 	expected := map[string]any{
-		"words":   "ai",
-		"count":   "abc",
-		"product": "Top",
+		"words":     "ai",
+		"count":     "abc",
+		"product":   "Top",
+		"resFormat": "json",
 	}
 	if !reflect.DeepEqual(got, expected) {
 		t.Fatalf("expected invalid count to be preserved for provider passthrough, got %#v", got)
@@ -1711,8 +1719,9 @@ func TestNormalizeProviderQueryLeavesReadonlyAliasParamsUnchanged(t *testing.T) 
 				"cursor":  "cursor-1",
 			},
 			expected: map[string]any{
-				"tweetId": "tweet-1",
-				"cursor":  "cursor-1",
+				"tweetId":   "tweet-1",
+				"cursor":    "cursor-1",
+				"resFormat": "json",
 			},
 		},
 		{
@@ -1732,6 +1741,7 @@ func TestNormalizeProviderQueryLeavesReadonlyAliasParamsUnchanged(t *testing.T) 
 				"includeEntities": "true",
 				"trimUser":        "false",
 				"cursor":          "cursor-1",
+				"resFormat":       "json",
 			},
 		},
 		{
@@ -1747,6 +1757,7 @@ func TestNormalizeProviderQueryLeavesReadonlyAliasParamsUnchanged(t *testing.T) 
 				"restId":    "rest-1",
 				"authToken": "auth-1",
 				"csrfToken": "csrf-1",
+				"resFormat": "json",
 			},
 		},
 	}
@@ -1842,9 +1853,10 @@ func TestGatewaySearchTweetsPreservesExplicitCount(t *testing.T) {
 				t.Fatalf("decode query json: %v", err)
 			}
 			expected := map[string]any{
-				"words":   "ai gateway optimization",
-				"count":   "100",
-				"product": "Top",
+				"words":     "ai gateway optimization",
+				"count":     "100",
+				"product":   "Top",
+				"resFormat": "json",
 			}
 			if !reflect.DeepEqual(query, expected) {
 				t.Fatalf("expected search tweets params to be forwarded unchanged, got %#v", query)
@@ -1934,8 +1946,9 @@ func TestGatewaySearchTweetsDoesNotInjectDefaultCount(t *testing.T) {
 				t.Fatalf("decode query json: %v", err)
 			}
 			expected := map[string]any{
-				"words":   "ai gateway optimization",
-				"product": "Top",
+				"words":     "ai gateway optimization",
+				"product":   "Top",
+				"resFormat": "json",
 			}
 			if !reflect.DeepEqual(query, expected) {
 				t.Fatalf("expected search tweets query to omit default params, got %#v", query)

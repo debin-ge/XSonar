@@ -327,6 +327,11 @@ func (r *runner) fetchPage(ctx context.Context, policy resolvedPolicy, task work
 		}
 	}
 
+	// Apply default resFormat=json when not specified, matching gateway behavior
+	if !hasNonEmptyProduct(query["resFormat"]) {
+		query["resFormat"] = "json"
+	}
+
 	queryJSON, err := json.Marshal(query)
 	if err != nil {
 		return providerExecutionPayload{}, fmt.Errorf("encode provider query: %w", err)
