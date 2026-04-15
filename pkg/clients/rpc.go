@@ -17,7 +17,6 @@ import (
 
 type AccessRPC interface {
 	Health(ctx context.Context) (*EnvelopeResponse, error)
-	GetAppAuthContext(ctx context.Context, req *accessservice.GetAppAuthContextRequest) (*EnvelopeResponse, error)
 	GetAppAuthContextByID(ctx context.Context, req *accessservice.GetAppAuthContextByIDRequest) (*EnvelopeResponse, error)
 	CheckReplay(ctx context.Context, req *accessservice.CheckReplayRequest) (*EnvelopeResponse, error)
 	CheckAndReserveQuota(ctx context.Context, req *accessservice.CheckAndReserveQuotaRequest) (*EnvelopeResponse, error)
@@ -29,7 +28,6 @@ type AccessRPC interface {
 	ListTenants(ctx context.Context, req *accessservice.ListTenantsRequest) (*EnvelopeResponse, error)
 	CreateTenantApp(ctx context.Context, req *accessservice.CreateTenantAppRequest) (*EnvelopeResponse, error)
 	ListTenantApps(ctx context.Context, req *accessservice.ListTenantAppsRequest) (*EnvelopeResponse, error)
-	RotateAppSecret(ctx context.Context, req *accessservice.RotateAppSecretRequest) (*EnvelopeResponse, error)
 	UpdateTenantAppStatus(ctx context.Context, req *accessservice.UpdateTenantAppStatusRequest) (*EnvelopeResponse, error)
 	UpdateAppQuota(ctx context.Context, req *accessservice.UpdateAppQuotaRequest) (*EnvelopeResponse, error)
 	CheckIpBan(ctx context.Context, req *accessservice.CheckIpBanRequest) (*EnvelopeResponse, error)
@@ -137,11 +135,6 @@ func (c *accessRPCClient) Health(ctx context.Context) (*EnvelopeResponse, error)
 	return grpcHealthEnvelope(ctx, c.rpcClient)
 }
 
-func (c *accessRPCClient) GetAppAuthContext(ctx context.Context, req *accessservice.GetAppAuthContextRequest) (*EnvelopeResponse, error) {
-	resp, err := c.client.GetAppAuthContext(ctx, req)
-	return rpcEnvelope(resp, err)
-}
-
 func (c *accessRPCClient) GetAppAuthContextByID(ctx context.Context, req *accessservice.GetAppAuthContextByIDRequest) (*EnvelopeResponse, error) {
 	resp, err := c.client.GetAppAuthContextByID(ctx, req)
 	return rpcEnvelope(resp, err)
@@ -194,11 +187,6 @@ func (c *accessRPCClient) CreateTenantApp(ctx context.Context, req *accessservic
 
 func (c *accessRPCClient) ListTenantApps(ctx context.Context, req *accessservice.ListTenantAppsRequest) (*EnvelopeResponse, error) {
 	resp, err := c.client.ListTenantApps(ctx, req)
-	return rpcEnvelope(resp, err)
-}
-
-func (c *accessRPCClient) RotateAppSecret(ctx context.Context, req *accessservice.RotateAppSecretRequest) (*EnvelopeResponse, error) {
-	resp, err := c.client.RotateAppSecret(ctx, req)
 	return rpcEnvelope(resp, err)
 }
 

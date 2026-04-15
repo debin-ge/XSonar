@@ -27,12 +27,6 @@ func (b *Bridge) Close(ctx context.Context) error {
 	return b.svc.Shutdown(ctx)
 }
 
-func (b *Bridge) GetAppAuthContext(ctx context.Context, in *accesspb.GetAppAuthContextRequest) (*accesspb.JsonResponse, error) {
-	return encodeAccessResponse(b.svc.getAppAuthContext(ctx, getAppAuthContextRequest{
-		AppKey: in.GetAppKey(),
-	})), nil
-}
-
 func (b *Bridge) GetAppAuthContextByID(ctx context.Context, in *accesspb.GetAppAuthContextByIDRequest) (*accesspb.JsonResponse, error) {
 	return encodeAccessResponse(b.svc.getAppAuthContextByID(ctx, getAppAuthContextByIDRequest{
 		AppID: in.GetAppId(),
@@ -114,12 +108,6 @@ func (b *Bridge) CreateTenantApp(ctx context.Context, in *accesspb.CreateTenantA
 
 func (b *Bridge) ListTenantApps(ctx context.Context, in *accesspb.ListTenantAppsRequest) (*accesspb.JsonResponse, error) {
 	return encodeAccessResponse(b.svc.listTenantApps(ctx, in.GetTenantId())), nil
-}
-
-func (b *Bridge) RotateAppSecret(ctx context.Context, in *accesspb.RotateAppSecretRequest) (*accesspb.JsonResponse, error) {
-	return encodeAccessResponse(b.svc.rotateAppSecret(ctx, rotateAppSecretRequest{
-		AppID: in.GetAppId(),
-	})), nil
 }
 
 func (b *Bridge) UpdateTenantAppStatus(ctx context.Context, in *accesspb.UpdateTenantAppStatusRequest) (*accesspb.JsonResponse, error) {

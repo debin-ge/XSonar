@@ -54,10 +54,6 @@ type PublishPolicyConfigReq struct {
 	ProviderCredentialID string            `json:"provider_credential_id"`
 }
 
-type RotateAppSecretReq struct {
-	Id string `path:"id"`
-}
-
 type UpdateAppQuotaReq struct {
 	Id         string `path:"id"`
 	DailyQuota int64  `json:"daily_quota"`

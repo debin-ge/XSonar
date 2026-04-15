@@ -84,10 +84,6 @@ func (b *Bridge) HandleCreateTenantApp(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-func (b *Bridge) HandleRotateAppSecret(w http.ResponseWriter, r *http.Request) {
-	b.svc.handleRotateAppSecret(w, r)
-}
-
 func (b *Bridge) HandleUpdateAppStatus(w http.ResponseWriter, r *http.Request) {
 	if !b.svc.requireAdminAuth(w, r) {
 		return

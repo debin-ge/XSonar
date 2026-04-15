@@ -60,7 +60,7 @@ func TestCollectorTaskChain(t *testing.T) {
 	defer gatewayServer.Close()
 
 	consoleToken := loginConsoleAdmin(t, consoleServer.URL)
-	tenantID, appID, _, _ := createTenantAndApp(t, consoleServer.URL, consoleToken)
+	tenantID, appID := createTenantAndApp(t, consoleServer.URL, consoleToken)
 	gatewayToken := issueGatewayTokenForCollector(t, consoleServer.URL, consoleToken, tenantID, appID, 0)
 
 	createResp := postJSON(t, gatewayServer.URL+"/v1/collector/tasks/periodic", map[string]any{
@@ -192,7 +192,7 @@ func loginConsoleAdmin(t *testing.T, baseURL string) string {
 	return token
 }
 
-func createTenantAndApp(t *testing.T, baseURL, consoleToken string) (tenantID, appID, appKey, appSecret string) {
+func createTenantAndApp(t *testing.T, baseURL, consoleToken string) (tenantID, appID string) {
 	t.Helper()
 
 	tenantResp := postJSON(t, baseURL+"/admin/v1/tenants", map[string]any{
@@ -217,12 +217,10 @@ func createTenantAndApp(t *testing.T, baseURL, consoleToken string) (tenantID, a
 	}
 	appData := mustObject(t, appResp.Data)
 	appID = stringValue(appData["app_id"])
-	appKey = stringValue(appData["app_key"])
-	appSecret = stringValue(appData["app_secret"])
-	if appID == "" || appKey == "" || appSecret == "" {
+	if appID == "" {
 		t.Fatalf("expected app payload, got %+v", appData)
 	}
-	return tenantID, appID, appKey, appSecret
+	return tenantID, appID
 }
 
 func issueGatewayTokenForCollector(t *testing.T, baseURL, consoleToken, tenantID, appID string, ttl int64) string {

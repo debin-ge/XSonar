@@ -795,57 +795,6 @@
           }
         }
       }
-    },
-    "/admin/v1/apps/{id}/secret:rotate": {
-      "post": {
-        "security": [
-          {
-            "adminBearer": []
-          }
-        ],
-        "consumes": [
-          "application/x-www-form-urlencoded"
-        ],
-        "produces": [
-          "application/json"
-        ],
-        "schemes": [
-          "http"
-        ],
-        "tags": [
-          "Console API"
-        ],
-        "summary": "Rotate an application secret.",
-        "operationId": "rotateAppSecret",
-        "parameters": [
-          {
-            "type": "string",
-            "name": "id",
-            "in": "path",
-            "required": true
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "",
-            "schema": {
-              "type": "object",
-              "properties": {
-                "code": {
-                  "type": "integer"
-                },
-                "data": {},
-                "message": {
-                  "type": "string"
-                },
-                "request_id": {
-                  "type": "string"
-                }
-              }
-            }
-          }
-        }
-      }
     }
   },
   "securityDefinitions": {

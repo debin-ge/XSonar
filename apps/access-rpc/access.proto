@@ -5,7 +5,6 @@ package xsonar.access.v1;
 option go_package = "xsonar/pkg/proto/accesspb";
 
 service AccessService {
-  rpc GetAppAuthContext(GetAppAuthContextRequest) returns (JsonResponse);
   rpc GetAppAuthContextByID(GetAppAuthContextByIDRequest) returns (JsonResponse);
   rpc CheckReplay(CheckReplayRequest) returns (JsonResponse);
   rpc CheckAndReserveQuota(CheckAndReserveQuotaRequest) returns (JsonResponse);
@@ -17,7 +16,6 @@ service AccessService {
   rpc ListTenants(ListTenantsRequest) returns (JsonResponse);
   rpc CreateTenantApp(CreateTenantAppRequest) returns (JsonResponse);
   rpc ListTenantApps(ListTenantAppsRequest) returns (JsonResponse);
-  rpc RotateAppSecret(RotateAppSecretRequest) returns (JsonResponse);
   rpc UpdateTenantAppStatus(UpdateTenantAppStatusRequest) returns (JsonResponse);
   rpc UpdateAppQuota(UpdateAppQuotaRequest) returns (JsonResponse);
   rpc CheckIpBan(CheckIpBanRequest) returns (JsonResponse);
@@ -27,10 +25,6 @@ message JsonResponse {
   int32 code = 1;
   string message = 2;
   string data_json = 3;
-}
-
-message GetAppAuthContextRequest {
-  string app_key = 1;
 }
 
 message GetAppAuthContextByIDRequest {
@@ -94,10 +88,6 @@ message CreateTenantAppRequest {
 
 message ListTenantAppsRequest {
   string tenant_id = 1;
-}
-
-message RotateAppSecretRequest {
-  string app_id = 1;
 }
 
 message UpdateTenantAppStatusRequest {

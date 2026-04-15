@@ -22,7 +22,6 @@ func NewHandlerWithConfigAndAllClients(logger *xlog.Logger, config shared.Config
 	mux.HandleFunc("POST /admin/v1/tenants", bridge.HandleCreateTenant)
 	mux.HandleFunc("GET /admin/v1/tenants/{id}", bridge.HandleGetTenantDetail)
 	mux.HandleFunc("POST /admin/v1/tenants/{id}/apps", bridge.HandleCreateTenantApp)
-	mux.HandleFunc("POST /admin/v1/apps/{id}/secret:rotate", bridge.HandleRotateAppSecret)
 	mux.HandleFunc("PUT /admin/v1/apps/{id}/status", bridge.HandleUpdateAppStatus)
 	mux.HandleFunc("PUT /admin/v1/apps/{id}/quota", bridge.HandleUpdateAppQuota)
 	mux.HandleFunc("GET /admin/v1/policies", bridge.HandleListPolicies)

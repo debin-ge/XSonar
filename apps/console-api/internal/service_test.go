@@ -56,10 +56,6 @@ func (s stubJSONClient) AuthenticateConsoleUser(ctx context.Context, req *access
 	return s.Post(ctx, "/rpc/AuthenticateConsoleUser", req)
 }
 
-func (s stubJSONClient) GetAppAuthContext(ctx context.Context, req *accessservice.GetAppAuthContextRequest) (*clients.EnvelopeResponse, error) {
-	return s.Post(ctx, "/rpc/GetAppAuthContext", req)
-}
-
 func (s stubJSONClient) GetAppAuthContextByID(ctx context.Context, req *accessservice.GetAppAuthContextByIDRequest) (*clients.EnvelopeResponse, error) {
 	return s.Post(ctx, "/rpc/GetAppAuthContextByID", req)
 }
@@ -97,10 +93,6 @@ func (s stubJSONClient) ListTenantApps(ctx context.Context, req *accessservice.L
 
 func (s stubJSONClient) CreateTenantApp(ctx context.Context, req *accessservice.CreateTenantAppRequest) (*clients.EnvelopeResponse, error) {
 	return s.Post(ctx, "/rpc/CreateTenantApp", req)
-}
-
-func (s stubJSONClient) RotateAppSecret(ctx context.Context, req *accessservice.RotateAppSecretRequest) (*clients.EnvelopeResponse, error) {
-	return s.Post(ctx, "/rpc/RotateAppSecret", req)
 }
 
 func (s stubJSONClient) UpdateTenantAppStatus(ctx context.Context, req *accessservice.UpdateTenantAppStatusRequest) (*clients.EnvelopeResponse, error) {
@@ -221,8 +213,6 @@ func TestConsoleIssueGatewayTokenReturnsGatewayJWT(t *testing.T) {
 				return okEnvelope(map[string]any{
 					"tenant_id":   "tenant_1",
 					"app_id":      "app_1",
-					"app_key":     "app_key_1",
-					"app_secret":  "app_secret_1",
 					"status":      "active",
 					"daily_quota": 100,
 					"qps_limit":   10,
@@ -305,8 +295,6 @@ func TestConsoleIssueGatewayTokenSupportsInfiniteTTL(t *testing.T) {
 				return okEnvelope(map[string]any{
 					"tenant_id":   "tenant_1",
 					"app_id":      "app_1",
-					"app_key":     "app_key_1",
-					"app_secret":  "app_secret_1",
 					"status":      "active",
 					"daily_quota": 100,
 					"qps_limit":   10,
@@ -376,7 +364,7 @@ func TestConsoleGetTenantDetailAggregatesTenantAndApps(t *testing.T) {
 					}
 					return okEnvelope(map[string]any{
 						"items": []map[string]any{
-							{"app_id": "app_1", "tenant_id": "tenant_1", "app_key": "app_key_1"},
+							{"app_id": "app_1", "tenant_id": "tenant_1", "status": "active"},
 						},
 					}), nil
 				default:
@@ -522,56 +510,6 @@ func TestConsoleServiceHealthIncludesProviderAndUpstream(t *testing.T) {
 
 	if !foundProvider || !foundUpstream {
 		t.Fatalf("missing provider health items: %#v", response.Data.Services)
-	}
-}
-
-func TestConsoleRotateAppSecretReturns404ForUnknownApp(t *testing.T) {
-	svc := newConsoleServiceWithConfigAndAllClients(
-		ConsoleDefaults(),
-		xlog.NewStdout("console-test"),
-		stubJSONClient{
-			postFunc: func(_ context.Context, path string, payload any) (*clients.EnvelopeResponse, error) {
-				if path != "/rpc/RotateAppSecret" {
-					return nil, errors.New("unexpected path: " + path)
-				}
-				req := payload.(*accessservice.RotateAppSecretRequest)
-				if req.AppId != "tenant_6244fe035b26b519" {
-					t.Fatalf("unexpected app id: %#v", req.AppId)
-				}
-				return &clients.EnvelopeResponse{
-						Code:    model.CodeNotFound,
-						Message: "app not found",
-						Data:    json.RawMessage("null"),
-					}, &clients.RPCError{
-						Code:    model.CodeNotFound,
-						Message: "app not found",
-					}
-			},
-		},
-		stubJSONClient{},
-		stubJSONClient{},
-	)
-
-	req := httptest.NewRequest(http.MethodPost, "/admin/v1/apps/tenant_6244fe035b26b519/secret:rotate", nil)
-	req = pathvar.WithVars(req, map[string]string{"id": "tenant_6244fe035b26b519"})
-	req.Header.Set("Authorization", "Bearer "+mustAdminToken(t))
-	rec := httptest.NewRecorder()
-
-	svc.handleRotateAppSecret(rec, req)
-
-	if rec.Code != http.StatusNotFound {
-		t.Fatalf("expected 404, got %d: %s", rec.Code, rec.Body.String())
-	}
-
-	var response struct {
-		Code    int    `json:"code"`
-		Message string `json:"message"`
-	}
-	if err := json.Unmarshal(rec.Body.Bytes(), &response); err != nil {
-		t.Fatalf("decode response: %v", err)
-	}
-	if response.Code != model.CodeNotFound || response.Message != "app not found" {
-		t.Fatalf("unexpected response: %+v", response)
 	}
 }
 

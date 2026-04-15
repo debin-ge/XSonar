@@ -45,8 +45,8 @@ type tenantApp struct {
 	ID         string    `json:"app_id"`
 	TenantID   string    `json:"tenant_id"`
 	Name       string    `json:"name"`
-	AppKey     string    `json:"app_key"`
-	AppSecret  string    `json:"app_secret,omitempty"`
+	AppKey     string    `json:"-"`
+	AppSecret  string    `json:"-"`
 	Status     string    `json:"status"`
 	DailyQuota int64     `json:"daily_quota"`
 	QPSLimit   int       `json:"qps_limit"`
@@ -77,7 +77,6 @@ type service struct {
 	mu           sync.RWMutex
 	tenants      map[string]*tenant
 	apps         map[string]*tenantApp
-	appByKey     map[string]string
 	consoleUsers map[string]*consoleUser
 	nonceSeen    map[string]map[string]time.Time
 	dailyUsage   map[string]map[string]int64
@@ -103,10 +102,6 @@ type createTenantAppRequest struct {
 	QPSLimit   int    `json:"qps_limit"`
 }
 
-type rotateAppSecretRequest struct {
-	AppID string `json:"app_id"`
-}
-
 type updateTenantAppStatusRequest struct {
 	AppID  string `json:"app_id"`
 	Status string `json:"status"`
@@ -116,10 +111,6 @@ type updateAppQuotaRequest struct {
 	AppID      string `json:"app_id"`
 	DailyQuota int64  `json:"daily_quota"`
 	QPSLimit   int    `json:"qps_limit"`
-}
-
-type getAppAuthContextRequest struct {
-	AppKey string `json:"app_key"`
 }
 
 type getAppAuthContextByIDRequest struct {
@@ -172,7 +163,6 @@ func newService(logger *xlog.Logger) *service {
 		logger:       logger,
 		tenants:      make(map[string]*tenant),
 		apps:         make(map[string]*tenantApp),
-		appByKey:     make(map[string]string),
 		consoleUsers: make(map[string]*consoleUser),
 		nonceSeen:    make(map[string]map[string]time.Time),
 		dailyUsage:   make(map[string]map[string]int64),
@@ -290,18 +280,6 @@ func (s *service) handleListTenantApps(w http.ResponseWriter, r *http.Request) {
 	writeServiceResult(w, requestID, data, svcErr)
 }
 
-func (s *service) handleRotateAppSecret(w http.ResponseWriter, r *http.Request) {
-	requestID := shared.EnsureRequestID(w, r)
-	var req rotateAppSecretRequest
-	if err := shared.DecodeJSONBody(r, &req); err != nil {
-		shared.WriteError(w, http.StatusBadRequest, model.CodeInvalidRequest, "invalid JSON body", requestID)
-		return
-	}
-
-	data, svcErr := s.rotateAppSecret(r.Context(), req)
-	writeServiceResult(w, requestID, data, svcErr)
-}
-
 func (s *service) handleUpdateTenantAppStatus(w http.ResponseWriter, r *http.Request) {
 	requestID := shared.EnsureRequestID(w, r)
 	var req updateTenantAppStatusRequest
@@ -323,18 +301,6 @@ func (s *service) handleUpdateAppQuota(w http.ResponseWriter, r *http.Request) {
 	}
 
 	data, svcErr := s.updateAppQuota(r.Context(), req)
-	writeServiceResult(w, requestID, data, svcErr)
-}
-
-func (s *service) handleGetAppAuthContext(w http.ResponseWriter, r *http.Request) {
-	requestID := shared.EnsureRequestID(w, r)
-	var req getAppAuthContextRequest
-	if err := shared.DecodeJSONBody(r, &req); err != nil {
-		shared.WriteError(w, http.StatusBadRequest, model.CodeInvalidRequest, "invalid JSON body", requestID)
-		return
-	}
-
-	data, svcErr := s.getAppAuthContext(r.Context(), req)
 	writeServiceResult(w, requestID, data, svcErr)
 }
 
@@ -517,7 +483,6 @@ func (s *service) createTenantApp(ctx context.Context, req createTenantAppReques
 	}
 
 	s.apps[item.ID] = item
-	s.appByKey[item.AppKey] = item.ID
 
 	s.logger.Info("tenant app created", map[string]any{
 		"tenant_id": item.TenantID,
@@ -546,32 +511,6 @@ func (s *service) listTenantApps(ctx context.Context, tenantID string) (any, *se
 	})
 
 	return map[string]any{"items": items}, nil
-}
-
-func (s *service) rotateAppSecret(ctx context.Context, req rotateAppSecretRequest) (any, *serviceError) {
-	if s.pgStore != nil {
-		return s.pgStore.rotateAppSecret(ctx, req)
-	}
-	if strings.TrimSpace(req.AppID) == "" {
-		return nil, invalidRequest("app_id is required")
-	}
-
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	item, ok := s.apps[req.AppID]
-	if !ok {
-		return nil, notFound("app not found")
-	}
-
-	item.AppSecret = shared.NewSecret("secret")
-	item.UpdatedAt = time.Now().UTC()
-
-	return map[string]any{
-		"app_id":     item.ID,
-		"app_secret": item.AppSecret,
-		"updated_at": item.UpdatedAt,
-	}, nil
 }
 
 func (s *service) updateTenantAppStatus(ctx context.Context, req updateTenantAppStatusRequest) (any, *serviceError) {
@@ -627,35 +566,6 @@ func (s *service) updateAppQuota(ctx context.Context, req updateAppQuotaRequest)
 	return item, nil
 }
 
-func (s *service) getAppAuthContext(ctx context.Context, req getAppAuthContextRequest) (any, *serviceError) {
-	if s.pgStore != nil {
-		return s.pgStore.getAppAuthContext(ctx, req)
-	}
-	if strings.TrimSpace(req.AppKey) == "" {
-		return nil, invalidRequest("app_key is required")
-	}
-
-	s.mu.RLock()
-	appID, ok := s.appByKey[req.AppKey]
-	if !ok {
-		s.mu.RUnlock()
-		return nil, notFound("app_key not found")
-	}
-
-	item := *s.apps[appID]
-	s.mu.RUnlock()
-
-	return map[string]any{
-		"tenant_id":   item.TenantID,
-		"app_id":      item.ID,
-		"app_key":     item.AppKey,
-		"app_secret":  item.AppSecret,
-		"status":      item.Status,
-		"daily_quota": item.DailyQuota,
-		"qps_limit":   item.QPSLimit,
-	}, nil
-}
-
 func (s *service) getAppAuthContextByID(ctx context.Context, req getAppAuthContextByIDRequest) (any, *serviceError) {
 	if s.pgStore != nil {
 		return s.pgStore.getAppAuthContextByID(ctx, req)
@@ -676,8 +586,6 @@ func (s *service) getAppAuthContextByID(ctx context.Context, req getAppAuthConte
 	return map[string]any{
 		"tenant_id":   app.TenantID,
 		"app_id":      app.ID,
-		"app_key":     app.AppKey,
-		"app_secret":  app.AppSecret,
 		"status":      app.Status,
 		"daily_quota": app.DailyQuota,
 		"qps_limit":   app.QPSLimit,

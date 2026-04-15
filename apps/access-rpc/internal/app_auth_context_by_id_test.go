@@ -39,7 +39,10 @@ func TestGetAppAuthContextByIDReturnsAppSnapshot(t *testing.T) {
 	if payload["app_id"] != app.ID {
 		t.Fatalf("expected app_id %q, got %#v", app.ID, payload["app_id"])
 	}
-	if payload["app_secret"] != app.AppSecret {
-		t.Fatalf("expected app_secret to be preserved, got %#v", payload["app_secret"])
+	if _, ok := payload["app_secret"]; ok {
+		t.Fatalf("did not expect app_secret in auth payload, got %#v", payload["app_secret"])
+	}
+	if _, ok := payload["app_key"]; ok {
+		t.Fatalf("did not expect app_key in auth payload, got %#v", payload["app_key"])
 	}
 }

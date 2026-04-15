@@ -39,16 +39,12 @@ func (s stubJSONClient) CheckIpBan(ctx context.Context, req *accessservice.Check
 	return s.call(ctx, "/rpc/CheckIpBan", req)
 }
 
-func (s stubJSONClient) GetAppAuthContext(ctx context.Context, req *accessservice.GetAppAuthContextRequest) (*clients.EnvelopeResponse, error) {
-	return s.call(ctx, "/rpc/GetAppAuthContext", req)
-}
-
 func (s stubJSONClient) GetAppAuthContextByID(ctx context.Context, req *accessservice.GetAppAuthContextByIDRequest) (*clients.EnvelopeResponse, error) {
 	resp, err := s.call(ctx, "/rpc/GetAppAuthContextByID", req)
 	if err == nil || !strings.Contains(err.Error(), "unexpected") {
 		return resp, err
 	}
-	return s.call(ctx, "/rpc/GetAppAuthContext", &accessservice.GetAppAuthContextRequest{AppKey: req.AppId})
+	return s.call(ctx, "/rpc/GetAppAuthContext", map[string]any{"app_id": req.AppId})
 }
 
 func (s stubJSONClient) CheckAndReserveQuota(ctx context.Context, req *accessservice.CheckAndReserveQuotaRequest) (*clients.EnvelopeResponse, error) {

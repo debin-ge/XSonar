@@ -51,13 +51,16 @@ func TestAccessServiceLifecycle(t *testing.T) {
 	}
 	app := appData.(*tenantApp)
 
-	contextData, contextErr := svc.getAppAuthContext(ctx, getAppAuthContextRequest{AppKey: app.AppKey})
+	contextData, contextErr := svc.getAppAuthContextByID(ctx, getAppAuthContextByIDRequest{AppID: app.ID})
 	if contextErr != nil {
-		t.Fatalf("getAppAuthContext returned error: %v", contextErr)
+		t.Fatalf("getAppAuthContextByID returned error: %v", contextErr)
 	}
 	contextMap := contextData.(map[string]any)
-	if contextMap["app_secret"] == "" {
-		t.Fatal("expected app_secret in auth context")
+	if _, ok := contextMap["app_secret"]; ok {
+		t.Fatalf("did not expect app_secret in auth context: %#v", contextMap)
+	}
+	if _, ok := contextMap["app_key"]; ok {
+		t.Fatalf("did not expect app_key in auth context: %#v", contextMap)
 	}
 
 	if _, replayErr := svc.checkReplay(ctx, checkReplayRequest{AppID: app.ID, Nonce: "nonce-1", Timestamp: time.Now().Unix()}); replayErr != nil {

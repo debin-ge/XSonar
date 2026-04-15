@@ -19,7 +19,6 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	AccessService_GetAppAuthContext_FullMethodName       = "/xsonar.access.v1.AccessService/GetAppAuthContext"
 	AccessService_GetAppAuthContextByID_FullMethodName   = "/xsonar.access.v1.AccessService/GetAppAuthContextByID"
 	AccessService_CheckReplay_FullMethodName             = "/xsonar.access.v1.AccessService/CheckReplay"
 	AccessService_CheckAndReserveQuota_FullMethodName    = "/xsonar.access.v1.AccessService/CheckAndReserveQuota"
@@ -31,7 +30,6 @@ const (
 	AccessService_ListTenants_FullMethodName             = "/xsonar.access.v1.AccessService/ListTenants"
 	AccessService_CreateTenantApp_FullMethodName         = "/xsonar.access.v1.AccessService/CreateTenantApp"
 	AccessService_ListTenantApps_FullMethodName          = "/xsonar.access.v1.AccessService/ListTenantApps"
-	AccessService_RotateAppSecret_FullMethodName         = "/xsonar.access.v1.AccessService/RotateAppSecret"
 	AccessService_UpdateTenantAppStatus_FullMethodName   = "/xsonar.access.v1.AccessService/UpdateTenantAppStatus"
 	AccessService_UpdateAppQuota_FullMethodName          = "/xsonar.access.v1.AccessService/UpdateAppQuota"
 	AccessService_CheckIpBan_FullMethodName              = "/xsonar.access.v1.AccessService/CheckIpBan"
@@ -41,7 +39,6 @@ const (
 //
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 type AccessServiceClient interface {
-	GetAppAuthContext(ctx context.Context, in *GetAppAuthContextRequest, opts ...grpc.CallOption) (*JsonResponse, error)
 	GetAppAuthContextByID(ctx context.Context, in *GetAppAuthContextByIDRequest, opts ...grpc.CallOption) (*JsonResponse, error)
 	CheckReplay(ctx context.Context, in *CheckReplayRequest, opts ...grpc.CallOption) (*JsonResponse, error)
 	CheckAndReserveQuota(ctx context.Context, in *CheckAndReserveQuotaRequest, opts ...grpc.CallOption) (*JsonResponse, error)
@@ -53,7 +50,6 @@ type AccessServiceClient interface {
 	ListTenants(ctx context.Context, in *ListTenantsRequest, opts ...grpc.CallOption) (*JsonResponse, error)
 	CreateTenantApp(ctx context.Context, in *CreateTenantAppRequest, opts ...grpc.CallOption) (*JsonResponse, error)
 	ListTenantApps(ctx context.Context, in *ListTenantAppsRequest, opts ...grpc.CallOption) (*JsonResponse, error)
-	RotateAppSecret(ctx context.Context, in *RotateAppSecretRequest, opts ...grpc.CallOption) (*JsonResponse, error)
 	UpdateTenantAppStatus(ctx context.Context, in *UpdateTenantAppStatusRequest, opts ...grpc.CallOption) (*JsonResponse, error)
 	UpdateAppQuota(ctx context.Context, in *UpdateAppQuotaRequest, opts ...grpc.CallOption) (*JsonResponse, error)
 	CheckIpBan(ctx context.Context, in *CheckIpBanRequest, opts ...grpc.CallOption) (*JsonResponse, error)
@@ -65,16 +61,6 @@ type accessServiceClient struct {
 
 func NewAccessServiceClient(cc grpc.ClientConnInterface) AccessServiceClient {
 	return &accessServiceClient{cc}
-}
-
-func (c *accessServiceClient) GetAppAuthContext(ctx context.Context, in *GetAppAuthContextRequest, opts ...grpc.CallOption) (*JsonResponse, error) {
-	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(JsonResponse)
-	err := c.cc.Invoke(ctx, AccessService_GetAppAuthContext_FullMethodName, in, out, cOpts...)
-	if err != nil {
-		return nil, err
-	}
-	return out, nil
 }
 
 func (c *accessServiceClient) GetAppAuthContextByID(ctx context.Context, in *GetAppAuthContextByIDRequest, opts ...grpc.CallOption) (*JsonResponse, error) {
@@ -187,16 +173,6 @@ func (c *accessServiceClient) ListTenantApps(ctx context.Context, in *ListTenant
 	return out, nil
 }
 
-func (c *accessServiceClient) RotateAppSecret(ctx context.Context, in *RotateAppSecretRequest, opts ...grpc.CallOption) (*JsonResponse, error) {
-	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(JsonResponse)
-	err := c.cc.Invoke(ctx, AccessService_RotateAppSecret_FullMethodName, in, out, cOpts...)
-	if err != nil {
-		return nil, err
-	}
-	return out, nil
-}
-
 func (c *accessServiceClient) UpdateTenantAppStatus(ctx context.Context, in *UpdateTenantAppStatusRequest, opts ...grpc.CallOption) (*JsonResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(JsonResponse)
@@ -231,7 +207,6 @@ func (c *accessServiceClient) CheckIpBan(ctx context.Context, in *CheckIpBanRequ
 // All implementations must embed UnimplementedAccessServiceServer
 // for forward compatibility.
 type AccessServiceServer interface {
-	GetAppAuthContext(context.Context, *GetAppAuthContextRequest) (*JsonResponse, error)
 	GetAppAuthContextByID(context.Context, *GetAppAuthContextByIDRequest) (*JsonResponse, error)
 	CheckReplay(context.Context, *CheckReplayRequest) (*JsonResponse, error)
 	CheckAndReserveQuota(context.Context, *CheckAndReserveQuotaRequest) (*JsonResponse, error)
@@ -243,7 +218,6 @@ type AccessServiceServer interface {
 	ListTenants(context.Context, *ListTenantsRequest) (*JsonResponse, error)
 	CreateTenantApp(context.Context, *CreateTenantAppRequest) (*JsonResponse, error)
 	ListTenantApps(context.Context, *ListTenantAppsRequest) (*JsonResponse, error)
-	RotateAppSecret(context.Context, *RotateAppSecretRequest) (*JsonResponse, error)
 	UpdateTenantAppStatus(context.Context, *UpdateTenantAppStatusRequest) (*JsonResponse, error)
 	UpdateAppQuota(context.Context, *UpdateAppQuotaRequest) (*JsonResponse, error)
 	CheckIpBan(context.Context, *CheckIpBanRequest) (*JsonResponse, error)
@@ -257,9 +231,6 @@ type AccessServiceServer interface {
 // pointer dereference when methods are called.
 type UnimplementedAccessServiceServer struct{}
 
-func (UnimplementedAccessServiceServer) GetAppAuthContext(context.Context, *GetAppAuthContextRequest) (*JsonResponse, error) {
-	return nil, status.Error(codes.Unimplemented, "method GetAppAuthContext not implemented")
-}
 func (UnimplementedAccessServiceServer) GetAppAuthContextByID(context.Context, *GetAppAuthContextByIDRequest) (*JsonResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method GetAppAuthContextByID not implemented")
 }
@@ -293,9 +264,6 @@ func (UnimplementedAccessServiceServer) CreateTenantApp(context.Context, *Create
 func (UnimplementedAccessServiceServer) ListTenantApps(context.Context, *ListTenantAppsRequest) (*JsonResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method ListTenantApps not implemented")
 }
-func (UnimplementedAccessServiceServer) RotateAppSecret(context.Context, *RotateAppSecretRequest) (*JsonResponse, error) {
-	return nil, status.Error(codes.Unimplemented, "method RotateAppSecret not implemented")
-}
 func (UnimplementedAccessServiceServer) UpdateTenantAppStatus(context.Context, *UpdateTenantAppStatusRequest) (*JsonResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method UpdateTenantAppStatus not implemented")
 }
@@ -324,24 +292,6 @@ func RegisterAccessServiceServer(s grpc.ServiceRegistrar, srv AccessServiceServe
 		t.testEmbeddedByValue()
 	}
 	s.RegisterService(&AccessService_ServiceDesc, srv)
-}
-
-func _AccessService_GetAppAuthContext_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(GetAppAuthContextRequest)
-	if err := dec(in); err != nil {
-		return nil, err
-	}
-	if interceptor == nil {
-		return srv.(AccessServiceServer).GetAppAuthContext(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: AccessService_GetAppAuthContext_FullMethodName,
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(AccessServiceServer).GetAppAuthContext(ctx, req.(*GetAppAuthContextRequest))
-	}
-	return interceptor(ctx, in, info, handler)
 }
 
 func _AccessService_GetAppAuthContextByID_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
@@ -542,24 +492,6 @@ func _AccessService_ListTenantApps_Handler(srv interface{}, ctx context.Context,
 	return interceptor(ctx, in, info, handler)
 }
 
-func _AccessService_RotateAppSecret_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(RotateAppSecretRequest)
-	if err := dec(in); err != nil {
-		return nil, err
-	}
-	if interceptor == nil {
-		return srv.(AccessServiceServer).RotateAppSecret(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: AccessService_RotateAppSecret_FullMethodName,
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(AccessServiceServer).RotateAppSecret(ctx, req.(*RotateAppSecretRequest))
-	}
-	return interceptor(ctx, in, info, handler)
-}
-
 func _AccessService_UpdateTenantAppStatus_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(UpdateTenantAppStatusRequest)
 	if err := dec(in); err != nil {
@@ -622,10 +554,6 @@ var AccessService_ServiceDesc = grpc.ServiceDesc{
 	HandlerType: (*AccessServiceServer)(nil),
 	Methods: []grpc.MethodDesc{
 		{
-			MethodName: "GetAppAuthContext",
-			Handler:    _AccessService_GetAppAuthContext_Handler,
-		},
-		{
 			MethodName: "GetAppAuthContextByID",
 			Handler:    _AccessService_GetAppAuthContextByID_Handler,
 		},
@@ -668,10 +596,6 @@ var AccessService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "ListTenantApps",
 			Handler:    _AccessService_ListTenantApps_Handler,
-		},
-		{
-			MethodName: "RotateAppSecret",
-			Handler:    _AccessService_RotateAppSecret_Handler,
 		},
 		{
 			MethodName: "UpdateTenantAppStatus",

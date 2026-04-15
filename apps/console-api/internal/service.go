@@ -25,7 +25,6 @@ type consoleAccessClient interface {
 	CreateTenant(ctx context.Context, req *accessservice.CreateTenantRequest) (*clients.EnvelopeResponse, error)
 	ListTenantApps(ctx context.Context, req *accessservice.ListTenantAppsRequest) (*clients.EnvelopeResponse, error)
 	CreateTenantApp(ctx context.Context, req *accessservice.CreateTenantAppRequest) (*clients.EnvelopeResponse, error)
-	RotateAppSecret(ctx context.Context, req *accessservice.RotateAppSecretRequest) (*clients.EnvelopeResponse, error)
 	UpdateTenantAppStatus(ctx context.Context, req *accessservice.UpdateTenantAppStatusRequest) (*clients.EnvelopeResponse, error)
 	UpdateAppQuota(ctx context.Context, req *accessservice.UpdateAppQuotaRequest) (*clients.EnvelopeResponse, error)
 	QueryUsageStats(ctx context.Context, req *accessservice.QueryUsageStatsRequest) (*clients.EnvelopeResponse, error)
@@ -327,25 +326,6 @@ func (s *consoleService) serveCreateTenantApp(w http.ResponseWriter, r *http.Req
 	defer cancel()
 
 	response, err := s.accessClient.CreateTenantApp(ctx, payload)
-	writeDownstreamResult(w, requestID, response, err)
-}
-
-func (s *consoleService) handleRotateAppSecret(w http.ResponseWriter, r *http.Request) {
-	if !s.requireAdminAuth(w, r) {
-		return
-	}
-
-	requestID := shared.EnsureRequestID(w, r)
-	appID := pathParam(r, "id")
-	if appID == "" {
-		shared.WriteError(w, http.StatusBadRequest, model.CodeInvalidRequest, "app id is required", requestID)
-		return
-	}
-
-	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
-	defer cancel()
-
-	response, err := s.accessClient.RotateAppSecret(ctx, &accessservice.RotateAppSecretRequest{AppId: appID})
 	writeDownstreamResult(w, requestID, response, err)
 }
 

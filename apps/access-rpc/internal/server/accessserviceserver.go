@@ -23,11 +23,6 @@ func NewAccessServiceServer(svcCtx *svc.ServiceContext) *AccessServiceServer {
 	}
 }
 
-func (s *AccessServiceServer) GetAppAuthContext(ctx context.Context, in *accesspb.GetAppAuthContextRequest) (*accesspb.JsonResponse, error) {
-	l := logic.NewGetAppAuthContextLogic(ctx, s.svcCtx)
-	return l.GetAppAuthContext(in)
-}
-
 func (s *AccessServiceServer) GetAppAuthContextByID(ctx context.Context, in *accesspb.GetAppAuthContextByIDRequest) (*accesspb.JsonResponse, error) {
 	l := logic.NewGetAppAuthContextByIDLogic(ctx, s.svcCtx)
 	return l.GetAppAuthContextByID(in)
@@ -81,11 +76,6 @@ func (s *AccessServiceServer) CreateTenantApp(ctx context.Context, in *accesspb.
 func (s *AccessServiceServer) ListTenantApps(ctx context.Context, in *accesspb.ListTenantAppsRequest) (*accesspb.JsonResponse, error) {
 	l := logic.NewListTenantAppsLogic(ctx, s.svcCtx)
 	return l.ListTenantApps(in)
-}
-
-func (s *AccessServiceServer) RotateAppSecret(ctx context.Context, in *accesspb.RotateAppSecretRequest) (*accesspb.JsonResponse, error) {
-	l := logic.NewRotateAppSecretLogic(ctx, s.svcCtx)
-	return l.RotateAppSecret(in)
 }
 
 func (s *AccessServiceServer) UpdateTenantAppStatus(ctx context.Context, in *accesspb.UpdateTenantAppStatusRequest) (*accesspb.JsonResponse, error) {

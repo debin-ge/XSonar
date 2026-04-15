@@ -76,6 +76,87 @@ func TestRunnerStopsPeriodicRunAtPageLimit(t *testing.T) {
 	}
 }
 
+func TestRunnerStopsPeriodicRunWhenPageContainsNoPosts(t *testing.T) {
+	root := t.TempDir()
+	store := newMemoryWorkerStore()
+	store.seedRunTask(runTaskView{
+		Task: workerTask{
+			TaskID:   "task_periodic_empty_1",
+			TaskType: TaskTypePeriodic,
+			Keyword:  "openai",
+			Status:   TaskStatusPending,
+		},
+		Run: workerRun{
+			RunID:       "run_periodic_empty_1",
+			TaskID:      "task_periodic_empty_1",
+			RunNo:       1,
+			Status:      RunStatusQueued,
+			ScheduledAt: time.Date(2026, 4, 13, 10, 0, 0, 0, time.UTC),
+		},
+	})
+
+	provider := &fakeProviderExecutor{
+		responses: []providerPage{
+			{
+				Body: map[string]any{
+					"search_by_raw_query": map[string]any{
+						"search_timeline": map[string]any{
+							"timeline": map[string]any{
+								"instructions": []map[string]any{
+									{
+										"type": "TimelineAddEntries",
+										"entries": []map[string]any{
+											{
+												"entryId": "cursor-bottom-0",
+												"content": map[string]any{
+													"__typename": "TimelineTimelineCursor",
+													"cursorType": "Bottom",
+													"value":      "cursor-bottom-123",
+												},
+											},
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+			{
+				Body: map[string]any{
+					"tweets": []map[string]any{{"id": "post_1", "text": "should not be requested"}},
+				},
+			},
+		},
+	}
+
+	runner := newRunner(testRunnerConfig(root, 20), xlog.NewStdout("collector-worker-rpc-test"), store, fakePolicyResolver{}, provider, "worker-1")
+
+	if err := runner.run(context.Background(), "run_periodic_empty_1"); err != nil {
+		t.Fatalf("run returned error: %v", err)
+	}
+
+	view, err := store.LoadRunTask(context.Background(), "run_periodic_empty_1")
+	if err != nil {
+		t.Fatalf("LoadRunTask returned error: %v", err)
+	}
+	if view.Run.StopReason != "empty_page" {
+		t.Fatalf("expected stop_reason empty_page, got %q", view.Run.StopReason)
+	}
+	if view.Run.PageCount != 1 {
+		t.Fatalf("expected page_count 1, got %d", view.Run.PageCount)
+	}
+	if view.Run.FetchedCount != 0 || view.Run.NewCount != 0 {
+		t.Fatalf("expected empty run counts, got %+v", view.Run)
+	}
+	if provider.calls != 1 {
+		t.Fatalf("expected provider to stop after first empty page, got %d calls", provider.calls)
+	}
+	if view.Task.Status != TaskStatusPending {
+		t.Fatalf("expected periodic task to remain pending, got %q", view.Task.Status)
+	}
+}
+
 func TestRunnerPeriodicRunWritesOnlyFirstSeenPosts(t *testing.T) {
 	root := t.TempDir()
 	store := newMemoryWorkerStore()

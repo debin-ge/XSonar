@@ -41,10 +41,6 @@ type GetTenantDetailReq {
 	Id string `path:"id"`
 }
 
-type RotateAppSecretReq {
-	Id string `path:"id"`
-}
-
 type PublishPolicyConfigReq {
 	PolicyKey            string            `json:"policy_key"`
 	DisplayName          string            `json:"display_name"`
@@ -117,12 +113,6 @@ service console-api {
 	)
 	@handler CreateTenantApp
 	post /admin/v1/tenants/:id/apps (CreateTenantAppReq) returns (Envelope)
-
-	@doc (
-		summary: "Rotate an application secret."
-	)
-	@handler RotateAppSecret
-	post /admin/v1/apps/:id/secret:rotate (RotateAppSecretReq) returns (Envelope)
 
 	@doc (
 		summary: "Update application status."

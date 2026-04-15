@@ -24,6 +24,7 @@ const (
 	collectorPolicyKey    = "search_tweets_v1"
 	stopReasonPageLimit   = "page_limit"
 	stopReasonRequired    = "required_count_reached"
+	stopReasonEmptyPage   = "empty_page"
 )
 
 type policyResolver interface {
@@ -231,6 +232,10 @@ func (r *runner) run(ctx context.Context, runID string) error {
 			return err
 		}
 
+		if len(page.Posts) == 0 {
+			stopReason = stopReasonEmptyPage
+			break
+		}
 		if requiredReached {
 			break
 		}
