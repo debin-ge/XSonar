@@ -10,7 +10,7 @@
   ],
   "swagger": "2.0",
   "info": {
-    "description": "Public gateway API for read-only user, tweet, search, list, and community endpoints.",
+    "description": "XSonar Gateway API for accessing Twitter/X data through a unified proxy layer. Supports user profiles, tweets, search, lists, communities, and collector tasks. All endpoints require a valid gateway bearer token in the Authorization header.",
     "title": "XSonar Gateway API",
     "version": "v1"
   },
@@ -23,6 +23,7 @@
             "gatewayBearer": []
           }
         ],
+        "description": "创建一个周期性执行的采集任务，按指定频率持续采集符合关键词的推文。适用于长期监控特定话题的场景。",
         "consumes": [
           "application/json"
         ],
@@ -30,12 +31,12 @@
           "application/json"
         ],
         "schemes": [
-          "http"
+          "https"
         ],
         "tags": [
           "Gateway API"
         ],
-        "summary": "Create a periodic collector task.",
+        "summary": "创建周期采集任务",
         "operationId": "createPeriodicCollectorTask",
         "parameters": [
           {
@@ -50,19 +51,24 @@
               ],
               "properties": {
                 "frequency_seconds": {
-                  "type": "integer"
+                  "type": "integer",
+                  "example": 3600
                 },
                 "keyword": {
-                  "type": "string"
+                  "type": "string",
+                  "example": "XSonar"
                 },
                 "priority": {
-                  "type": "integer"
+                  "type": "integer",
+                  "example": 1
                 },
                 "required_count": {
-                  "type": "integer"
+                  "type": "integer",
+                  "example": 1000
                 },
                 "task_id": {
-                  "type": "string"
+                  "type": "string",
+                  "example": "task_001"
                 }
               }
             }
@@ -97,6 +103,7 @@
             "gatewayBearer": []
           }
         ],
+        "description": "创建一个在指定时间范围内执行一次性的采集任务。适用于回溯历史数据或限时监控场景。",
         "consumes": [
           "application/json"
         ],
@@ -104,12 +111,12 @@
           "application/json"
         ],
         "schemes": [
-          "http"
+          "https"
         ],
         "tags": [
           "Gateway API"
         ],
-        "summary": "Create a range collector task.",
+        "summary": "创建范围采集任务",
         "operationId": "createRangeCollectorTask",
         "parameters": [
           {
@@ -124,22 +131,28 @@
               ],
               "properties": {
                 "keyword": {
-                  "type": "string"
+                  "type": "string",
+                  "example": "XSonar"
                 },
                 "priority": {
-                  "type": "integer"
+                  "type": "integer",
+                  "example": 1
                 },
                 "required_count": {
-                  "type": "integer"
+                  "type": "integer",
+                  "example": 500
                 },
                 "since": {
-                  "type": "string"
+                  "type": "string",
+                  "example": "2024-01-01T00:00:00Z"
                 },
                 "task_id": {
-                  "type": "string"
+                  "type": "string",
+                  "example": "task_002"
                 },
                 "until": {
-                  "type": "string"
+                  "type": "string",
+                  "example": "2024-12-31T23:59:59Z"
                 }
               }
             }
@@ -174,16 +187,17 @@
             "gatewayBearer": []
           }
         ],
+        "description": "根据任务ID获取采集任务的详细信息和当前状态。",
         "produces": [
           "application/json"
         ],
         "schemes": [
-          "http"
+          "https"
         ],
         "tags": [
           "Gateway API"
         ],
-        "summary": "Get a collector task.",
+        "summary": "获取采集任务",
         "operationId": "getCollectorTask",
         "parameters": [
           {
@@ -222,16 +236,17 @@
             "gatewayBearer": []
           }
         ],
+        "description": "获取采集任务的历次执行记录，包括每次执行的采集数量、状态、时间等信息。",
         "produces": [
           "application/json"
         ],
         "schemes": [
-          "http"
+          "https"
         ],
         "tags": [
           "Gateway API"
         ],
-        "summary": "List collector task runs.",
+        "summary": "获取采集任务执行记录",
         "operationId": "listCollectorTaskRuns",
         "parameters": [
           {
@@ -270,16 +285,17 @@
             "gatewayBearer": []
           }
         ],
+        "description": "获取社区（Community）的详细信息。社区是一组围绕特定话题或兴趣聚集的用户群体。",
         "produces": [
           "application/json"
         ],
         "schemes": [
-          "http"
+          "https"
         ],
         "tags": [
           "Gateway API"
         ],
-        "summary": "Get communities.",
+        "summary": "获取社区",
         "operationId": "communities",
         "parameters": [
           {
@@ -318,16 +334,17 @@
             "gatewayBearer": []
           }
         ],
+        "description": "获取用户创建的推文列表（List）。可以按用户ID或用户名查询该用户拥有或订阅的列表。",
         "produces": [
           "application/json"
         ],
         "schemes": [
-          "http"
+          "https"
         ],
         "tags": [
           "Gateway API"
         ],
-        "summary": "Get lists.",
+        "summary": "获取列表",
         "operationId": "lists",
         "parameters": [
           {
@@ -372,16 +389,17 @@
             "gatewayBearer": []
           }
         ],
+        "description": "综合搜索接口，支持多种搜索类型，返回聚合的搜索结果。",
         "produces": [
           "application/json"
         ],
         "schemes": [
-          "http"
+          "https"
         ],
         "tags": [
           "Gateway API"
         ],
-        "summary": "Search the box.",
+        "summary": "搜索盒子",
         "operationId": "searchBox",
         "parameters": [
           {
@@ -426,16 +444,17 @@
             "gatewayBearer": []
           }
         ],
+        "description": "搜索娱乐相关的推文，包括影视、音乐、明星、八卦等内容。",
         "produces": [
           "application/json"
         ],
         "schemes": [
-          "http"
+          "https"
         ],
         "tags": [
           "Gateway API"
         ],
-        "summary": "Get entertainment search.",
+        "summary": "娱乐搜索",
         "operationId": "searchEntertainment",
         "responses": {
           "200": {
@@ -466,16 +485,17 @@
             "gatewayBearer": []
           }
         ],
+        "description": "发现页探索搜索，返回推荐内容和热门话题相关的推文。",
         "produces": [
           "application/json"
         ],
         "schemes": [
-          "http"
+          "https"
         ],
         "tags": [
           "Gateway API"
         ],
-        "summary": "Get explore search.",
+        "summary": "探索搜索",
         "operationId": "searchExplore",
         "responses": {
           "200": {
@@ -506,16 +526,17 @@
             "gatewayBearer": []
           }
         ],
+        "description": "搜索新闻相关的推文，优先返回包含新闻内容的结果。",
         "produces": [
           "application/json"
         ],
         "schemes": [
-          "http"
+          "https"
         ],
         "tags": [
           "Gateway API"
         ],
-        "summary": "Get news search.",
+        "summary": "新闻搜索",
         "operationId": "searchNews",
         "responses": {
           "200": {
@@ -546,16 +567,17 @@
             "gatewayBearer": []
           }
         ],
+        "description": "搜索体育相关的推文，涵盖各类体育赛事、运动员相关的内容。",
         "produces": [
           "application/json"
         ],
         "schemes": [
-          "http"
+          "https"
         ],
         "tags": [
           "Gateway API"
         ],
-        "summary": "Get sports search.",
+        "summary": "体育搜索",
         "operationId": "searchSports",
         "responses": {
           "200": {
@@ -586,16 +608,17 @@
             "gatewayBearer": []
           }
         ],
+        "description": "获取当前热门搜索话题列表，反映当下的流行趋势和热点事件。",
         "produces": [
           "application/json"
         ],
         "schemes": [
-          "http"
+          "https"
         ],
         "tags": [
           "Gateway API"
         ],
-        "summary": "Get trending search terms.",
+        "summary": "获取热门搜索词",
         "operationId": "searchTrending",
         "responses": {
           "200": {
@@ -626,16 +649,17 @@
             "gatewayBearer": []
           }
         ],
+        "description": "根据趋势ID获取特定搜索趋势的详细信息。",
         "produces": [
           "application/json"
         ],
         "schemes": [
-          "http"
+          "https"
         ],
         "tags": [
           "Gateway API"
         ],
-        "summary": "List search trends.",
+        "summary": "获取搜索趋势详情",
         "operationId": "searchTrends",
         "parameters": [
           {
@@ -674,16 +698,17 @@
             "gatewayBearer": []
           }
         ],
+        "description": "功能强大的推文搜索接口，支持关键词、短语匹配、时间范围、互动数过滤等多种搜索条件组合。",
         "produces": [
           "application/json"
         ],
         "schemes": [
-          "http"
+          "https"
         ],
         "tags": [
           "Gateway API"
         ],
-        "summary": "Search tweets.",
+        "summary": "搜索推文",
         "operationId": "searchTweets",
         "parameters": [
           {
@@ -812,16 +837,17 @@
             "gatewayBearer": []
           }
         ],
+        "description": "获取推文的简短摘要信息，适用于列表展示场景。",
         "produces": [
           "application/json"
         ],
         "schemes": [
-          "http"
+          "https"
         ],
         "tags": [
           "Gateway API"
         ],
-        "summary": "Get tweet brief.",
+        "summary": "获取推文摘要",
         "operationId": "tweetsBrief",
         "parameters": [
           {
@@ -866,16 +892,17 @@
             "gatewayBearer": []
           }
         ],
+        "description": "通过推文ID列表批量获取推文信息。适用于需要一次性展示多条推文内容的场景。",
         "produces": [
           "application/json"
         ],
         "schemes": [
-          "http"
+          "https"
         ],
         "tags": [
           "Gateway API"
         ],
-        "summary": "Get tweets by IDs.",
+        "summary": "批量获取推文",
         "operationId": "tweetsByIDs",
         "parameters": [
           {
@@ -914,16 +941,17 @@
             "gatewayBearer": []
           }
         ],
+        "description": "获取单条推文的详细信息，包括正文、媒体、互动统计等。",
         "produces": [
           "application/json"
         ],
         "schemes": [
-          "http"
+          "https"
         ],
         "tags": [
           "Gateway API"
         ],
-        "summary": "Get tweet details.",
+        "summary": "获取推文详情",
         "operationId": "tweetsDetail",
         "parameters": [
           {
@@ -968,16 +996,17 @@
             "gatewayBearer": []
           }
         ],
+        "description": "获取点赞了该推文的用户列表。",
         "produces": [
           "application/json"
         ],
         "schemes": [
-          "http"
+          "https"
         ],
         "tags": [
           "Gateway API"
         ],
-        "summary": "Get tweet favoriters.",
+        "summary": "获取点赞用户列表",
         "operationId": "tweetsFavoriters",
         "parameters": [
           {
@@ -1028,16 +1057,17 @@
             "gatewayBearer": []
           }
         ],
+        "description": "获取引用转推（Quote Tweets）该推文的列表。包含原始推文和引用者的评论。",
         "produces": [
           "application/json"
         ],
         "schemes": [
-          "http"
+          "https"
         ],
         "tags": [
           "Gateway API"
         ],
-        "summary": "Get tweet quotes.",
+        "summary": "获取转推引用列表",
         "operationId": "tweetsQuotes",
         "parameters": [
           {
@@ -1088,16 +1118,17 @@
             "gatewayBearer": []
           }
         ],
+        "description": "获取指定用户发布的推文的回复列表。按时间倒序返回。",
         "produces": [
           "application/json"
         ],
         "schemes": [
-          "http"
+          "https"
         ],
         "tags": [
           "Gateway API"
         ],
-        "summary": "Get tweet replies.",
+        "summary": "获取推文回复",
         "operationId": "tweetsReplies",
         "parameters": [
           {
@@ -1142,16 +1173,17 @@
             "gatewayBearer": []
           }
         ],
+        "description": "获取转发了该推文的用户列表。",
         "produces": [
           "application/json"
         ],
         "schemes": [
-          "http"
+          "https"
         ],
         "tags": [
           "Gateway API"
         ],
-        "summary": "Get tweet retweeters.",
+        "summary": "获取转推用户列表",
         "operationId": "tweetsRetweeters",
         "parameters": [
           {
@@ -1202,16 +1234,17 @@
             "gatewayBearer": []
           }
         ],
+        "description": "获取指定用户发布的推文时间线。按时间倒序返回，支持分页翻页。",
         "produces": [
           "application/json"
         ],
         "schemes": [
-          "http"
+          "https"
         ],
         "tags": [
           "Gateway API"
         ],
-        "summary": "Get the tweets timeline.",
+        "summary": "获取用户时间线",
         "operationId": "tweetsTimeline",
         "parameters": [
           {
@@ -1256,16 +1289,17 @@
             "gatewayBearer": []
           }
         ],
+        "description": "获取指定用户的账户分析统计数据，包括关注者增长、互动率等指标。",
         "produces": [
           "application/json"
         ],
         "schemes": [
-          "http"
+          "https"
         ],
         "tags": [
           "Gateway API"
         ],
-        "summary": "Get user account analytics.",
+        "summary": "获取用户账户分析数据",
         "operationId": "usersAccountAnalytics",
         "parameters": [
           {
@@ -1316,16 +1350,17 @@
             "gatewayBearer": []
           }
         ],
+        "description": "获取用户发布的包含文章链接的推文列表。适用于分析用户内容创作习惯。",
         "produces": [
           "application/json"
         ],
         "schemes": [
-          "http"
+          "https"
         ],
         "tags": [
           "Gateway API"
         ],
-        "summary": "Get user articles tweets.",
+        "summary": "获取用户文章推文",
         "operationId": "usersArticlesTweets",
         "parameters": [
           {
@@ -1376,16 +1411,17 @@
             "gatewayBearer": []
           }
         ],
+        "description": "通过用户ID获取单个用户的详细信息。支持分页游标用于翻页查询用户的附加信息。",
         "produces": [
           "application/json"
         ],
         "schemes": [
-          "http"
+          "https"
         ],
         "tags": [
           "Gateway API"
         ],
-        "summary": "Get a user by ID.",
+        "summary": "获取单个用户信息",
         "operationId": "userByID",
         "parameters": [
           {
@@ -1430,16 +1466,17 @@
             "gatewayBearer": []
           }
         ],
+        "description": "通过用户ID列表批量获取用户基本信息。适用于需要一次性获取多个用户资料的场景，例如展示用户卡片列表。",
         "produces": [
           "application/json"
         ],
         "schemes": [
-          "http"
+          "https"
         ],
         "tags": [
           "Gateway API"
         ],
-        "summary": "Get users by IDs.",
+        "summary": "批量获取用户信息",
         "operationId": "usersByIDs",
         "parameters": [
           {
@@ -1478,16 +1515,17 @@
             "gatewayBearer": []
           }
         ],
+        "description": "通过用户的屏幕名称（screenName）获取用户信息。适用于已知用户名但不知道用户ID的场景。",
         "produces": [
           "application/json"
         ],
         "schemes": [
-          "http"
+          "https"
         ],
         "tags": [
           "Gateway API"
         ],
-        "summary": "Get a user by username.",
+        "summary": "通过用户名获取用户信息",
         "operationId": "userByUsername",
         "parameters": [
           {
@@ -1526,16 +1564,17 @@
             "gatewayBearer": []
           }
         ],
+        "description": "获取指定用户的关注者（粉丝）列表。支持分页翻页查询。",
         "produces": [
           "application/json"
         ],
         "schemes": [
-          "http"
+          "https"
         ],
         "tags": [
           "Gateway API"
         ],
-        "summary": "Get user followers.",
+        "summary": "获取用户粉丝列表",
         "operationId": "usersFollowers",
         "parameters": [
           {
@@ -1580,16 +1619,17 @@
             "gatewayBearer": []
           }
         ],
+        "description": "获取指定用户关注的账号列表（关注的人）。支持分页翻页查询。",
         "produces": [
           "application/json"
         ],
         "schemes": [
-          "http"
+          "https"
         ],
         "tags": [
           "Gateway API"
         ],
-        "summary": "Get user followings.",
+        "summary": "获取用户关注列表",
         "operationId": "usersFollowings",
         "parameters": [
           {
@@ -1634,16 +1674,17 @@
             "gatewayBearer": []
           }
         ],
+        "description": "获取用户标记为高亮的推文列表。高亮推文是用户在个人资料中置顶展示的推文。",
         "produces": [
           "application/json"
         ],
         "schemes": [
-          "http"
+          "https"
         ],
         "tags": [
           "Gateway API"
         ],
-        "summary": "Get user highlights.",
+        "summary": "获取用户高亮推文",
         "operationId": "usersHighlights",
         "parameters": [
           {
@@ -1694,16 +1735,17 @@
             "gatewayBearer": []
           }
         ],
+        "description": "获取指定用户点赞过的推文列表。需要提供授权令牌来访问私有账户的点赞列表。",
         "produces": [
           "application/json"
         ],
         "schemes": [
-          "http"
+          "https"
         ],
         "tags": [
           "Gateway API"
         ],
-        "summary": "Get user likes.",
+        "summary": "获取用户点赞列表",
         "operationId": "usersLikes",
         "parameters": [
           {
@@ -1754,16 +1796,17 @@
             "gatewayBearer": []
           }
         ],
+        "description": "获取当前用户被@提及的所有推文时间线。按时间倒序返回，支持sinceId、maxId进行范围过滤。",
         "produces": [
           "application/json"
         ],
         "schemes": [
-          "http"
+          "https"
         ],
         "tags": [
           "Gateway API"
         ],
-        "summary": "Get user mentions timeline.",
+        "summary": "获取用户@提及时间线",
         "operationId": "usersMentionsTimeline",
         "parameters": [
           {
@@ -1832,16 +1875,17 @@
             "gatewayBearer": []
           }
         ],
+        "description": "查询特定用户名在历史上发生过的变更记录。适用于审计或追溯用户身份变化的场景。",
         "produces": [
           "application/json"
         ],
         "schemes": [
-          "http"
+          "https"
         ],
         "tags": [
           "Gateway API"
         ],
-        "summary": "Get username changes.",
+        "summary": "获取用户名变更记录",
         "operationId": "usersUsernameChanges",
         "parameters": [
           {
@@ -1882,6 +1926,7 @@
       "in": "header"
     }
   },
+  "x-date": "2026-04-15 18:18:01",
   "x-description": "This is a goctl generated swagger file.",
   "x-github": "https://github.com/zeromicro/go-zero",
   "x-go-zero-doc": "https://go-zero.dev/",
