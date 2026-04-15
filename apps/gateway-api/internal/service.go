@@ -1,6 +1,7 @@
 package internal
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
@@ -341,7 +342,7 @@ func (s *gatewayService) handleProxy(w http.ResponseWriter, r *http.Request) {
 
 	shared.LogRequestInfo(s.logger, "gateway request completed", requestID, start, gatewayLogFields(r, clientIP, tenantID, appID, policyKey, statusCode, resultCode, ""))
 
-	shared.WriteRawOK(w, body, requestID)
+	shared.WriteOK(w, formatGatewaySuccessData(providerQueryResFormat(providerQuery), body), requestID)
 }
 
 func (s *gatewayService) handleCreatePeriodicCollectorTask(w http.ResponseWriter, r *http.Request) {
@@ -589,6 +590,20 @@ func rawGatewayData(data json.RawMessage) any {
 	return decoded
 }
 
+func formatGatewaySuccessData(resFormat string, data json.RawMessage) any {
+	if len(data) == 0 {
+		return nil
+	}
+
+	if strings.TrimSpace(resFormat) == "" || strings.EqualFold(strings.TrimSpace(resFormat), "json") {
+		if decoded, err := decodeGatewayJSON(data); err == nil {
+			return decoded
+		}
+	}
+
+	return rawGatewayString(data)
+}
+
 func writeAdminDownstreamResult(w http.ResponseWriter, requestID string, response *clients.EnvelopeResponse, err error) {
 	if err != nil {
 		if response == nil {
@@ -831,9 +846,35 @@ func normalizedDefaultParams(values map[string]string) map[string]struct {
 }
 
 func normalizeProviderQuery(policyKey, upstreamPath string, query map[string]any) map[string]any {
-	_ = policyKey
-	_ = upstreamPath
+	if policyKey == "search_tweets_v1" && upstreamPath == "/base/apitools/search" && !hasNonEmptyQueryValue(query["product"]) {
+		query["product"] = "Top"
+	}
 	return query
+}
+
+func providerQueryResFormat(query map[string]any) string {
+	if query == nil {
+		return ""
+	}
+	return stringValue(query["resFormat"])
+}
+
+func rawGatewayString(data json.RawMessage) string {
+	var text string
+	if err := json.Unmarshal(data, &text); err == nil {
+		return text
+	}
+	return string(data)
+}
+
+func decodeGatewayJSON(data json.RawMessage) (any, error) {
+	var decoded any
+	decoder := json.NewDecoder(bytes.NewReader(data))
+	decoder.UseNumber()
+	if err := decoder.Decode(&decoded); err != nil {
+		return nil, err
+	}
+	return decoded, nil
 }
 
 func validateRequiredQuery(query map[string]any, requiredParams []string) error {

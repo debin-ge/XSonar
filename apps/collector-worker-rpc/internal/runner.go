@@ -320,6 +320,13 @@ func (r *runner) fetchPage(ctx context.Context, policy resolvedPolicy, task work
 		query["cursor"] = strings.TrimSpace(cursor)
 	}
 
+	// Apply default product=Top for search_tweets_v1, matching gateway behavior
+	if policy.PolicyKey == "search_tweets_v1" && policy.UpstreamPath == "/base/apitools/search" {
+		if !hasNonEmptyProduct(query["product"]) {
+			query["product"] = "Top"
+		}
+	}
+
 	queryJSON, err := json.Marshal(query)
 	if err != nil {
 		return providerExecutionPayload{}, fmt.Errorf("encode provider query: %w", err)
@@ -370,4 +377,29 @@ func (r *runner) resolveOutputPath(view runTaskView) string {
 	}
 	name := fmt.Sprintf("%s_%s_run_%d.ndjson", view.Task.TaskID, scheduledAt.Format("20060102T150405Z"), view.Run.RunNo)
 	return filepath.Join(taskDir, name)
+}
+
+func hasNonEmptyProduct(value any) bool {
+	switch typed := value.(type) {
+	case nil:
+		return false
+	case string:
+		return strings.TrimSpace(typed) != ""
+	case []string:
+		for _, item := range typed {
+			if strings.TrimSpace(item) != "" {
+				return true
+			}
+		}
+		return false
+	case []any:
+		for _, item := range typed {
+			if hasNonEmptyProduct(item) {
+				return true
+			}
+		}
+		return false
+	default:
+		return true
+	}
 }
