@@ -17,6 +17,7 @@ func NewHandlerWithConfigAndAllClients(logger *xlog.Logger, config shared.Config
 	bridge := consoleinternal.NewBridge(config, logger, accessClient, policyClient, providerClient)
 	mux := http.NewServeMux()
 	mux.HandleFunc("POST /admin/v1/auth/login", bridge.HandleLogin)
+	mux.HandleFunc("POST /admin/v1/gateway/token", bridge.HandleIssueGatewayToken)
 	mux.HandleFunc("GET /admin/v1/tenants", bridge.HandleListTenants)
 	mux.HandleFunc("POST /admin/v1/tenants", bridge.HandleCreateTenant)
 	mux.HandleFunc("GET /admin/v1/tenants/{id}", bridge.HandleGetTenantDetail)

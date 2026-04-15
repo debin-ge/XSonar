@@ -40,6 +40,11 @@ func RegisterHandlers(server *rest.Server, serverCtx *svc.ServiceContext) {
 				Handler: serverCtx.Bridge.HandleLogin,
 			},
 			{
+				Method:  http.MethodPost,
+				Path:    "/admin/v1/gateway/token",
+				Handler: serverCtx.Bridge.HandleIssueGatewayToken,
+			},
+			{
 				Method:  http.MethodGet,
 				Path:    "/admin/v1/health/services",
 				Handler: serverCtx.Bridge.HandleServiceHealth,

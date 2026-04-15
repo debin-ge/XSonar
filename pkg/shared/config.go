@@ -21,6 +21,8 @@ type Config struct {
 	JWTSecret            string
 	JWTIssuer            string
 	JWTTTLMinutes        int
+	GatewayJWTSecret     string
+	GatewayJWTIssuer     string
 }
 
 func DefaultConfig(service string, port int) Config {

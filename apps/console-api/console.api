@@ -70,6 +70,12 @@ type Envelope {
 	RequestID string      `json:"request_id,optional"`
 }
 
+type IssueGatewayTokenReq {
+	TenantID string `json:"tenant_id"`
+	AppID    string `json:"app_id"`
+	TTL      int64  `json:"ttl"`
+}
+
 @server (
 	tags:    "Console API"
 	summary: "Console authentication APIs"
@@ -153,6 +159,12 @@ service console-api {
 	)
 	@handler UsageReport
 	get /admin/v1/reports/usage returns (Envelope)
+
+	@doc (
+		summary: "Issue a gateway bearer token for an application."
+	)
+	@handler IssueGatewayToken
+	post /admin/v1/gateway/token (IssueGatewayTokenReq) returns (Envelope)
 
 	@doc (
 		summary: "Check downstream service health."

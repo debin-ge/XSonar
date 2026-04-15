@@ -43,8 +43,12 @@ func (s stubJSONClient) GetAppAuthContext(ctx context.Context, req *accessservic
 	return s.call(ctx, "/rpc/GetAppAuthContext", req)
 }
 
-func (s stubJSONClient) CheckReplay(ctx context.Context, req *accessservice.CheckReplayRequest) (*clients.EnvelopeResponse, error) {
-	return s.call(ctx, "/rpc/CheckReplay", req)
+func (s stubJSONClient) GetAppAuthContextByID(ctx context.Context, req *accessservice.GetAppAuthContextByIDRequest) (*clients.EnvelopeResponse, error) {
+	resp, err := s.call(ctx, "/rpc/GetAppAuthContextByID", req)
+	if err == nil || !strings.Contains(err.Error(), "unexpected") {
+		return resp, err
+	}
+	return s.call(ctx, "/rpc/GetAppAuthContext", &accessservice.GetAppAuthContextRequest{AppKey: req.AppId})
 }
 
 func (s stubJSONClient) CheckAndReserveQuota(ctx context.Context, req *accessservice.CheckAndReserveQuotaRequest) (*clients.EnvelopeResponse, error) {
@@ -84,15 +88,15 @@ func (s stubJSONClient) ListTaskRuns(ctx context.Context, req *schedulerservice.
 }
 
 func setProductionAuthHeaders(req *http.Request, appKey, timestamp, nonce, signature string) {
-	req.Header.Set("AppKey", appKey)
-	req.Header.Set("Timestamp", timestamp)
-	req.Header.Set("Nonce", nonce)
-	req.Header.Set("Signature", signature)
+	req.Header.Set("Authorization", "Bearer "+mustSignGatewayAppJWTForTests(appKey))
+	_ = timestamp
+	_ = nonce
+	_ = signature
 }
 
 func setDevelopmentAuthHeaders(req *http.Request, appKey, appSecret string) {
-	req.Header.Set("AppKey", appKey)
-	req.Header.Set("AppSecret", appSecret)
+	req.Header.Set("Authorization", "Bearer "+mustSignGatewayAppJWTForTests(appKey))
+	_ = appSecret
 }
 
 func TestGatewayProxySuccess(t *testing.T) {
@@ -401,35 +405,13 @@ func TestGatewayCollectorAdminGetRoutesForwardToScheduler(t *testing.T) {
 func TestGatewayRejectsInvalidSignature(t *testing.T) {
 	svc := newGatewayServiceWithClients(
 		xlog.NewStdout("gateway-test"),
-		stubJSONClient{
-			postFunc: func(_ context.Context, path string, payload any) (*clients.EnvelopeResponse, error) {
-				if path == "/rpc/GetAppAuthContext" {
-					return okEnvelope(map[string]any{
-						"tenant_id":  "tenant_1",
-						"app_id":     "app_1",
-						"app_key":    "app_key_1",
-						"app_secret": "secret_1",
-						"status":     "active",
-					}), nil
-				}
-				if path == "/rpc/CheckIpBan" {
-					return okEnvelope(map[string]any{"blocked": false}), nil
-				}
-				return nil, errors.New("unexpected access path")
-			},
-		},
+		stubJSONClient{},
 		stubJSONClient{},
 		stubJSONClient{},
 	)
 
-	query := url.Values{}
-	query.Set("userIds", "1,2")
-	query.Set("timestamp", strconv.FormatInt(time.Now().UTC().Unix(), 10))
-	timestamp := query.Get("timestamp")
-	query.Del("timestamp")
-
-	req := httptest.NewRequest(http.MethodGet, "/v1/users/by-ids?"+query.Encode(), nil)
-	setProductionAuthHeaders(req, "app_key_1", timestamp, "nonce-1", "wrong-signature")
+	req := httptest.NewRequest(http.MethodGet, "/v1/users/by-ids?userIds=1,2", nil)
+	req.Header.Set("Authorization", "Bearer invalid-token")
 	rec := httptest.NewRecorder()
 	svc.handleProxy(rec, req)
 
@@ -1267,31 +1249,14 @@ func TestGatewayDevModeRejectsQueryAuthParameters(t *testing.T) {
 func TestGatewayDevModeRejectsInvalidAppSecret(t *testing.T) {
 	svc := newGatewayServiceWithMode(
 		xlog.NewStdout("gateway-test"),
-		stubJSONClient{
-			postFunc: func(_ context.Context, path string, payload any) (*clients.EnvelopeResponse, error) {
-				switch path {
-				case "/rpc/CheckIpBan":
-					return okEnvelope(map[string]any{"blocked": false}), nil
-				case "/rpc/GetAppAuthContext":
-					return okEnvelope(map[string]any{
-						"tenant_id":  "tenant_1",
-						"app_id":     "app_1",
-						"app_key":    "app_key_1",
-						"app_secret": "secret_1",
-						"status":     "active",
-					}), nil
-				default:
-					return nil, errors.New("unexpected access path: " + path)
-				}
-			},
-		},
+		stubJSONClient{},
 		stubJSONClient{},
 		stubJSONClient{},
 		"dev",
 	)
 
 	req := httptest.NewRequest(http.MethodGet, "/v1/users/by-ids", nil)
-	setDevelopmentAuthHeaders(req, "app_key_1", "wrong-secret")
+	req.Header.Set("Authorization", "Bearer invalid-token")
 	rec := httptest.NewRecorder()
 
 	svc.handleProxy(rec, req)
@@ -1855,8 +1820,7 @@ func TestGatewaySearchTweetsPreservesExplicitCount(t *testing.T) {
 	svc := newGatewayServiceWithMode(xlog.NewStdout("gateway-test"), accessClient, policyClient, providerClient, "dev")
 
 	req := httptest.NewRequest(http.MethodGet, "/v1/search/tweets?words=ai+gateway+optimization&count=100", nil)
-	req.Header.Set("AppKey", "app_key_search")
-	req.Header.Set("AppSecret", "secret_search")
+	req.Header.Set("Authorization", "Bearer "+mustSignGatewayAppJWTForTests("app_key_search"))
 	rec := httptest.NewRecorder()
 
 	svc.handleProxy(rec, req)
@@ -1946,8 +1910,7 @@ func TestGatewaySearchTweetsDoesNotInjectDefaultCount(t *testing.T) {
 	svc := newGatewayServiceWithMode(xlog.NewStdout("gateway-test"), accessClient, policyClient, providerClient, "dev")
 
 	req := httptest.NewRequest(http.MethodGet, "/v1/search/tweets?words=ai+gateway+optimization", nil)
-	req.Header.Set("AppKey", "app_key_search")
-	req.Header.Set("AppSecret", "secret_search")
+	req.Header.Set("Authorization", "Bearer "+mustSignGatewayAppJWTForTests("app_key_search"))
 	rec := httptest.NewRecorder()
 
 	svc.handleProxy(rec, req)
@@ -2032,8 +1995,7 @@ func TestGatewayDoesNotBlockOnUsageStatRecording(t *testing.T) {
 	svc := newGatewayServiceWithModeAndUsageStats(xlog.NewStdout("gateway-test"), accessClient, policyClient, providerClient, nil, "", "", recorder, "dev")
 
 	req := httptest.NewRequest(http.MethodGet, "/v1/search/tweets?words=ai+async+recording", nil)
-	req.Header.Set("AppKey", "app_key_async")
-	req.Header.Set("AppSecret", "secret_async")
+	req.Header.Set("Authorization", "Bearer "+mustSignGatewayAppJWTForTests("app_key_async"))
 	rec := httptest.NewRecorder()
 
 	start := time.Now()
@@ -2132,8 +2094,7 @@ func TestGatewayOverlapsIPBanAndPolicyResolution(t *testing.T) {
 	svc := newGatewayServiceWithMode(xlog.NewStdout("gateway-test"), accessClient, policyClient, providerClient, "dev")
 
 	req := httptest.NewRequest(http.MethodGet, "/v1/search/tweets?words=ai+overlap+ipban+policy", nil)
-	req.Header.Set("AppKey", "app_key_overlap_a")
-	req.Header.Set("AppSecret", "secret_overlap_a")
+	req.Header.Set("Authorization", "Bearer "+mustSignGatewayAppJWTForTests("app_key_overlap_a"))
 	rec := httptest.NewRecorder()
 
 	start := time.Now()
@@ -2226,8 +2187,7 @@ func TestGatewayOverlapsQuotaReservationAndPolicyAccess(t *testing.T) {
 	svc := newGatewayServiceWithMode(xlog.NewStdout("gateway-test"), accessClient, policyClient, providerClient, "dev")
 
 	req := httptest.NewRequest(http.MethodGet, "/v1/search/tweets?words=ai+overlap+quota+access", nil)
-	req.Header.Set("AppKey", "app_key_overlap_b")
-	req.Header.Set("AppSecret", "secret_overlap_b")
+	req.Header.Set("Authorization", "Bearer "+mustSignGatewayAppJWTForTests("app_key_overlap_b"))
 	rec := httptest.NewRecorder()
 
 	start := time.Now()
@@ -2253,9 +2213,17 @@ func okEnvelope(data any) *clients.EnvelopeResponse {
 
 func mustSignAdminJWT(t *testing.T, secret, issuer, subject string) string {
 	t.Helper()
-	token, err := shared.SignJWT(secret, issuer, subject, "platform_admin", time.Hour, time.Now())
+	token, err := shared.SignJWT(secret, issuer, subject, "gateway_app", time.Hour, time.Now())
 	if err != nil {
 		t.Fatalf("sign jwt: %v", err)
+	}
+	return token
+}
+
+func mustSignGatewayAppJWTForTests(subject string) string {
+	token, err := shared.SignJWT(defaultGatewayJWTSecret, defaultGatewayJWTIssuer, subject, "gateway_app", time.Hour, time.Now())
+	if err != nil {
+		panic(err)
 	}
 	return token
 }

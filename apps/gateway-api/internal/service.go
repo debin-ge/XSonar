@@ -3,7 +3,6 @@ package internal
 import (
 	"context"
 	"crypto/sha256"
-	"crypto/subtle"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -30,8 +29,7 @@ import (
 
 type gatewayAccessClient interface {
 	CheckIpBan(ctx context.Context, req *accessservice.CheckIpBanRequest) (*clients.EnvelopeResponse, error)
-	GetAppAuthContext(ctx context.Context, req *accessservice.GetAppAuthContextRequest) (*clients.EnvelopeResponse, error)
-	CheckReplay(ctx context.Context, req *accessservice.CheckReplayRequest) (*clients.EnvelopeResponse, error)
+	GetAppAuthContextByID(ctx context.Context, req *accessservice.GetAppAuthContextByIDRequest) (*clients.EnvelopeResponse, error)
 	CheckAndReserveQuota(ctx context.Context, req *accessservice.CheckAndReserveQuotaRequest) (*clients.EnvelopeResponse, error)
 	ReleaseQuotaOnFailure(ctx context.Context, req *accessservice.ReleaseQuotaOnFailureRequest) (*clients.EnvelopeResponse, error)
 	RecordUsageStat(ctx context.Context, req *accessservice.RecordUsageStatRequest) (*clients.EnvelopeResponse, error)
@@ -59,7 +57,6 @@ type gatewayService struct {
 	providerClient  gatewayProviderClient
 	schedulerClient gatewaySchedulerClient
 	usageStats      usageStatRecorder
-	developmentAuth bool
 	jwtSecret       string
 	jwtIssuer       string
 }
@@ -100,6 +97,8 @@ type policyAccessResult struct {
 var sensitiveUpstreamQueryParams = []string{"proxyUrl", "auth_token", "ct0"}
 
 const maxCreateCollectorTaskBodyBytes int64 = 1 << 20
+const defaultGatewayJWTSecret = "xsonar-gateway-dev-secret"
+const defaultGatewayJWTIssuer = "xsonar-gateway"
 
 func newGatewayServiceWithClients(logger *xlog.Logger, accessClient gatewayAccessClient, policyClient gatewayPolicyClient, providerClient gatewayProviderClient) *gatewayService {
 	return newGatewayServiceWithModeAndAdmin(logger, accessClient, policyClient, providerClient, nil, "", "", "")
@@ -127,9 +126,15 @@ func newGatewayServiceWithModeAndAdmin(logger *xlog.Logger, accessClient gateway
 	)
 }
 
-func newGatewayServiceWithModeAndUsageStats(logger *xlog.Logger, accessClient gatewayAccessClient, policyClient gatewayPolicyClient, providerClient gatewayProviderClient, schedulerClient gatewaySchedulerClient, jwtSecret, jwtIssuer string, usageStats usageStatRecorder, mode string) *gatewayService {
+func newGatewayServiceWithModeAndUsageStats(logger *xlog.Logger, accessClient gatewayAccessClient, policyClient gatewayPolicyClient, providerClient gatewayProviderClient, schedulerClient gatewaySchedulerClient, jwtSecret, jwtIssuer string, usageStats usageStatRecorder, _ string) *gatewayService {
 	if usageStats == nil {
 		usageStats = newInlineUsageStatRecorder(accessClient)
+	}
+	if strings.TrimSpace(jwtSecret) == "" {
+		jwtSecret = defaultGatewayJWTSecret
+	}
+	if strings.TrimSpace(jwtIssuer) == "" {
+		jwtIssuer = defaultGatewayJWTIssuer
 	}
 	return &gatewayService{
 		logger:          logger,
@@ -138,7 +143,6 @@ func newGatewayServiceWithModeAndUsageStats(logger *xlog.Logger, accessClient ga
 		providerClient:  providerClient,
 		schedulerClient: schedulerClient,
 		usageStats:      usageStats,
-		developmentAuth: isDevelopmentMode(mode),
 		jwtSecret:       jwtSecret,
 		jwtIssuer:       jwtIssuer,
 	}
@@ -164,42 +168,17 @@ func (s *gatewayService) handleProxy(w http.ResponseWriter, r *http.Request) {
 		shared.WriteError(w, statusCode, code, message, requestID)
 	}
 
-	appKey := firstNonEmpty(
-		r.Header.Get("AppKey"),
-		r.Header.Get("X-App-Key"),
-	)
-	providedAppSecret := firstNonEmpty(
-		r.Header.Get("AppSecret"),
-		r.Header.Get("X-App-Secret"),
-	)
-	providedAppSecret = strings.TrimSpace(providedAppSecret)
-	timestampValue := strings.TrimSpace(r.Header.Get("Timestamp"))
-	nonce := strings.TrimSpace(r.Header.Get("Nonce"))
-	signature := firstNonEmpty(r.Header.Get("Signature"), r.Header.Get("X-Signature"))
-
-	var timestampUnix int64
-	if s.developmentAuth {
-		if appKey == "" || strings.TrimSpace(providedAppSecret) == "" {
-			writeGatewayError(http.StatusUnauthorized, model.CodeUnauthorized, "AppKey and AppSecret are required", "AUTH_FIELDS_MISSING", "missing AppKey or AppSecret")
-			return
-		}
-	} else {
-		if appKey == "" || timestampValue == "" || nonce == "" || signature == "" {
-			writeGatewayError(http.StatusUnauthorized, model.CodeUnauthorized, "AppKey, Timestamp, Nonce and Signature are required", "AUTH_FIELDS_MISSING", "missing AppKey, Timestamp, Nonce or Signature")
-			return
-		}
-		if err := shared.ValidateTimestamp(timestampValue, 60*time.Second); err != nil {
-			writeGatewayError(http.StatusUnauthorized, model.CodeUnauthorized, err.Error(), "TIMESTAMP_INVALID", err.Error())
-			return
-		}
-
-		parsedTimestamp, err := shared.ParseUnixTimestamp(timestampValue)
-		if err != nil {
-			writeGatewayError(http.StatusUnauthorized, model.CodeUnauthorized, "timestamp must be unix seconds", "TIMESTAMP_PARSE_INVALID", err.Error())
-			return
-		}
-		timestampUnix = parsedTimestamp
+	token := shared.ExtractBearerToken(r.Header.Get("Authorization"))
+	if token == "" {
+		writeGatewayError(http.StatusUnauthorized, model.CodeUnauthorized, "missing or invalid bearer token", "JWT_INVALID", "missing or invalid bearer token")
+		return
 	}
+	claims, err := shared.ParseAndValidateJWT(s.jwtSecret, token, time.Now())
+	if err != nil || claims.Issuer != s.jwtIssuer || claims.Role != "gateway_app" || strings.TrimSpace(claims.Subject) == "" {
+		writeGatewayError(http.StatusUnauthorized, model.CodeUnauthorized, "missing or invalid bearer token", "JWT_INVALID", "missing or invalid bearer token")
+		return
+	}
+	appID = strings.TrimSpace(claims.Subject)
 
 	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
 	defer cancel()
@@ -207,7 +186,7 @@ func (s *gatewayService) handleProxy(w http.ResponseWriter, r *http.Request) {
 	ipBanCh := s.startIPBanCheck(ctx, clientIP)
 	policyCh := s.startPolicyResolve(ctx, r.URL.Path, r.Method)
 
-	authResp, authErr := s.accessClient.GetAppAuthContext(ctx, &accessservice.GetAppAuthContextRequest{AppKey: appKey})
+	authResp, authErr := s.accessClient.GetAppAuthContextByID(ctx, &accessservice.GetAppAuthContextByIDRequest{AppId: appID})
 
 	ipBanResult := <-ipBanCh
 	if ipBanResult.err != nil {
@@ -236,44 +215,10 @@ func (s *gatewayService) handleProxy(w http.ResponseWriter, r *http.Request) {
 
 	appID = stringValue(authData["app_id"])
 	tenantID = stringValue(authData["tenant_id"])
-	appSecret := strings.TrimSpace(stringValue(authData["app_secret"]))
 	appStatus := stringValue(authData["status"])
 	if appStatus != "active" {
 		writeGatewayError(http.StatusForbidden, model.CodeForbidden, "app is not active", "APP_INACTIVE", "app is not active")
 		return
-	}
-
-	var replayResp *clients.EnvelopeResponse
-	if s.developmentAuth {
-		if !secureStringEqual(appSecret, providedAppSecret) {
-			s.logger.Error("gateway dev auth secret mismatch", map[string]any{
-				"request_id":                  requestID,
-				"app_id":                      appID,
-				"app_key":                     appKey,
-				"expected_secret_fingerprint": secretFingerprint(appSecret),
-				"provided_secret_fingerprint": secretFingerprint(providedAppSecret),
-				"expected_secret_length":      len(appSecret),
-				"provided_secret_length":      len(providedAppSecret),
-			})
-			writeGatewayError(http.StatusUnauthorized, model.CodeUnauthorized, "app secret verification failed", "APP_SECRET_INVALID", "app secret verification failed")
-			return
-		}
-	} else {
-		expectedSignature := shared.ComputeSignature(appSecret, r.Method, r.URL.Path, r.URL.Query(), timestampValue, nonce)
-		if !shared.SignaturesEqual(expectedSignature, signature) {
-			writeGatewayError(http.StatusUnauthorized, model.CodeUnauthorized, "signature verification failed", "SIGNATURE_INVALID", "signature verification failed")
-			return
-		}
-
-		replayResp, replayErr := s.accessClient.CheckReplay(ctx, &accessservice.CheckReplayRequest{
-			AppId:     appID,
-			Nonce:     nonce,
-			Timestamp: timestampUnix,
-		})
-		if replayErr != nil {
-			s.writeGatewayDownstreamError(w, r, requestID, start, clientIP, tenantID, appID, policyKey, "CheckReplay", replayResp, replayErr)
-			return
-		}
 	}
 
 	policyResult := <-policyCh
@@ -397,12 +342,22 @@ func (s *gatewayService) handleProxy(w http.ResponseWriter, r *http.Request) {
 	shared.LogRequestInfo(s.logger, "gateway request completed", requestID, start, gatewayLogFields(r, clientIP, tenantID, appID, policyKey, statusCode, resultCode, ""))
 
 	shared.WriteRawOK(w, body, requestID)
+}
 
-	_ = replayResp
+func (s *gatewayService) handleCreatePeriodicCollectorTask(w http.ResponseWriter, r *http.Request) {
+	s.handleCreateCollectorTaskByType(w, r, "periodic")
+}
+
+func (s *gatewayService) handleCreateRangeCollectorTask(w http.ResponseWriter, r *http.Request) {
+	s.handleCreateCollectorTaskByType(w, r, "range")
 }
 
 func (s *gatewayService) handleCreateCollectorTask(w http.ResponseWriter, r *http.Request) {
-	subject, ok := s.requireAdminAuthSubject(w, r)
+	s.handleCreateCollectorTaskByType(w, r, collectorTaskTypeFromBody(r))
+}
+
+func (s *gatewayService) handleCreateCollectorTaskByType(w http.ResponseWriter, r *http.Request, taskType string) {
+	subject, ok := s.requireGatewayAuthSubject(w, r)
 	if !ok {
 		return
 	}
@@ -425,31 +380,48 @@ func (s *gatewayService) handleCreateCollectorTask(w http.ResponseWriter, r *htt
 		return
 	}
 
-	var req types.CreateCollectorTaskReq
-	if err := json.Unmarshal(body, &req); err != nil {
-		shared.WriteError(w, http.StatusBadRequest, model.CodeInvalidRequest, "invalid request body", requestID)
+	createReq := schedulerservice.CreateTaskRequest{
+		TaskType:  taskType,
+		CreatedBy: subject,
+	}
+	switch taskType {
+	case "periodic":
+		var req types.CreatePeriodicCollectorTaskReq
+		if err := json.Unmarshal(body, &req); err != nil {
+			shared.WriteError(w, http.StatusBadRequest, model.CodeInvalidRequest, "invalid request body", requestID)
+			return
+		}
+		createReq.TaskId = req.TaskID
+		createReq.Keyword = req.Keyword
+		createReq.Priority = req.Priority
+		createReq.FrequencySeconds = req.FrequencySeconds
+		createReq.RequiredCount = req.RequiredCount
+	case "range":
+		var req types.CreateRangeCollectorTaskReq
+		if err := json.Unmarshal(body, &req); err != nil {
+			shared.WriteError(w, http.StatusBadRequest, model.CodeInvalidRequest, "invalid request body", requestID)
+			return
+		}
+		createReq.TaskId = req.TaskID
+		createReq.Keyword = req.Keyword
+		createReq.Priority = req.Priority
+		createReq.Since = req.Since
+		createReq.Until = req.Until
+		createReq.RequiredCount = req.RequiredCount
+	default:
+		shared.WriteError(w, http.StatusInternalServerError, model.CodeInternalError, "collector task type is unsupported", requestID)
 		return
 	}
 
 	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
 	defer cancel()
 
-	response, callErr := s.schedulerClient.CreateTask(ctx, &schedulerservice.CreateTaskRequest{
-		TaskId:           req.TaskID,
-		TaskType:         req.TaskType,
-		Keyword:          req.Keyword,
-		Priority:         req.Priority,
-		FrequencySeconds: req.FrequencySeconds,
-		Since:            req.Since,
-		Until:            req.Until,
-		RequiredCount:    req.RequiredCount,
-		CreatedBy:        subject,
-	})
+	response, callErr := s.schedulerClient.CreateTask(ctx, &createReq)
 	writeAdminDownstreamResult(w, requestID, response, callErr)
 }
 
 func (s *gatewayService) handleGetCollectorTask(w http.ResponseWriter, r *http.Request) {
-	if _, ok := s.requireAdminAuthSubject(w, r); !ok {
+	if _, ok := s.requireGatewayAuthSubject(w, r); !ok {
 		return
 	}
 
@@ -472,7 +444,7 @@ func (s *gatewayService) handleGetCollectorTask(w http.ResponseWriter, r *http.R
 }
 
 func (s *gatewayService) handleListCollectorTaskRuns(w http.ResponseWriter, r *http.Request) {
-	if _, ok := s.requireAdminAuthSubject(w, r); !ok {
+	if _, ok := s.requireGatewayAuthSubject(w, r); !ok {
 		return
 	}
 
@@ -633,16 +605,16 @@ func writeAdminDownstreamResult(w http.ResponseWriter, requestID string, respons
 	shared.WriteEnvelope(w, adminStatusFromCode(response.Code), response.Code, response.Message, rawGatewayData(response.Data), requestID)
 }
 
-func (s *gatewayService) requireAdminAuthSubject(w http.ResponseWriter, r *http.Request) (string, bool) {
+func (s *gatewayService) requireGatewayAuthSubject(w http.ResponseWriter, r *http.Request) (string, bool) {
 	requestID := shared.EnsureRequestID(w, r)
 	token := shared.ExtractBearerToken(r.Header.Get("Authorization"))
 	if token == "" {
-		shared.WriteError(w, http.StatusUnauthorized, model.CodeUnauthorized, "missing or invalid admin token", requestID)
+		shared.WriteError(w, http.StatusUnauthorized, model.CodeUnauthorized, "missing or invalid bearer token", requestID)
 		return "", false
 	}
 	claims, err := shared.ParseAndValidateJWT(s.jwtSecret, token, time.Now())
-	if err != nil || claims.Issuer != s.jwtIssuer || claims.Role != "platform_admin" || claims.Subject == "" {
-		shared.WriteError(w, http.StatusUnauthorized, model.CodeUnauthorized, "missing or invalid admin token", requestID)
+	if err != nil || claims.Issuer != s.jwtIssuer || claims.Role != "gateway_app" || claims.Subject == "" {
+		shared.WriteError(w, http.StatusUnauthorized, model.CodeUnauthorized, "missing or invalid bearer token", requestID)
 		return "", false
 	}
 	return claims.Subject, true
@@ -672,6 +644,18 @@ func adminStatusFromCode(code int) int {
 		return http.StatusOK
 	}
 	return statusFromCode(code)
+}
+
+func collectorTaskTypeFromBody(r *http.Request) string {
+	if r != nil {
+		switch {
+		case strings.Contains(r.URL.Path, "/range"):
+			return "range"
+		case strings.Contains(r.URL.Path, "/periodic"):
+			return "periodic"
+		}
+	}
+	return "periodic"
 }
 
 func gatewayPathParam(r *http.Request, key string) string {
@@ -960,22 +944,6 @@ func sharedIsAuthField(key string) bool {
 	default:
 		return false
 	}
-}
-
-func isDevelopmentMode(mode string) bool {
-	switch strings.ToLower(strings.TrimSpace(mode)) {
-	case "dev", "test":
-		return true
-	default:
-		return false
-	}
-}
-
-func secureStringEqual(expected, provided string) bool {
-	if len(expected) != len(provided) {
-		return false
-	}
-	return subtle.ConstantTimeCompare([]byte(expected), []byte(provided)) == 1
 }
 
 func secretFingerprint(value string) string {

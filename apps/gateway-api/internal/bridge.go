@@ -46,8 +46,12 @@ func (b *Bridge) HandleProxy(w http.ResponseWriter, r *http.Request) {
 	b.svc.handleProxy(w, r)
 }
 
-func (b *Bridge) HandleCreateCollectorTask(w http.ResponseWriter, r *http.Request) {
-	b.svc.handleCreateCollectorTask(w, r)
+func (b *Bridge) HandleCreatePeriodicCollectorTask(w http.ResponseWriter, r *http.Request) {
+	b.svc.handleCreatePeriodicCollectorTask(w, r)
+}
+
+func (b *Bridge) HandleCreateRangeCollectorTask(w http.ResponseWriter, r *http.Request) {
+	b.svc.handleCreateRangeCollectorTask(w, r)
 }
 
 func (b *Bridge) HandleGetCollectorTask(w http.ResponseWriter, r *http.Request) {

@@ -6,6 +6,7 @@ option go_package = "xsonar/pkg/proto/accesspb";
 
 service AccessService {
   rpc GetAppAuthContext(GetAppAuthContextRequest) returns (JsonResponse);
+  rpc GetAppAuthContextByID(GetAppAuthContextByIDRequest) returns (JsonResponse);
   rpc CheckReplay(CheckReplayRequest) returns (JsonResponse);
   rpc CheckAndReserveQuota(CheckAndReserveQuotaRequest) returns (JsonResponse);
   rpc ReleaseQuotaOnFailure(ReleaseQuotaOnFailureRequest) returns (JsonResponse);
@@ -30,6 +31,10 @@ message JsonResponse {
 
 message GetAppAuthContextRequest {
   string app_key = 1;
+}
+
+message GetAppAuthContextByIDRequest {
+  string app_id = 1;
 }
 
 message CheckReplayRequest {

@@ -20,6 +20,7 @@ import (
 type consoleAccessClient interface {
 	Health(ctx context.Context) (*clients.EnvelopeResponse, error)
 	AuthenticateConsoleUser(ctx context.Context, req *accessservice.AuthenticateConsoleUserRequest) (*clients.EnvelopeResponse, error)
+	GetAppAuthContextByID(ctx context.Context, req *accessservice.GetAppAuthContextByIDRequest) (*clients.EnvelopeResponse, error)
 	ListTenants(ctx context.Context, req *accessservice.ListTenantsRequest) (*clients.EnvelopeResponse, error)
 	CreateTenant(ctx context.Context, req *accessservice.CreateTenantRequest) (*clients.EnvelopeResponse, error)
 	ListTenantApps(ctx context.Context, req *accessservice.ListTenantAppsRequest) (*clients.EnvelopeResponse, error)
@@ -55,6 +56,8 @@ func ConsoleDefaults() shared.Config {
 	cfg.JWTSecret = "xsonar-console-dev-secret"
 	cfg.JWTIssuer = "xsonar-console"
 	cfg.JWTTTLMinutes = 120
+	cfg.GatewayJWTSecret = "xsonar-gateway-dev-secret"
+	cfg.GatewayJWTIssuer = "xsonar-gateway"
 	return cfg
 }
 
@@ -136,6 +139,80 @@ func (s *consoleService) handleListTenants(w http.ResponseWriter, r *http.Reques
 
 	response, err := s.accessClient.ListTenants(ctx, &accessservice.ListTenantsRequest{})
 	writeDownstreamResult(w, requestID, response, err)
+}
+
+func (s *consoleService) handleIssueGatewayToken(w http.ResponseWriter, r *http.Request) {
+	if !s.requireAdminAuth(w, r) {
+		return
+	}
+	if s.accessClient == nil {
+		requestID := shared.EnsureRequestID(w, r)
+		shared.WriteError(w, http.StatusBadGateway, model.CodeInternalError, "access client is unavailable", requestID)
+		return
+	}
+
+	var req types.IssueGatewayTokenReq
+	if !parseValidatedRequest(w, r, &req, validateIssueGatewayTokenReq) {
+		return
+	}
+
+	requestID := shared.EnsureRequestID(w, r)
+	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+	defer cancel()
+
+	response, err := s.accessClient.GetAppAuthContextByID(ctx, &accessservice.GetAppAuthContextByIDRequest{AppId: req.AppID})
+	if err != nil {
+		writeDownstreamResult(w, requestID, response, err)
+		return
+	}
+
+	var authData map[string]any
+	if decodeErr := json.Unmarshal(response.Data, &authData); decodeErr != nil {
+		shared.WriteError(w, http.StatusBadGateway, model.CodeInternalError, "decode auth response failed", requestID)
+		return
+	}
+	if stringValue(authData["app_id"]) != req.AppID {
+		shared.WriteError(w, http.StatusBadGateway, model.CodeInternalError, "app auth context is inconsistent", requestID)
+		return
+	}
+
+	if stringValue(authData["tenant_id"]) != req.TenantID {
+		shared.WriteError(w, http.StatusBadRequest, model.CodeInvalidRequest, "tenant_id and app_id do not match", requestID)
+		return
+	}
+	if stringValue(authData["status"]) != "active" {
+		shared.WriteError(w, http.StatusForbidden, model.CodeForbidden, "app is not active", requestID)
+		return
+	}
+
+	now := time.Now().UTC()
+	tokenTTL := time.Duration(req.TTL) * time.Second
+	token, tokenErr := shared.SignJWT(
+		s.config.GatewayJWTSecret,
+		s.config.GatewayJWTIssuer,
+		req.AppID,
+		"gateway_app",
+		tokenTTL,
+		now,
+	)
+	if tokenErr != nil {
+		shared.WriteError(w, http.StatusInternalServerError, model.CodeInternalError, "issue gateway token failed", requestID)
+		return
+	}
+
+	expiresAt := ""
+	if req.TTL > 0 {
+		expiresAt = now.Add(tokenTTL).Format(time.RFC3339)
+	}
+
+	shared.WriteOK(w, map[string]any{
+		"token":              token,
+		"token_type":         "Bearer",
+		"tenant_id":          req.TenantID,
+		"app_id":             req.AppID,
+		"expires_in_seconds": req.TTL,
+		"expires_at":         expiresAt,
+	}, requestID)
 }
 
 func (s *consoleService) handleCreateTenant(w http.ResponseWriter, r *http.Request) {
@@ -638,6 +715,12 @@ func normalizeConsoleConfig(config shared.Config) shared.Config {
 	}
 	if config.JWTTTLMinutes <= 0 {
 		config.JWTTTLMinutes = defaults.JWTTTLMinutes
+	}
+	if config.GatewayJWTSecret == "" {
+		config.GatewayJWTSecret = defaults.GatewayJWTSecret
+	}
+	if config.GatewayJWTIssuer == "" {
+		config.GatewayJWTIssuer = defaults.GatewayJWTIssuer
 	}
 	return config
 }

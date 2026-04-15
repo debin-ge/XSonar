@@ -41,6 +41,10 @@ func (b *Bridge) HandleListTenants(w http.ResponseWriter, r *http.Request) {
 	b.svc.handleListTenants(w, r)
 }
 
+func (b *Bridge) HandleIssueGatewayToken(w http.ResponseWriter, r *http.Request) {
+	b.svc.handleIssueGatewayToken(w, r)
+}
+
 func (b *Bridge) HandleCreateTenant(w http.ResponseWriter, r *http.Request) {
 	if !b.svc.requireAdminAuth(w, r) {
 		return

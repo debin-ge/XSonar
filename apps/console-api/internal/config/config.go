@@ -10,10 +10,12 @@ import (
 
 type Config struct {
 	rest.RestConf
-	AccessRPC      zrpc.RpcClientConf
-	PolicyRPC      zrpc.RpcClientConf
-	ProviderRPC    zrpc.RpcClientConf
-	JWTSecret      string `json:",default=xsonar-console-dev-secret"`
-	JWTIssuer      string `json:",default=xsonar-console"`
-	JWTTTLMinutes  int    `json:",default=120"`
+	AccessRPC        zrpc.RpcClientConf
+	PolicyRPC        zrpc.RpcClientConf
+	ProviderRPC      zrpc.RpcClientConf
+	JWTSecret        string `json:",default=xsonar-console-dev-secret"`
+	JWTIssuer        string `json:",default=xsonar-console"`
+	JWTTTLMinutes    int    `json:",default=120"`
+	GatewayJWTSecret string `json:",default=xsonar-gateway-dev-secret"`
+	GatewayJWTIssuer string `json:",default=xsonar-gateway"`
 }

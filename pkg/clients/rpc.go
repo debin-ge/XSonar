@@ -18,6 +18,7 @@ import (
 type AccessRPC interface {
 	Health(ctx context.Context) (*EnvelopeResponse, error)
 	GetAppAuthContext(ctx context.Context, req *accessservice.GetAppAuthContextRequest) (*EnvelopeResponse, error)
+	GetAppAuthContextByID(ctx context.Context, req *accessservice.GetAppAuthContextByIDRequest) (*EnvelopeResponse, error)
 	CheckReplay(ctx context.Context, req *accessservice.CheckReplayRequest) (*EnvelopeResponse, error)
 	CheckAndReserveQuota(ctx context.Context, req *accessservice.CheckAndReserveQuotaRequest) (*EnvelopeResponse, error)
 	ReleaseQuotaOnFailure(ctx context.Context, req *accessservice.ReleaseQuotaOnFailureRequest) (*EnvelopeResponse, error)
@@ -138,6 +139,11 @@ func (c *accessRPCClient) Health(ctx context.Context) (*EnvelopeResponse, error)
 
 func (c *accessRPCClient) GetAppAuthContext(ctx context.Context, req *accessservice.GetAppAuthContextRequest) (*EnvelopeResponse, error) {
 	resp, err := c.client.GetAppAuthContext(ctx, req)
+	return rpcEnvelope(resp, err)
+}
+
+func (c *accessRPCClient) GetAppAuthContextByID(ctx context.Context, req *accessservice.GetAppAuthContextByIDRequest) (*EnvelopeResponse, error) {
+	resp, err := c.client.GetAppAuthContextByID(ctx, req)
 	return rpcEnvelope(resp, err)
 }
 

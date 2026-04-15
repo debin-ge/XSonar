@@ -586,6 +586,39 @@ func (s *pgRedisStore) getAppAuthContext(ctx context.Context, req getAppAuthCont
 	return authContext.toMap(), nil
 }
 
+func (s *pgRedisStore) getAppAuthContextByID(ctx context.Context, req getAppAuthContextByIDRequest) (any, *serviceError) {
+	if strings.TrimSpace(req.AppID) == "" {
+		return nil, invalidRequest("app_id is required")
+	}
+
+	appKey := ""
+	if s.redis != nil {
+		cachedKey, err := s.redis.Get(ctx, s.appKeyIndexCacheKey(req.AppID)).Result()
+		if err != nil && err != redis.Nil {
+			return nil, internalError("query app auth context failed")
+		}
+		appKey = strings.TrimSpace(cachedKey)
+		if appKey != "" {
+			if cached, ok := s.loadCachedAppAuthContext(ctx, appKey); ok {
+				return cached.toMap(), nil
+			}
+		}
+	}
+
+	if appKey == "" {
+		item, svcErr := s.getTenantAppByID(ctx, req.AppID)
+		if svcErr != nil {
+			return nil, svcErr
+		}
+		appKey = strings.TrimSpace(item.AppKey)
+	}
+	if appKey == "" {
+		return nil, internalError("app key index missing")
+	}
+
+	return s.getAppAuthContext(ctx, getAppAuthContextRequest{AppKey: appKey})
+}
+
 func (s *pgRedisStore) checkReplay(ctx context.Context, req checkReplayRequest) (any, *serviceError) {
 	if strings.TrimSpace(req.AppID) == "" || strings.TrimSpace(req.Nonce) == "" {
 		return nil, invalidRequest("app_id and nonce are required")
@@ -622,9 +655,6 @@ func (s *pgRedisStore) checkAndReserveQuota(ctx context.Context, req checkAndRes
 	item, svcErr := s.getTenantAppByID(ctx, req.AppID)
 	if svcErr != nil {
 		return nil, svcErr
-	}
-	if item.Status != "active" {
-		return nil, forbidden("app is not active")
 	}
 
 	dateKey := time.Now().UTC().Format("2006-01-02")

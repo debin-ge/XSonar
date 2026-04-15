@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 
 	"xsonar/apps/console-api/internal/types"
 )
@@ -24,6 +25,7 @@ const (
 	maxPolicyParamCount        = 64
 	maxDefaultParamCount       = 64
 	maxProviderCredentialIDLen = 64
+	maxGatewayTokenTTLSeconds  = int64((1<<63 - 1) / int64(time.Second))
 )
 
 func validateLoginReq(req *types.LoginReq) error {
@@ -61,6 +63,24 @@ func validateCreateTenantAppReq(req *types.CreateTenantAppReq) error {
 	}
 	if req.QpsLimit < 0 || req.QpsLimit > maxQPSLimit {
 		return fmt.Errorf("qps_limit must be between 0 and %d", maxQPSLimit)
+	}
+	return nil
+}
+
+func validateIssueGatewayTokenReq(req *types.IssueGatewayTokenReq) error {
+	if req == nil {
+		return errors.New("request body is required")
+	}
+	req.TenantID = strings.TrimSpace(req.TenantID)
+	req.AppID = strings.TrimSpace(req.AppID)
+	if err := requireStringInRange("tenant_id", req.TenantID, 1, maxTenantNameLen*2); err != nil {
+		return err
+	}
+	if err := requireStringInRange("app_id", req.AppID, 1, maxAppNameLen*2); err != nil {
+		return err
+	}
+	if req.TTL < 0 || req.TTL > maxGatewayTokenTTLSeconds {
+		return fmt.Errorf("ttl must be between 0 and %d", maxGatewayTokenTTLSeconds)
 	}
 	return nil
 }

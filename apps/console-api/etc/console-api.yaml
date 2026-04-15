@@ -6,6 +6,8 @@ Timeout: 5000
 JWTSecret: xsonar-console-dev-secret
 JWTIssuer: xsonar-console
 JWTTTLMinutes: 120
+GatewayJWTSecret: xsonar-gateway-dev-secret
+GatewayJWTIssuer: xsonar-gateway
 AccessRPC:
   Endpoints:
     - access-rpc:9001

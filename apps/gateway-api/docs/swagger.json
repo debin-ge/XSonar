@@ -16,8 +16,260 @@
   },
   "basePath": "/",
   "paths": {
+    "/v1/collector/tasks/periodic": {
+      "post": {
+        "security": [
+          {
+            "gatewayBearer": []
+          }
+        ],
+        "consumes": [
+          "application/json"
+        ],
+        "produces": [
+          "application/json"
+        ],
+        "schemes": [
+          "http"
+        ],
+        "tags": [
+          "Gateway API"
+        ],
+        "summary": "Create a periodic collector task.",
+        "operationId": "createPeriodicCollectorTask",
+        "parameters": [
+          {
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "type": "object",
+              "required": [
+                "task_id",
+                "keyword"
+              ],
+              "properties": {
+                "frequency_seconds": {
+                  "type": "integer"
+                },
+                "keyword": {
+                  "type": "string"
+                },
+                "priority": {
+                  "type": "integer"
+                },
+                "required_count": {
+                  "type": "integer"
+                },
+                "task_id": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "schema": {
+              "type": "object",
+              "properties": {
+                "code": {
+                  "type": "integer"
+                },
+                "data": {},
+                "message": {
+                  "type": "string"
+                },
+                "request_id": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/collector/tasks/range": {
+      "post": {
+        "security": [
+          {
+            "gatewayBearer": []
+          }
+        ],
+        "consumes": [
+          "application/json"
+        ],
+        "produces": [
+          "application/json"
+        ],
+        "schemes": [
+          "http"
+        ],
+        "tags": [
+          "Gateway API"
+        ],
+        "summary": "Create a range collector task.",
+        "operationId": "createRangeCollectorTask",
+        "parameters": [
+          {
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "type": "object",
+              "required": [
+                "task_id",
+                "keyword"
+              ],
+              "properties": {
+                "keyword": {
+                  "type": "string"
+                },
+                "priority": {
+                  "type": "integer"
+                },
+                "required_count": {
+                  "type": "integer"
+                },
+                "since": {
+                  "type": "string"
+                },
+                "task_id": {
+                  "type": "string"
+                },
+                "until": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "schema": {
+              "type": "object",
+              "properties": {
+                "code": {
+                  "type": "integer"
+                },
+                "data": {},
+                "message": {
+                  "type": "string"
+                },
+                "request_id": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/collector/tasks/{id}": {
+      "get": {
+        "security": [
+          {
+            "gatewayBearer": []
+          }
+        ],
+        "produces": [
+          "application/json"
+        ],
+        "schemes": [
+          "http"
+        ],
+        "tags": [
+          "Gateway API"
+        ],
+        "summary": "Get a collector task.",
+        "operationId": "getCollectorTask",
+        "parameters": [
+          {
+            "type": "string",
+            "name": "id",
+            "in": "path",
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "schema": {
+              "type": "object",
+              "properties": {
+                "code": {
+                  "type": "integer"
+                },
+                "data": {},
+                "message": {
+                  "type": "string"
+                },
+                "request_id": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/collector/tasks/{id}/runs": {
+      "get": {
+        "security": [
+          {
+            "gatewayBearer": []
+          }
+        ],
+        "produces": [
+          "application/json"
+        ],
+        "schemes": [
+          "http"
+        ],
+        "tags": [
+          "Gateway API"
+        ],
+        "summary": "List collector task runs.",
+        "operationId": "listCollectorTaskRuns",
+        "parameters": [
+          {
+            "type": "string",
+            "name": "id",
+            "in": "path",
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "schema": {
+              "type": "object",
+              "properties": {
+                "code": {
+                  "type": "integer"
+                },
+                "data": {},
+                "message": {
+                  "type": "string"
+                },
+                "request_id": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/v1/communities": {
       "get": {
+        "security": [
+          {
+            "gatewayBearer": []
+          }
+        ],
         "produces": [
           "application/json"
         ],
@@ -30,31 +282,6 @@
         "summary": "Get communities.",
         "operationId": "communities",
         "parameters": [
-          {
-            "type": "string",
-            "name": "AppKey",
-            "in": "header"
-          },
-          {
-            "type": "string",
-            "name": "AppSecret",
-            "in": "header"
-          },
-          {
-            "type": "string",
-            "name": "Timestamp",
-            "in": "header"
-          },
-          {
-            "type": "string",
-            "name": "Nonce",
-            "in": "header"
-          },
-          {
-            "type": "string",
-            "name": "Signature",
-            "in": "header"
-          },
           {
             "type": "string",
             "name": "screenName",
@@ -86,6 +313,11 @@
     },
     "/v1/lists": {
       "get": {
+        "security": [
+          {
+            "gatewayBearer": []
+          }
+        ],
         "produces": [
           "application/json"
         ],
@@ -98,31 +330,6 @@
         "summary": "Get lists.",
         "operationId": "lists",
         "parameters": [
-          {
-            "type": "string",
-            "name": "AppKey",
-            "in": "header"
-          },
-          {
-            "type": "string",
-            "name": "AppSecret",
-            "in": "header"
-          },
-          {
-            "type": "string",
-            "name": "Timestamp",
-            "in": "header"
-          },
-          {
-            "type": "string",
-            "name": "Nonce",
-            "in": "header"
-          },
-          {
-            "type": "string",
-            "name": "Signature",
-            "in": "header"
-          },
           {
             "type": "string",
             "name": "userId",
@@ -160,6 +367,11 @@
     },
     "/v1/search/box": {
       "get": {
+        "security": [
+          {
+            "gatewayBearer": []
+          }
+        ],
         "produces": [
           "application/json"
         ],
@@ -172,31 +384,6 @@
         "summary": "Search the box.",
         "operationId": "searchBox",
         "parameters": [
-          {
-            "type": "string",
-            "name": "AppKey",
-            "in": "header"
-          },
-          {
-            "type": "string",
-            "name": "AppSecret",
-            "in": "header"
-          },
-          {
-            "type": "string",
-            "name": "Timestamp",
-            "in": "header"
-          },
-          {
-            "type": "string",
-            "name": "Nonce",
-            "in": "header"
-          },
-          {
-            "type": "string",
-            "name": "Signature",
-            "in": "header"
-          },
           {
             "type": "string",
             "name": "words",
@@ -234,6 +421,11 @@
     },
     "/v1/search/entertainment": {
       "get": {
+        "security": [
+          {
+            "gatewayBearer": []
+          }
+        ],
         "produces": [
           "application/json"
         ],
@@ -245,33 +437,6 @@
         ],
         "summary": "Get entertainment search.",
         "operationId": "searchEntertainment",
-        "parameters": [
-          {
-            "type": "string",
-            "name": "AppKey",
-            "in": "header"
-          },
-          {
-            "type": "string",
-            "name": "AppSecret",
-            "in": "header"
-          },
-          {
-            "type": "string",
-            "name": "Timestamp",
-            "in": "header"
-          },
-          {
-            "type": "string",
-            "name": "Nonce",
-            "in": "header"
-          },
-          {
-            "type": "string",
-            "name": "Signature",
-            "in": "header"
-          }
-        ],
         "responses": {
           "200": {
             "description": "",
@@ -296,6 +461,11 @@
     },
     "/v1/search/explore": {
       "get": {
+        "security": [
+          {
+            "gatewayBearer": []
+          }
+        ],
         "produces": [
           "application/json"
         ],
@@ -307,33 +477,6 @@
         ],
         "summary": "Get explore search.",
         "operationId": "searchExplore",
-        "parameters": [
-          {
-            "type": "string",
-            "name": "AppKey",
-            "in": "header"
-          },
-          {
-            "type": "string",
-            "name": "AppSecret",
-            "in": "header"
-          },
-          {
-            "type": "string",
-            "name": "Timestamp",
-            "in": "header"
-          },
-          {
-            "type": "string",
-            "name": "Nonce",
-            "in": "header"
-          },
-          {
-            "type": "string",
-            "name": "Signature",
-            "in": "header"
-          }
-        ],
         "responses": {
           "200": {
             "description": "",
@@ -358,6 +501,11 @@
     },
     "/v1/search/news": {
       "get": {
+        "security": [
+          {
+            "gatewayBearer": []
+          }
+        ],
         "produces": [
           "application/json"
         ],
@@ -369,33 +517,6 @@
         ],
         "summary": "Get news search.",
         "operationId": "searchNews",
-        "parameters": [
-          {
-            "type": "string",
-            "name": "AppKey",
-            "in": "header"
-          },
-          {
-            "type": "string",
-            "name": "AppSecret",
-            "in": "header"
-          },
-          {
-            "type": "string",
-            "name": "Timestamp",
-            "in": "header"
-          },
-          {
-            "type": "string",
-            "name": "Nonce",
-            "in": "header"
-          },
-          {
-            "type": "string",
-            "name": "Signature",
-            "in": "header"
-          }
-        ],
         "responses": {
           "200": {
             "description": "",
@@ -420,6 +541,11 @@
     },
     "/v1/search/sports": {
       "get": {
+        "security": [
+          {
+            "gatewayBearer": []
+          }
+        ],
         "produces": [
           "application/json"
         ],
@@ -431,33 +557,6 @@
         ],
         "summary": "Get sports search.",
         "operationId": "searchSports",
-        "parameters": [
-          {
-            "type": "string",
-            "name": "AppKey",
-            "in": "header"
-          },
-          {
-            "type": "string",
-            "name": "AppSecret",
-            "in": "header"
-          },
-          {
-            "type": "string",
-            "name": "Timestamp",
-            "in": "header"
-          },
-          {
-            "type": "string",
-            "name": "Nonce",
-            "in": "header"
-          },
-          {
-            "type": "string",
-            "name": "Signature",
-            "in": "header"
-          }
-        ],
         "responses": {
           "200": {
             "description": "",
@@ -482,6 +581,11 @@
     },
     "/v1/search/trending": {
       "get": {
+        "security": [
+          {
+            "gatewayBearer": []
+          }
+        ],
         "produces": [
           "application/json"
         ],
@@ -493,33 +597,6 @@
         ],
         "summary": "Get trending search terms.",
         "operationId": "searchTrending",
-        "parameters": [
-          {
-            "type": "string",
-            "name": "AppKey",
-            "in": "header"
-          },
-          {
-            "type": "string",
-            "name": "AppSecret",
-            "in": "header"
-          },
-          {
-            "type": "string",
-            "name": "Timestamp",
-            "in": "header"
-          },
-          {
-            "type": "string",
-            "name": "Nonce",
-            "in": "header"
-          },
-          {
-            "type": "string",
-            "name": "Signature",
-            "in": "header"
-          }
-        ],
         "responses": {
           "200": {
             "description": "",
@@ -544,6 +621,11 @@
     },
     "/v1/search/trends": {
       "get": {
+        "security": [
+          {
+            "gatewayBearer": []
+          }
+        ],
         "produces": [
           "application/json"
         ],
@@ -556,31 +638,6 @@
         "summary": "List search trends.",
         "operationId": "searchTrends",
         "parameters": [
-          {
-            "type": "string",
-            "name": "AppKey",
-            "in": "header"
-          },
-          {
-            "type": "string",
-            "name": "AppSecret",
-            "in": "header"
-          },
-          {
-            "type": "string",
-            "name": "Timestamp",
-            "in": "header"
-          },
-          {
-            "type": "string",
-            "name": "Nonce",
-            "in": "header"
-          },
-          {
-            "type": "string",
-            "name": "Signature",
-            "in": "header"
-          },
           {
             "type": "string",
             "name": "id",
@@ -612,6 +669,11 @@
     },
     "/v1/search/tweets": {
       "get": {
+        "security": [
+          {
+            "gatewayBearer": []
+          }
+        ],
         "produces": [
           "application/json"
         ],
@@ -624,31 +686,6 @@
         "summary": "Search tweets.",
         "operationId": "searchTweets",
         "parameters": [
-          {
-            "type": "string",
-            "name": "AppKey",
-            "in": "header"
-          },
-          {
-            "type": "string",
-            "name": "AppSecret",
-            "in": "header"
-          },
-          {
-            "type": "string",
-            "name": "Timestamp",
-            "in": "header"
-          },
-          {
-            "type": "string",
-            "name": "Nonce",
-            "in": "header"
-          },
-          {
-            "type": "string",
-            "name": "Signature",
-            "in": "header"
-          },
           {
             "type": "string",
             "name": "words",
@@ -770,6 +807,11 @@
     },
     "/v1/tweets/brief": {
       "get": {
+        "security": [
+          {
+            "gatewayBearer": []
+          }
+        ],
         "produces": [
           "application/json"
         ],
@@ -782,31 +824,6 @@
         "summary": "Get tweet brief.",
         "operationId": "tweetsBrief",
         "parameters": [
-          {
-            "type": "string",
-            "name": "AppKey",
-            "in": "header"
-          },
-          {
-            "type": "string",
-            "name": "AppSecret",
-            "in": "header"
-          },
-          {
-            "type": "string",
-            "name": "Timestamp",
-            "in": "header"
-          },
-          {
-            "type": "string",
-            "name": "Nonce",
-            "in": "header"
-          },
-          {
-            "type": "string",
-            "name": "Signature",
-            "in": "header"
-          },
           {
             "type": "string",
             "name": "tweetId",
@@ -844,6 +861,11 @@
     },
     "/v1/tweets/by-ids": {
       "get": {
+        "security": [
+          {
+            "gatewayBearer": []
+          }
+        ],
         "produces": [
           "application/json"
         ],
@@ -856,31 +878,6 @@
         "summary": "Get tweets by IDs.",
         "operationId": "tweetsByIDs",
         "parameters": [
-          {
-            "type": "string",
-            "name": "AppKey",
-            "in": "header"
-          },
-          {
-            "type": "string",
-            "name": "AppSecret",
-            "in": "header"
-          },
-          {
-            "type": "string",
-            "name": "Timestamp",
-            "in": "header"
-          },
-          {
-            "type": "string",
-            "name": "Nonce",
-            "in": "header"
-          },
-          {
-            "type": "string",
-            "name": "Signature",
-            "in": "header"
-          },
           {
             "type": "string",
             "name": "tweetIds",
@@ -912,6 +909,11 @@
     },
     "/v1/tweets/detail": {
       "get": {
+        "security": [
+          {
+            "gatewayBearer": []
+          }
+        ],
         "produces": [
           "application/json"
         ],
@@ -924,31 +926,6 @@
         "summary": "Get tweet details.",
         "operationId": "tweetsDetail",
         "parameters": [
-          {
-            "type": "string",
-            "name": "AppKey",
-            "in": "header"
-          },
-          {
-            "type": "string",
-            "name": "AppSecret",
-            "in": "header"
-          },
-          {
-            "type": "string",
-            "name": "Timestamp",
-            "in": "header"
-          },
-          {
-            "type": "string",
-            "name": "Nonce",
-            "in": "header"
-          },
-          {
-            "type": "string",
-            "name": "Signature",
-            "in": "header"
-          },
           {
             "type": "string",
             "name": "tweetId",
@@ -986,6 +963,11 @@
     },
     "/v1/tweets/favoriters": {
       "get": {
+        "security": [
+          {
+            "gatewayBearer": []
+          }
+        ],
         "produces": [
           "application/json"
         ],
@@ -998,31 +980,6 @@
         "summary": "Get tweet favoriters.",
         "operationId": "tweetsFavoriters",
         "parameters": [
-          {
-            "type": "string",
-            "name": "AppKey",
-            "in": "header"
-          },
-          {
-            "type": "string",
-            "name": "AppSecret",
-            "in": "header"
-          },
-          {
-            "type": "string",
-            "name": "Timestamp",
-            "in": "header"
-          },
-          {
-            "type": "string",
-            "name": "Nonce",
-            "in": "header"
-          },
-          {
-            "type": "string",
-            "name": "Signature",
-            "in": "header"
-          },
           {
             "type": "string",
             "name": "tweetId",
@@ -1066,6 +1023,11 @@
     },
     "/v1/tweets/quotes": {
       "get": {
+        "security": [
+          {
+            "gatewayBearer": []
+          }
+        ],
         "produces": [
           "application/json"
         ],
@@ -1078,31 +1040,6 @@
         "summary": "Get tweet quotes.",
         "operationId": "tweetsQuotes",
         "parameters": [
-          {
-            "type": "string",
-            "name": "AppKey",
-            "in": "header"
-          },
-          {
-            "type": "string",
-            "name": "AppSecret",
-            "in": "header"
-          },
-          {
-            "type": "string",
-            "name": "Timestamp",
-            "in": "header"
-          },
-          {
-            "type": "string",
-            "name": "Nonce",
-            "in": "header"
-          },
-          {
-            "type": "string",
-            "name": "Signature",
-            "in": "header"
-          },
           {
             "type": "string",
             "name": "tweetId",
@@ -1146,6 +1083,11 @@
     },
     "/v1/tweets/replies": {
       "get": {
+        "security": [
+          {
+            "gatewayBearer": []
+          }
+        ],
         "produces": [
           "application/json"
         ],
@@ -1158,31 +1100,6 @@
         "summary": "Get tweet replies.",
         "operationId": "tweetsReplies",
         "parameters": [
-          {
-            "type": "string",
-            "name": "AppKey",
-            "in": "header"
-          },
-          {
-            "type": "string",
-            "name": "AppSecret",
-            "in": "header"
-          },
-          {
-            "type": "string",
-            "name": "Timestamp",
-            "in": "header"
-          },
-          {
-            "type": "string",
-            "name": "Nonce",
-            "in": "header"
-          },
-          {
-            "type": "string",
-            "name": "Signature",
-            "in": "header"
-          },
           {
             "type": "string",
             "name": "userId",
@@ -1220,6 +1137,11 @@
     },
     "/v1/tweets/retweeters": {
       "get": {
+        "security": [
+          {
+            "gatewayBearer": []
+          }
+        ],
         "produces": [
           "application/json"
         ],
@@ -1232,31 +1154,6 @@
         "summary": "Get tweet retweeters.",
         "operationId": "tweetsRetweeters",
         "parameters": [
-          {
-            "type": "string",
-            "name": "AppKey",
-            "in": "header"
-          },
-          {
-            "type": "string",
-            "name": "AppSecret",
-            "in": "header"
-          },
-          {
-            "type": "string",
-            "name": "Timestamp",
-            "in": "header"
-          },
-          {
-            "type": "string",
-            "name": "Nonce",
-            "in": "header"
-          },
-          {
-            "type": "string",
-            "name": "Signature",
-            "in": "header"
-          },
           {
             "type": "string",
             "name": "tweetId",
@@ -1300,6 +1197,11 @@
     },
     "/v1/tweets/timeline": {
       "get": {
+        "security": [
+          {
+            "gatewayBearer": []
+          }
+        ],
         "produces": [
           "application/json"
         ],
@@ -1312,31 +1214,6 @@
         "summary": "Get the tweets timeline.",
         "operationId": "tweetsTimeline",
         "parameters": [
-          {
-            "type": "string",
-            "name": "AppKey",
-            "in": "header"
-          },
-          {
-            "type": "string",
-            "name": "AppSecret",
-            "in": "header"
-          },
-          {
-            "type": "string",
-            "name": "Timestamp",
-            "in": "header"
-          },
-          {
-            "type": "string",
-            "name": "Nonce",
-            "in": "header"
-          },
-          {
-            "type": "string",
-            "name": "Signature",
-            "in": "header"
-          },
           {
             "type": "string",
             "name": "userId",
@@ -1374,6 +1251,11 @@
     },
     "/v1/users/account-analytics": {
       "get": {
+        "security": [
+          {
+            "gatewayBearer": []
+          }
+        ],
         "produces": [
           "application/json"
         ],
@@ -1386,31 +1268,6 @@
         "summary": "Get user account analytics.",
         "operationId": "usersAccountAnalytics",
         "parameters": [
-          {
-            "type": "string",
-            "name": "AppKey",
-            "in": "header"
-          },
-          {
-            "type": "string",
-            "name": "AppSecret",
-            "in": "header"
-          },
-          {
-            "type": "string",
-            "name": "Timestamp",
-            "in": "header"
-          },
-          {
-            "type": "string",
-            "name": "Nonce",
-            "in": "header"
-          },
-          {
-            "type": "string",
-            "name": "Signature",
-            "in": "header"
-          },
           {
             "type": "string",
             "name": "restId",
@@ -1454,6 +1311,11 @@
     },
     "/v1/users/articles-tweets": {
       "get": {
+        "security": [
+          {
+            "gatewayBearer": []
+          }
+        ],
         "produces": [
           "application/json"
         ],
@@ -1466,31 +1328,6 @@
         "summary": "Get user articles tweets.",
         "operationId": "usersArticlesTweets",
         "parameters": [
-          {
-            "type": "string",
-            "name": "AppKey",
-            "in": "header"
-          },
-          {
-            "type": "string",
-            "name": "AppSecret",
-            "in": "header"
-          },
-          {
-            "type": "string",
-            "name": "Timestamp",
-            "in": "header"
-          },
-          {
-            "type": "string",
-            "name": "Nonce",
-            "in": "header"
-          },
-          {
-            "type": "string",
-            "name": "Signature",
-            "in": "header"
-          },
           {
             "type": "string",
             "name": "userId",
@@ -1534,6 +1371,11 @@
     },
     "/v1/users/by-id": {
       "get": {
+        "security": [
+          {
+            "gatewayBearer": []
+          }
+        ],
         "produces": [
           "application/json"
         ],
@@ -1546,31 +1388,6 @@
         "summary": "Get a user by ID.",
         "operationId": "userByID",
         "parameters": [
-          {
-            "type": "string",
-            "name": "AppKey",
-            "in": "header"
-          },
-          {
-            "type": "string",
-            "name": "AppSecret",
-            "in": "header"
-          },
-          {
-            "type": "string",
-            "name": "Timestamp",
-            "in": "header"
-          },
-          {
-            "type": "string",
-            "name": "Nonce",
-            "in": "header"
-          },
-          {
-            "type": "string",
-            "name": "Signature",
-            "in": "header"
-          },
           {
             "type": "string",
             "name": "userId",
@@ -1608,6 +1425,11 @@
     },
     "/v1/users/by-ids": {
       "get": {
+        "security": [
+          {
+            "gatewayBearer": []
+          }
+        ],
         "produces": [
           "application/json"
         ],
@@ -1620,31 +1442,6 @@
         "summary": "Get users by IDs.",
         "operationId": "usersByIDs",
         "parameters": [
-          {
-            "type": "string",
-            "name": "AppKey",
-            "in": "header"
-          },
-          {
-            "type": "string",
-            "name": "AppSecret",
-            "in": "header"
-          },
-          {
-            "type": "string",
-            "name": "Timestamp",
-            "in": "header"
-          },
-          {
-            "type": "string",
-            "name": "Nonce",
-            "in": "header"
-          },
-          {
-            "type": "string",
-            "name": "Signature",
-            "in": "header"
-          },
           {
             "type": "string",
             "name": "userIds",
@@ -1676,6 +1473,11 @@
     },
     "/v1/users/by-username": {
       "get": {
+        "security": [
+          {
+            "gatewayBearer": []
+          }
+        ],
         "produces": [
           "application/json"
         ],
@@ -1688,31 +1490,6 @@
         "summary": "Get a user by username.",
         "operationId": "userByUsername",
         "parameters": [
-          {
-            "type": "string",
-            "name": "AppKey",
-            "in": "header"
-          },
-          {
-            "type": "string",
-            "name": "AppSecret",
-            "in": "header"
-          },
-          {
-            "type": "string",
-            "name": "Timestamp",
-            "in": "header"
-          },
-          {
-            "type": "string",
-            "name": "Nonce",
-            "in": "header"
-          },
-          {
-            "type": "string",
-            "name": "Signature",
-            "in": "header"
-          },
           {
             "type": "string",
             "name": "screenName",
@@ -1744,6 +1521,11 @@
     },
     "/v1/users/followers": {
       "get": {
+        "security": [
+          {
+            "gatewayBearer": []
+          }
+        ],
         "produces": [
           "application/json"
         ],
@@ -1756,31 +1538,6 @@
         "summary": "Get user followers.",
         "operationId": "usersFollowers",
         "parameters": [
-          {
-            "type": "string",
-            "name": "AppKey",
-            "in": "header"
-          },
-          {
-            "type": "string",
-            "name": "AppSecret",
-            "in": "header"
-          },
-          {
-            "type": "string",
-            "name": "Timestamp",
-            "in": "header"
-          },
-          {
-            "type": "string",
-            "name": "Nonce",
-            "in": "header"
-          },
-          {
-            "type": "string",
-            "name": "Signature",
-            "in": "header"
-          },
           {
             "type": "string",
             "name": "userId",
@@ -1818,6 +1575,11 @@
     },
     "/v1/users/followings": {
       "get": {
+        "security": [
+          {
+            "gatewayBearer": []
+          }
+        ],
         "produces": [
           "application/json"
         ],
@@ -1830,31 +1592,6 @@
         "summary": "Get user followings.",
         "operationId": "usersFollowings",
         "parameters": [
-          {
-            "type": "string",
-            "name": "AppKey",
-            "in": "header"
-          },
-          {
-            "type": "string",
-            "name": "AppSecret",
-            "in": "header"
-          },
-          {
-            "type": "string",
-            "name": "Timestamp",
-            "in": "header"
-          },
-          {
-            "type": "string",
-            "name": "Nonce",
-            "in": "header"
-          },
-          {
-            "type": "string",
-            "name": "Signature",
-            "in": "header"
-          },
           {
             "type": "string",
             "name": "userId",
@@ -1892,6 +1629,11 @@
     },
     "/v1/users/highlights": {
       "get": {
+        "security": [
+          {
+            "gatewayBearer": []
+          }
+        ],
         "produces": [
           "application/json"
         ],
@@ -1904,31 +1646,6 @@
         "summary": "Get user highlights.",
         "operationId": "usersHighlights",
         "parameters": [
-          {
-            "type": "string",
-            "name": "AppKey",
-            "in": "header"
-          },
-          {
-            "type": "string",
-            "name": "AppSecret",
-            "in": "header"
-          },
-          {
-            "type": "string",
-            "name": "Timestamp",
-            "in": "header"
-          },
-          {
-            "type": "string",
-            "name": "Nonce",
-            "in": "header"
-          },
-          {
-            "type": "string",
-            "name": "Signature",
-            "in": "header"
-          },
           {
             "type": "string",
             "name": "userId",
@@ -1972,6 +1689,11 @@
     },
     "/v1/users/likes": {
       "get": {
+        "security": [
+          {
+            "gatewayBearer": []
+          }
+        ],
         "produces": [
           "application/json"
         ],
@@ -1984,31 +1706,6 @@
         "summary": "Get user likes.",
         "operationId": "usersLikes",
         "parameters": [
-          {
-            "type": "string",
-            "name": "AppKey",
-            "in": "header"
-          },
-          {
-            "type": "string",
-            "name": "AppSecret",
-            "in": "header"
-          },
-          {
-            "type": "string",
-            "name": "Timestamp",
-            "in": "header"
-          },
-          {
-            "type": "string",
-            "name": "Nonce",
-            "in": "header"
-          },
-          {
-            "type": "string",
-            "name": "Signature",
-            "in": "header"
-          },
           {
             "type": "string",
             "name": "userId",
@@ -2052,6 +1749,11 @@
     },
     "/v1/users/mentions-timeline": {
       "get": {
+        "security": [
+          {
+            "gatewayBearer": []
+          }
+        ],
         "produces": [
           "application/json"
         ],
@@ -2064,31 +1766,6 @@
         "summary": "Get user mentions timeline.",
         "operationId": "usersMentionsTimeline",
         "parameters": [
-          {
-            "type": "string",
-            "name": "AppKey",
-            "in": "header"
-          },
-          {
-            "type": "string",
-            "name": "AppSecret",
-            "in": "header"
-          },
-          {
-            "type": "string",
-            "name": "Timestamp",
-            "in": "header"
-          },
-          {
-            "type": "string",
-            "name": "Nonce",
-            "in": "header"
-          },
-          {
-            "type": "string",
-            "name": "Signature",
-            "in": "header"
-          },
           {
             "type": "string",
             "name": "authToken",
@@ -2150,6 +1827,11 @@
     },
     "/v1/users/username-changes": {
       "get": {
+        "security": [
+          {
+            "gatewayBearer": []
+          }
+        ],
         "produces": [
           "application/json"
         ],
@@ -2162,31 +1844,6 @@
         "summary": "Get username changes.",
         "operationId": "usersUsernameChanges",
         "parameters": [
-          {
-            "type": "string",
-            "name": "AppKey",
-            "in": "header"
-          },
-          {
-            "type": "string",
-            "name": "AppSecret",
-            "in": "header"
-          },
-          {
-            "type": "string",
-            "name": "Timestamp",
-            "in": "header"
-          },
-          {
-            "type": "string",
-            "name": "Nonce",
-            "in": "header"
-          },
-          {
-            "type": "string",
-            "name": "Signature",
-            "in": "header"
-          },
           {
             "type": "string",
             "name": "screenName",
@@ -2215,6 +1872,14 @@
           }
         }
       }
+    }
+  },
+  "securityDefinitions": {
+    "gatewayBearer": {
+      "description": "Bearer access token for gateway APIs.",
+      "type": "apiKey",
+      "name": "Authorization",
+      "in": "header"
     }
   },
   "x-description": "This is a goctl generated swagger file.",

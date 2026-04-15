@@ -7,84 +7,65 @@ info (
 	consumes:    "application/json"
 	produces:    "application/json"
 	schemes:     "http"
+	securityDefinitionsFromJson: `{"gatewayBearer":{"type":"apiKey","name":"Authorization","in":"header","description":"Bearer access token for gateway APIs."}}`
 )
 
-type GatewayAuthReq {
-	AppKey    string `header:"AppKey,optional"`
-	AppSecret string `header:"AppSecret,optional"`
-	Timestamp string `header:"Timestamp,optional"`
-	Nonce     string `header:"Nonce,optional"`
-	Signature string `header:"Signature,optional"`
-}
-
 type UsersByIDsReq {
-	GatewayAuthReq
 	UserIDs string `form:"userIds"`
 }
 
 type UserByIDReq {
-	GatewayAuthReq
 	UserID string `form:"userId"`
 	Cursor string `form:"cursor,optional"`
 }
 
 type UserByUsernameReq {
-	GatewayAuthReq
 	ScreenName string `form:"screenName"`
 }
 
 type TweetsByIDsReq {
-	GatewayAuthReq
 	TweetIDs string `form:"tweetIds"`
 }
 
 type TweetsTimelineReq {
-	GatewayAuthReq
 	UserID string `form:"userId"`
 	Cursor string `form:"cursor,optional"`
 }
 
 type TweetsRepliesReq {
-	GatewayAuthReq
 	UserID string `form:"userId"`
 	Cursor string `form:"cursor,optional"`
 }
 
 type TweetsDetailReq {
-	GatewayAuthReq
 	TweetID string `form:"tweetId"`
 	Cursor  string `form:"cursor,optional"`
 }
 
 type TweetsBriefReq {
-	GatewayAuthReq
 	TweetID string `form:"tweetId"`
 	Cursor  string `form:"cursor,optional"`
 }
 
 type TweetsQuotesReq {
-	GatewayAuthReq
 	TweetID   string `form:"tweetId"`
 	Cursor    string `form:"cursor,optional"`
 	AuthToken string `form:"authToken,optional"`
 }
 
 type TweetsRetweetersReq {
-	GatewayAuthReq
 	TweetID   string `form:"tweetId"`
 	Cursor    string `form:"cursor,optional"`
 	AuthToken string `form:"authToken,optional"`
 }
 
 type TweetsFavoritersReq {
-	GatewayAuthReq
 	TweetID   string `form:"tweetId"`
 	Cursor    string `form:"cursor,optional"`
 	AuthToken string `form:"authToken,optional"`
 }
 
 type UsersMentionsTimelineReq {
-	GatewayAuthReq
 	AuthToken       string `form:"authToken"`
 	CsrfToken       string `form:"csrfToken,optional"`
 	SinceID         string `form:"sinceId,optional"`
@@ -94,7 +75,6 @@ type UsersMentionsTimelineReq {
 }
 
 type SearchTweetsReq {
-	GatewayAuthReq
 	Words      string `form:"words"`
 	Cursor     string `form:"cursor,optional"`
 	Phrase     string `form:"phrase,optional"`
@@ -113,91 +93,91 @@ type SearchTweetsReq {
 	Count      int64  `form:"count,optional"`
 }
 
-type SearchTrendingReq {
-	GatewayAuthReq
-}
+type SearchTrendingReq {}
 
 type SearchTrendsReq {
-	GatewayAuthReq
 	ID string `form:"id"`
 }
 
 type SearchBoxReq {
-	GatewayAuthReq
 	Words      string `form:"words"`
 	SearchType string `form:"searchType,optional"`
 }
 
-type SearchExploreReq {
-	GatewayAuthReq
-}
+type SearchExploreReq {}
 
-type SearchNewsReq {
-	GatewayAuthReq
-}
+type SearchNewsReq {}
 
-type SearchSportsReq {
-	GatewayAuthReq
-}
+type SearchSportsReq {}
 
-type SearchEntertainmentReq {
-	GatewayAuthReq
-}
+type SearchEntertainmentReq {}
 
 type UsersUsernameChangesReq {
-	GatewayAuthReq
 	ScreenName string `form:"screenName"`
 }
 
 type UsersLikesReq {
-	GatewayAuthReq
 	UserID    string `form:"userId"`
 	Cursor    string `form:"cursor,optional"`
 	AuthToken string `form:"authToken,optional"`
 }
 
 type UsersHighlightsReq {
-	GatewayAuthReq
 	UserID    string `form:"userId"`
 	Cursor    string `form:"cursor,optional"`
 	AuthToken string `form:"authToken,optional"`
 }
 
 type UsersArticlesTweetsReq {
-	GatewayAuthReq
 	UserID    string `form:"userId"`
 	Cursor    string `form:"cursor,optional"`
 	AuthToken string `form:"authToken,optional"`
 }
 
 type UsersAccountAnalyticsReq {
-	GatewayAuthReq
 	RestID    string `form:"restId"`
 	AuthToken string `form:"authToken"`
 	CsrfToken string `form:"csrfToken,optional"`
 }
 
 type UsersFollowersReq {
-	GatewayAuthReq
 	UserID string `form:"userId"`
 	Cursor string `form:"cursor,optional"`
 }
 
 type UsersFollowingsReq {
-	GatewayAuthReq
 	UserID string `form:"userId"`
 	Cursor string `form:"cursor,optional"`
 }
 
 type ListsReq {
-	GatewayAuthReq
 	UserID     string `form:"userId,optional"`
 	ScreenName string `form:"screenName,optional"`
 }
 
 type CommunitiesReq {
-	GatewayAuthReq
 	ScreenName string `form:"screenName"`
+}
+
+type CreatePeriodicCollectorTaskReq {
+	TaskID           string `json:"task_id"`
+	Keyword          string `json:"keyword"`
+	Priority         int32  `json:"priority,optional"`
+	FrequencySeconds *int32 `json:"frequency_seconds,optional"`
+	RequiredCount    *int64 `json:"required_count,optional"`
+}
+
+type CreateRangeCollectorTaskReq {
+	TaskID        string `json:"task_id"`
+	Keyword       string `json:"keyword"`
+	Priority      int32  `json:"priority,optional"`
+	Since         string `json:"since,optional"`
+	Until         string `json:"until,optional"`
+	RequiredCount *int64 `json:"required_count,optional"`
+}
+
+type CollectorTaskPathReq {
+	ID string `path:"id"`
 }
 
 type Envelope {
@@ -208,8 +188,9 @@ type Envelope {
 }
 
 @server (
-	tags:    "Gateway API"
+	tags:     "Gateway API"
 	summary: "Public gateway APIs"
+	authType: gatewayBearer
 )
 service gateway-api {
 	@doc (
@@ -385,4 +366,28 @@ service gateway-api {
 	)
 	@handler Communities
 	get /v1/communities (CommunitiesReq) returns (Envelope)
+
+	@doc (
+		summary: "Create a periodic collector task."
+	)
+	@handler CreatePeriodicCollectorTask
+	post /v1/collector/tasks/periodic (CreatePeriodicCollectorTaskReq) returns (Envelope)
+
+	@doc (
+		summary: "Create a range collector task."
+	)
+	@handler CreateRangeCollectorTask
+	post /v1/collector/tasks/range (CreateRangeCollectorTaskReq) returns (Envelope)
+
+	@doc (
+		summary: "Get a collector task."
+	)
+	@handler GetCollectorTask
+	get /v1/collector/tasks/:id (CollectorTaskPathReq) returns (Envelope)
+
+	@doc (
+		summary: "List collector task runs."
+	)
+	@handler ListCollectorTaskRuns
+	get /v1/collector/tasks/:id/runs (CollectorTaskPathReq) returns (Envelope)
 }

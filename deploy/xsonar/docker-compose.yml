@@ -23,8 +23,8 @@ services:
     environment:
       <<: *common-app-env
       CONFIG: /app/config/gateway-api.yaml
-      GATEWAY_API_JWT_SECRET: "${GATEWAY_API_JWT_SECRET:-${CONSOLE_API_JWT_SECRET:-change-me-console-jwt-secret}}"
-      GATEWAY_API_JWT_ISSUER: "${GATEWAY_API_JWT_ISSUER:-${CONSOLE_API_JWT_ISSUER:-xsonar-console}}"
+      GATEWAY_API_JWT_SECRET: "${GATEWAY_API_JWT_SECRET:-change-me-gateway-jwt-secret}"
+      GATEWAY_API_JWT_ISSUER: "${GATEWAY_API_JWT_ISSUER:-xsonar-gateway}"
     depends_on:
       access-rpc:
         condition: service_healthy
@@ -57,6 +57,8 @@ services:
     environment:
       <<: *common-app-env
       CONFIG: /app/config/console-api.yaml
+      CONSOLE_API_GATEWAY_JWT_SECRET: "${CONSOLE_API_GATEWAY_JWT_SECRET:-${GATEWAY_API_JWT_SECRET:-change-me-gateway-jwt-secret}}"
+      CONSOLE_API_GATEWAY_JWT_ISSUER: "${CONSOLE_API_GATEWAY_JWT_ISSUER:-${GATEWAY_API_JWT_ISSUER:-xsonar-gateway}}"
     depends_on:
       access-rpc:
         condition: service_healthy

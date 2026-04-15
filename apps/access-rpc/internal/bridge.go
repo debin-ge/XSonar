@@ -33,6 +33,12 @@ func (b *Bridge) GetAppAuthContext(ctx context.Context, in *accesspb.GetAppAuthC
 	})), nil
 }
 
+func (b *Bridge) GetAppAuthContextByID(ctx context.Context, in *accesspb.GetAppAuthContextByIDRequest) (*accesspb.JsonResponse, error) {
+	return encodeAccessResponse(b.svc.getAppAuthContextByID(ctx, getAppAuthContextByIDRequest{
+		AppID: in.GetAppId(),
+	})), nil
+}
+
 func (b *Bridge) CheckReplay(ctx context.Context, in *accesspb.CheckReplayRequest) (*accesspb.JsonResponse, error) {
 	return encodeAccessResponse(b.svc.checkReplay(ctx, checkReplayRequest{
 		AppID:     in.GetAppId(),

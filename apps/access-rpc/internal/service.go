@@ -122,6 +122,10 @@ type getAppAuthContextRequest struct {
 	AppKey string `json:"app_key"`
 }
 
+type getAppAuthContextByIDRequest struct {
+	AppID string `json:"app_id"`
+}
+
 type checkReplayRequest struct {
 	AppID     string `json:"app_id"`
 	Nonce     string `json:"nonce"`
@@ -652,6 +656,34 @@ func (s *service) getAppAuthContext(ctx context.Context, req getAppAuthContextRe
 	}, nil
 }
 
+func (s *service) getAppAuthContextByID(ctx context.Context, req getAppAuthContextByIDRequest) (any, *serviceError) {
+	if s.pgStore != nil {
+		return s.pgStore.getAppAuthContextByID(ctx, req)
+	}
+	if strings.TrimSpace(req.AppID) == "" {
+		return nil, invalidRequest("app_id is required")
+	}
+
+	s.mu.RLock()
+	item, ok := s.apps[req.AppID]
+	if !ok {
+		s.mu.RUnlock()
+		return nil, notFound("app not found")
+	}
+	app := *item
+	s.mu.RUnlock()
+
+	return map[string]any{
+		"tenant_id":   app.TenantID,
+		"app_id":      app.ID,
+		"app_key":     app.AppKey,
+		"app_secret":  app.AppSecret,
+		"status":      app.Status,
+		"daily_quota": app.DailyQuota,
+		"qps_limit":   app.QPSLimit,
+	}, nil
+}
+
 func (s *service) checkReplay(ctx context.Context, req checkReplayRequest) (any, *serviceError) {
 	if s.pgStore != nil {
 		return s.pgStore.checkReplay(ctx, req)
@@ -713,9 +745,6 @@ func (s *service) checkAndReserveQuota(ctx context.Context, req checkAndReserveQ
 	item, ok := s.apps[req.AppID]
 	if !ok {
 		return nil, notFound("app not found")
-	}
-	if item.Status != "active" {
-		return nil, forbidden("app is not active")
 	}
 
 	if reservation, exists := s.reservations[req.RequestID]; exists {

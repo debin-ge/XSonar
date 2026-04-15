@@ -23,32 +23,39 @@ import (
 
 func TestTestkitRoutesMatchGeneratedGatewayRoutes(t *testing.T) {
 	expected := extractRoutePaths(t, filepath.Join("..", "internal", "handler", "routes.go"), regexp.MustCompile(`Path:\s+"(/v1/[^"]+)"`))
-	actual := extractRoutePaths(t, "handler.go", regexp.MustCompile(`"GET (/v1/[^"]+)"`))
+	actual := extractRoutePaths(t, "handler.go", regexp.MustCompile(`"(?:GET|POST) (/v1/[^"]+)"`))
+	for i := range actual {
+		actual[i] = normalizeCollectorRoutePath(actual[i])
+	}
+	actual = slices.Compact(actual)
+	slices.Sort(actual)
 
 	if !reflect.DeepEqual(actual, expected) {
 		t.Fatalf("testkit routes do not match generated gateway routes:\nactual=%#v\nexpected=%#v", actual, expected)
 	}
 }
 
-func TestTestkitIncludesManualAdminCollectorRoutes(t *testing.T) {
-	actual := extractRoutePaths(t, "handler.go", regexp.MustCompile(`"(?:GET|POST) (/admin/v1/collector/tasks[^"]*)"`))
+func TestTestkitIncludesCollectorRoutes(t *testing.T) {
+	actual := extractRoutePaths(t, "handler.go", regexp.MustCompile(`"(?:GET|POST) (/v1/collector/tasks[^"]*)"`))
 	for i := range actual {
 		actual[i] = normalizeCollectorRoutePath(actual[i])
 	}
 	actual = slices.Compact(actual)
 	expected := []string{
-		"/admin/v1/collector/tasks",
-		"/admin/v1/collector/tasks/:id",
-		"/admin/v1/collector/tasks/:id/runs",
+		"/v1/collector/tasks/:id",
+		"/v1/collector/tasks/:id/runs",
+		"/v1/collector/tasks/periodic",
+		"/v1/collector/tasks/range",
 	}
 
+	slices.Sort(actual)
 	slices.Sort(expected)
 	if !reflect.DeepEqual(actual, expected) {
-		t.Fatalf("testkit manual admin routes mismatch:\nactual=%#v\nexpected=%#v", actual, expected)
+		t.Fatalf("testkit collector routes mismatch:\nactual=%#v\nexpected=%#v", actual, expected)
 	}
 }
 
-func TestTestkitAdminCollectorTaskRoutesReachRequests(t *testing.T) {
+func TestTestkitCollectorTaskRoutesReachRequests(t *testing.T) {
 	t.Run("get task", func(t *testing.T) {
 		var recordedTaskID string
 		handler := NewHandlerWithClientsAndMode(
@@ -67,7 +74,7 @@ func TestTestkitAdminCollectorTaskRoutesReachRequests(t *testing.T) {
 			"",
 		)
 
-		req := httptest.NewRequest(http.MethodGet, "/admin/v1/collector/tasks/task-1", nil)
+		req := httptest.NewRequest(http.MethodGet, "/v1/collector/tasks/task-1", nil)
 		req.Header.Set("Authorization", "Bearer "+mustSignAdminJWT(t, "test-secret", "test-issuer", "admin-user-1"))
 		rec := httptest.NewRecorder()
 
@@ -99,7 +106,7 @@ func TestTestkitAdminCollectorTaskRoutesReachRequests(t *testing.T) {
 			"",
 		)
 
-		req := httptest.NewRequest(http.MethodGet, "/admin/v1/collector/tasks/task-1/runs", nil)
+		req := httptest.NewRequest(http.MethodGet, "/v1/collector/tasks/task-1/runs", nil)
 		req.Header.Set("Authorization", "Bearer "+mustSignAdminJWT(t, "test-secret", "test-issuer", "admin-user-1"))
 		rec := httptest.NewRecorder()
 
@@ -136,7 +143,7 @@ func extractRoutePaths(t *testing.T, relativePath string, pattern *regexp.Regexp
 }
 
 func normalizeCollectorRoutePath(path string) string {
-	replacer := strings.NewReplacer("{id}", ":id")
+	replacer := strings.NewReplacer("{id}", ":id", ":id", ":id")
 	return replacer.Replace(path)
 }
 
@@ -170,7 +177,7 @@ func (s stubSchedulerRPC) ListTaskRuns(ctx context.Context, req *schedulerservic
 func mustSignAdminJWT(t *testing.T, secret, issuer, subject string) string {
 	t.Helper()
 
-	token, err := shared.SignJWT(secret, issuer, subject, "platform_admin", time.Hour, time.Now())
+	token, err := shared.SignJWT(secret, issuer, subject, "gateway_app", time.Hour, time.Now())
 	if err != nil {
 		t.Fatalf("sign jwt: %v", err)
 	}

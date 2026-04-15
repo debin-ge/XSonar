@@ -15,7 +15,7 @@ type JWTClaims struct {
 	Role      string `json:"role"`
 	Issuer    string `json:"iss"`
 	IssuedAt  int64  `json:"iat"`
-	ExpiresAt int64  `json:"exp"`
+	ExpiresAt int64  `json:"exp,omitempty"`
 }
 
 func SignJWT(secret, issuer, subject, role string, ttl time.Duration, now time.Time) (string, error) {
@@ -25,8 +25,8 @@ func SignJWT(secret, issuer, subject, role string, ttl time.Duration, now time.T
 	if strings.TrimSpace(subject) == "" {
 		return "", errors.New("jwt subject is required")
 	}
-	if ttl <= 0 {
-		return "", errors.New("jwt ttl must be positive")
+	if ttl < 0 {
+		return "", errors.New("jwt ttl must be non-negative")
 	}
 
 	headerPayload, err := encodeJWTPart(map[string]string{
@@ -37,13 +37,17 @@ func SignJWT(secret, issuer, subject, role string, ttl time.Duration, now time.T
 		return "", err
 	}
 
-	claimsPayload, err := encodeJWTPart(JWTClaims{
-		Subject:   subject,
-		Role:      role,
-		Issuer:    issuer,
-		IssuedAt:  now.UTC().Unix(),
-		ExpiresAt: now.UTC().Add(ttl).Unix(),
-	})
+	claims := JWTClaims{
+		Subject:  subject,
+		Role:     role,
+		Issuer:   issuer,
+		IssuedAt: now.UTC().Unix(),
+	}
+	if ttl > 0 {
+		claims.ExpiresAt = now.UTC().Add(ttl).Unix()
+	}
+
+	claimsPayload, err := encodeJWTPart(claims)
 	if err != nil {
 		return "", err
 	}
@@ -73,7 +77,7 @@ func ParseAndValidateJWT(secret, token string, now time.Time) (*JWTClaims, error
 	if err := decodeJWTPart(parts[1], &claims); err != nil {
 		return nil, err
 	}
-	if claims.ExpiresAt <= now.UTC().Unix() {
+	if claims.ExpiresAt > 0 && claims.ExpiresAt <= now.UTC().Unix() {
 		return nil, errors.New("jwt expired")
 	}
 	return &claims, nil

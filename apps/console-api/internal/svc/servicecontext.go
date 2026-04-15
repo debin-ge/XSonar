@@ -42,9 +42,11 @@ func (s *ServiceContext) Close() error {
 
 func consoleSharedConfig(c config.Config) shared.Config {
 	return shared.Config{
-		ServiceName:   c.Name,
-		JWTSecret:     c.JWTSecret,
-		JWTIssuer:     c.JWTIssuer,
-		JWTTTLMinutes: c.JWTTTLMinutes,
+		ServiceName:      c.Name,
+		JWTSecret:        c.JWTSecret,
+		JWTIssuer:        c.JWTIssuer,
+		JWTTTLMinutes:    c.JWTTTLMinutes,
+		GatewayJWTSecret: c.GatewayJWTSecret,
+		GatewayJWTIssuer: c.GatewayJWTIssuer,
 	}
 }

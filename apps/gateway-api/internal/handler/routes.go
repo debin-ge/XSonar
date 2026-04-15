@@ -165,17 +165,22 @@ func RegisterHandlers(server *rest.Server, serverCtx *svc.ServiceContext) {
 		[]rest.Route{
 			{
 				Method:  http.MethodPost,
-				Path:    "/admin/v1/collector/tasks",
-				Handler: serverCtx.Bridge.HandleCreateCollectorTask,
+				Path:    "/v1/collector/tasks/periodic",
+				Handler: serverCtx.Bridge.HandleCreatePeriodicCollectorTask,
+			},
+			{
+				Method:  http.MethodPost,
+				Path:    "/v1/collector/tasks/range",
+				Handler: serverCtx.Bridge.HandleCreateRangeCollectorTask,
 			},
 			{
 				Method:  http.MethodGet,
-				Path:    "/admin/v1/collector/tasks/:id",
+				Path:    "/v1/collector/tasks/:id",
 				Handler: serverCtx.Bridge.HandleGetCollectorTask,
 			},
 			{
 				Method:  http.MethodGet,
-				Path:    "/admin/v1/collector/tasks/:id/runs",
+				Path:    "/v1/collector/tasks/:id/runs",
 				Handler: serverCtx.Bridge.HandleListCollectorTaskRuns,
 			},
 		},

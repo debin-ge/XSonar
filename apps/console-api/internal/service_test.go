@@ -60,6 +60,10 @@ func (s stubJSONClient) GetAppAuthContext(ctx context.Context, req *accessservic
 	return s.Post(ctx, "/rpc/GetAppAuthContext", req)
 }
 
+func (s stubJSONClient) GetAppAuthContextByID(ctx context.Context, req *accessservice.GetAppAuthContextByIDRequest) (*clients.EnvelopeResponse, error) {
+	return s.Post(ctx, "/rpc/GetAppAuthContextByID", req)
+}
+
 func (s stubJSONClient) CheckReplay(ctx context.Context, req *accessservice.CheckReplayRequest) (*clients.EnvelopeResponse, error) {
 	return s.Post(ctx, "/rpc/CheckReplay", req)
 }
@@ -194,6 +198,162 @@ func TestConsoleLoginProxy(t *testing.T) {
 	}
 	if claims.Subject != "user_1" || claims.Role != "platform_admin" {
 		t.Fatalf("unexpected jwt claims: %+v", claims)
+	}
+}
+
+func TestConsoleIssueGatewayTokenReturnsGatewayJWT(t *testing.T) {
+	cfg := ConsoleDefaults()
+	cfg.GatewayJWTSecret = "gateway-secret"
+	cfg.GatewayJWTIssuer = "gateway-issuer"
+
+	svc := newConsoleServiceWithConfigAndAllClients(
+		cfg,
+		xlog.NewStdout("console-test"),
+		stubJSONClient{
+			postFunc: func(_ context.Context, path string, payload any) (*clients.EnvelopeResponse, error) {
+				if path != "/rpc/GetAppAuthContextByID" {
+					return nil, errors.New("unexpected path: " + path)
+				}
+				req := payload.(*accessservice.GetAppAuthContextByIDRequest)
+				if req.AppId != "app_1" {
+					t.Fatalf("expected app_1, got %q", req.AppId)
+				}
+				return okEnvelope(map[string]any{
+					"tenant_id":   "tenant_1",
+					"app_id":      "app_1",
+					"app_key":     "app_key_1",
+					"app_secret":  "app_secret_1",
+					"status":      "active",
+					"daily_quota": 100,
+					"qps_limit":   10,
+				}), nil
+			},
+		},
+		stubJSONClient{},
+		stubJSONClient{},
+	)
+
+	adminToken, err := shared.SignJWT(cfg.JWTSecret, cfg.JWTIssuer, "user_1", "platform_admin", time.Hour, time.Now())
+	if err != nil {
+		t.Fatalf("sign admin jwt: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodPost, "/admin/v1/gateway/token", strings.NewReader(`{"tenant_id":"tenant_1","app_id":"app_1","ttl":3600}`))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+adminToken)
+	rec := httptest.NewRecorder()
+
+	svc.handleIssueGatewayToken(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	var response struct {
+		Code int `json:"code"`
+		Data struct {
+			Token            string `json:"token"`
+			TokenType        string `json:"token_type"`
+			AppID            string `json:"app_id"`
+			TenantID         string `json:"tenant_id"`
+			ExpiresInSeconds int64  `json:"expires_in_seconds"`
+			ExpiresAt        string `json:"expires_at"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &response); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if response.Code != model.CodeOK {
+		t.Fatalf("unexpected response code: %+v", response)
+	}
+	if response.Data.Token == "" || response.Data.TokenType != "Bearer" {
+		t.Fatalf("unexpected response data: %+v", response.Data)
+	}
+	if response.Data.AppID != "app_1" || response.Data.TenantID != "tenant_1" {
+		t.Fatalf("unexpected ids: %+v", response.Data)
+	}
+	if response.Data.ExpiresInSeconds != 3600 || response.Data.ExpiresAt == "" {
+		t.Fatalf("expected 3600-second expiry, got %+v", response.Data)
+	}
+
+	claims, err := shared.ParseAndValidateJWT(cfg.GatewayJWTSecret, response.Data.Token, time.Now())
+	if err != nil {
+		t.Fatalf("parse gateway jwt: %v", err)
+	}
+	if claims.Subject != "app_1" || claims.Role != "gateway_app" || claims.Issuer != cfg.GatewayJWTIssuer {
+		t.Fatalf("unexpected gateway claims: %+v", claims)
+	}
+}
+
+func TestConsoleIssueGatewayTokenSupportsInfiniteTTL(t *testing.T) {
+	cfg := ConsoleDefaults()
+	cfg.GatewayJWTSecret = "gateway-secret"
+	cfg.GatewayJWTIssuer = "gateway-issuer"
+
+	svc := newConsoleServiceWithConfigAndAllClients(
+		cfg,
+		xlog.NewStdout("console-test"),
+		stubJSONClient{
+			postFunc: func(_ context.Context, path string, payload any) (*clients.EnvelopeResponse, error) {
+				if path != "/rpc/GetAppAuthContextByID" {
+					return nil, errors.New("unexpected path: " + path)
+				}
+				req := payload.(*accessservice.GetAppAuthContextByIDRequest)
+				if req.AppId != "app_1" {
+					t.Fatalf("expected app_1, got %q", req.AppId)
+				}
+				return okEnvelope(map[string]any{
+					"tenant_id":   "tenant_1",
+					"app_id":      "app_1",
+					"app_key":     "app_key_1",
+					"app_secret":  "app_secret_1",
+					"status":      "active",
+					"daily_quota": 100,
+					"qps_limit":   10,
+				}), nil
+			},
+		},
+		stubJSONClient{},
+		stubJSONClient{},
+	)
+
+	adminToken, err := shared.SignJWT(cfg.JWTSecret, cfg.JWTIssuer, "user_1", "platform_admin", time.Hour, time.Now())
+	if err != nil {
+		t.Fatalf("sign admin jwt: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodPost, "/admin/v1/gateway/token", strings.NewReader(`{"tenant_id":"tenant_1","app_id":"app_1","ttl":0}`))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+adminToken)
+	rec := httptest.NewRecorder()
+
+	svc.handleIssueGatewayToken(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	var response struct {
+		Code int `json:"code"`
+		Data struct {
+			Token            string `json:"token"`
+			ExpiresInSeconds int64  `json:"expires_in_seconds"`
+			ExpiresAt        string `json:"expires_at"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &response); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if response.Data.ExpiresInSeconds != 0 || response.Data.ExpiresAt != "" {
+		t.Fatalf("expected infinite ttl metadata, got %+v", response.Data)
+	}
+
+	claims, err := shared.ParseAndValidateJWT(cfg.GatewayJWTSecret, response.Data.Token, time.Now().Add(365*24*time.Hour))
+	if err != nil {
+		t.Fatalf("parse infinite gateway jwt: %v", err)
+	}
+	if claims.ExpiresAt != 0 {
+		t.Fatalf("expected no exp claim, got %+v", claims)
 	}
 }
 

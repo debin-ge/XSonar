@@ -19,8 +19,8 @@ SchedulerRPC:
   Endpoints:
     - scheduler-rpc:9004
   Timeout: 5000
-JWTSecret: xsonar-console-dev-secret
-JWTIssuer: xsonar-console
+JWTSecret: xsonar-gateway-dev-secret
+JWTIssuer: xsonar-gateway
 UsageStatQueueSize: 1024
 UsageStatWorkers: 2
 UsageStatTimeoutMS: 500

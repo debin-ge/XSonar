@@ -11,7 +11,6 @@ import (
 	"runtime"
 	"strings"
 	"testing"
-	"time"
 
 	accesstestkit "xsonar/apps/access-rpc/testkit"
 	consoletestkit "xsonar/apps/console-api/testkit"
@@ -19,7 +18,6 @@ import (
 	policytestkit "xsonar/apps/policy-rpc/testkit"
 	providertestkit "xsonar/apps/provider-rpc/testkit"
 	schedulertestkit "xsonar/apps/scheduler-rpc/testkit"
-	"xsonar/pkg/shared"
 	"xsonar/pkg/xlog"
 )
 
@@ -28,8 +26,8 @@ func TestCollectorTaskChain(t *testing.T) {
 	t.Setenv("ACCESS_RPC_SEED_ADMIN_PASSWORD", "admin123456")
 
 	logger := xlog.NewStdout("collector-task-chain-test")
-	const jwtSecret = "xsonar-console-dev-secret"
-	const jwtIssuer = "xsonar-console"
+	const gatewayJWTSecret = "xsonar-gateway-dev-secret"
+	const gatewayJWTIssuer = "xsonar-gateway"
 
 	accessClient, accessCleanup, err := accesstestkit.NewClient(logger)
 	if err != nil {
@@ -58,22 +56,19 @@ func TestCollectorTaskChain(t *testing.T) {
 	consoleServer := httptest.NewServer(consoletestkit.NewHandlerWithClients(logger, accessClient, policyClient, providerClient))
 	defer consoleServer.Close()
 
-	gatewayServer := httptest.NewServer(gatewaytestkit.NewHandlerWithClientsAndMode(logger, nil, nil, nil, schedulerClient, jwtSecret, jwtIssuer, ""))
+	gatewayServer := httptest.NewServer(gatewaytestkit.NewHandlerWithClientsAndMode(logger, accessClient, nil, nil, schedulerClient, gatewayJWTSecret, gatewayJWTIssuer, ""))
 	defer gatewayServer.Close()
 
-	token := loginConsoleAdmin(t, consoleServer.URL)
-	claims, err := shared.ParseAndValidateJWT(jwtSecret, token, time.Now())
-	if err != nil {
-		t.Fatalf("parse admin jwt: %v", err)
-	}
+	consoleToken := loginConsoleAdmin(t, consoleServer.URL)
+	tenantID, appID, _, _ := createTenantAndApp(t, consoleServer.URL, consoleToken)
+	gatewayToken := issueGatewayTokenForCollector(t, consoleServer.URL, consoleToken, tenantID, appID, 0)
 
-	createResp := postJSON(t, gatewayServer.URL+"/admin/v1/collector/tasks", map[string]any{
+	createResp := postJSON(t, gatewayServer.URL+"/v1/collector/tasks/periodic", map[string]any{
 		"task_id":           "task-chain-1",
-		"task_type":         "periodic",
 		"keyword":           "openai",
 		"priority":          5,
 		"frequency_seconds": 60,
-	}, token)
+	}, gatewayToken)
 	if createResp.Code != 0 {
 		t.Fatalf("unexpected create response: %+v", createResp)
 	}
@@ -82,11 +77,11 @@ func TestCollectorTaskChain(t *testing.T) {
 	if got := stringValue(createData["task_id"]); got != "task-chain-1" {
 		t.Fatalf("expected task_id task-chain-1, got %q", got)
 	}
-	if got := stringValue(createData["created_by"]); got != claims.Subject {
-		t.Fatalf("expected created_by %q, got %q", claims.Subject, got)
+	if got := stringValue(createData["created_by"]); got != appID {
+		t.Fatalf("expected created_by %q, got %q", appID, got)
 	}
 
-	getResp := getJSON(t, gatewayServer.URL+"/admin/v1/collector/tasks/task-chain-1", token)
+	getResp := getJSON(t, gatewayServer.URL+"/v1/collector/tasks/task-chain-1", gatewayToken)
 	if getResp.Code != 0 {
 		t.Fatalf("unexpected get response: %+v", getResp)
 	}
@@ -98,8 +93,16 @@ func TestCollectorTaskChain(t *testing.T) {
 	if got := stringValue(getData["keyword"]); got != "openai" {
 		t.Fatalf("expected keyword openai, got %q", got)
 	}
-	if got := stringValue(getData["created_by"]); got != claims.Subject {
-		t.Fatalf("expected created_by %q, got %q", claims.Subject, got)
+	if got := stringValue(getData["created_by"]); got != appID {
+		t.Fatalf("expected created_by %q, got %q", appID, got)
+	}
+
+	rejected := getJSONWithStatus(t, gatewayServer.URL+"/v1/collector/tasks/task-chain-1", consoleToken)
+	if rejected.status != http.StatusUnauthorized {
+		t.Fatalf("expected console token to be rejected by collector route, got %d: %+v", rejected.status, rejected.envelope)
+	}
+	if tenantID == "" {
+		t.Fatal("expected tenant id to be set")
 	}
 }
 
@@ -129,8 +132,10 @@ func TestCollectorTaskChainDeployWiring(t *testing.T) {
 		"/app/collector-worker-rpc",
 	)
 	assertFileContains(t, filepath.Join(repoRoot, "deploy/xsonar/docker-compose.yml"),
-		"GATEWAY_API_JWT_SECRET: \"${GATEWAY_API_JWT_SECRET:-${CONSOLE_API_JWT_SECRET:-change-me-console-jwt-secret}}\"",
-		"GATEWAY_API_JWT_ISSUER: \"${GATEWAY_API_JWT_ISSUER:-${CONSOLE_API_JWT_ISSUER:-xsonar-console}}\"",
+		"GATEWAY_API_JWT_SECRET: \"${GATEWAY_API_JWT_SECRET:-change-me-gateway-jwt-secret}\"",
+		"GATEWAY_API_JWT_ISSUER: \"${GATEWAY_API_JWT_ISSUER:-xsonar-gateway}\"",
+		"CONSOLE_API_GATEWAY_JWT_SECRET: \"${CONSOLE_API_GATEWAY_JWT_SECRET:-${GATEWAY_API_JWT_SECRET:-change-me-gateway-jwt-secret}}\"",
+		"CONSOLE_API_GATEWAY_JWT_ISSUER: \"${CONSOLE_API_GATEWAY_JWT_ISSUER:-${GATEWAY_API_JWT_ISSUER:-xsonar-gateway}}\"",
 		"scheduler-rpc:",
 		"SCHEDULER_RPC_LISTEN_ON: \"${SCHEDULER_RPC_LISTEN_ON:-0.0.0.0:9004}\"",
 		"collector-worker-rpc:",
@@ -144,8 +149,10 @@ func TestCollectorTaskChainDeployWiring(t *testing.T) {
 		"../../deploy/configs/local/collector-worker-rpc.yaml:/app/config/collector-worker-rpc.yaml:ro",
 	)
 	assertFileContains(t, filepath.Join(repoRoot, "deploy/xsonar/.env.example"),
-		"GATEWAY_API_JWT_SECRET=change-me-console-jwt-secret",
-		"GATEWAY_API_JWT_ISSUER=xsonar-console",
+		"GATEWAY_API_JWT_SECRET=change-me-gateway-jwt-secret",
+		"GATEWAY_API_JWT_ISSUER=xsonar-gateway",
+		"CONSOLE_API_GATEWAY_JWT_SECRET=change-me-gateway-jwt-secret",
+		"CONSOLE_API_GATEWAY_JWT_ISSUER=xsonar-gateway",
 		"SCHEDULER_RPC_NAME=scheduler-rpc",
 		"SCHEDULER_RPC_LISTEN_ON=0.0.0.0:9004",
 		"COLLECTOR_WORKER_RPC_NAME=collector-worker-rpc",
@@ -159,6 +166,11 @@ type envelopeResponse struct {
 	Message   string          `json:"message"`
 	Data      json.RawMessage `json:"data"`
 	RequestID string          `json:"request_id"`
+}
+
+type responseWithStatus struct {
+	status   int
+	envelope envelopeResponse
 }
 
 func loginConsoleAdmin(t *testing.T, baseURL string) string {
@@ -176,6 +188,58 @@ func loginConsoleAdmin(t *testing.T, baseURL string) string {
 	token := stringValue(data["token"])
 	if token == "" {
 		t.Fatalf("expected admin token in response: %+v", data)
+	}
+	return token
+}
+
+func createTenantAndApp(t *testing.T, baseURL, consoleToken string) (tenantID, appID, appKey, appSecret string) {
+	t.Helper()
+
+	tenantResp := postJSON(t, baseURL+"/admin/v1/tenants", map[string]any{
+		"name": "Collector Tenant",
+	}, consoleToken)
+	if tenantResp.Code != 0 {
+		t.Fatalf("unexpected tenant response: %+v", tenantResp)
+	}
+	tenantData := mustObject(t, tenantResp.Data)
+	tenantID = stringValue(tenantData["tenant_id"])
+	if tenantID == "" {
+		t.Fatalf("expected tenant_id in response: %+v", tenantData)
+	}
+
+	appResp := postJSON(t, baseURL+"/admin/v1/tenants/"+tenantID+"/apps", map[string]any{
+		"name":        "Collector App",
+		"daily_quota": 100,
+		"qps_limit":   10,
+	}, consoleToken)
+	if appResp.Code != 0 {
+		t.Fatalf("unexpected app response: %+v", appResp)
+	}
+	appData := mustObject(t, appResp.Data)
+	appID = stringValue(appData["app_id"])
+	appKey = stringValue(appData["app_key"])
+	appSecret = stringValue(appData["app_secret"])
+	if appID == "" || appKey == "" || appSecret == "" {
+		t.Fatalf("expected app payload, got %+v", appData)
+	}
+	return tenantID, appID, appKey, appSecret
+}
+
+func issueGatewayTokenForCollector(t *testing.T, baseURL, consoleToken, tenantID, appID string, ttl int64) string {
+	t.Helper()
+
+	resp := postJSON(t, baseURL+"/admin/v1/gateway/token", map[string]any{
+		"tenant_id": tenantID,
+		"app_id":    appID,
+		"ttl":       ttl,
+	}, consoleToken)
+	if resp.Code != 0 {
+		t.Fatalf("unexpected gateway token response: %+v", resp)
+	}
+	data := mustObject(t, resp.Data)
+	token := stringValue(data["token"])
+	if token == "" {
+		t.Fatalf("expected gateway token in response: %+v", data)
 	}
 	return token
 }
@@ -211,6 +275,38 @@ func getJSON(t *testing.T, url string, bearerToken string) envelopeResponse {
 	}
 
 	return doRequest(t, req)
+}
+
+func getJSONWithStatus(t *testing.T, url string, bearerToken string) responseWithStatus {
+	t.Helper()
+
+	req, err := http.NewRequest(http.MethodGet, url, nil)
+	if err != nil {
+		t.Fatalf("new request: %v", err)
+	}
+	if bearerToken != "" {
+		req.Header.Set("Authorization", "Bearer "+bearerToken)
+	}
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("do request: %v", err)
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatalf("read response body: %v", err)
+	}
+
+	var envelope envelopeResponse
+	if err := json.Unmarshal(body, &envelope); err != nil {
+		t.Fatalf("decode response envelope: %v", err)
+	}
+	return responseWithStatus{
+		status:   resp.StatusCode,
+		envelope: envelope,
+	}
 }
 
 func doRequest(t *testing.T, req *http.Request) envelopeResponse {

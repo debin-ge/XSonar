@@ -21,6 +21,7 @@ type (
 	CreateTenantAppRequest         = accesspb.CreateTenantAppRequest
 	CreateTenantRequest            = accesspb.CreateTenantRequest
 	GetAppAuthContextRequest       = accesspb.GetAppAuthContextRequest
+	GetAppAuthContextByIDRequest   = accesspb.GetAppAuthContextByIDRequest
 	JsonResponse                   = accesspb.JsonResponse
 	ListTenantAppsRequest          = accesspb.ListTenantAppsRequest
 	ListTenantsRequest             = accesspb.ListTenantsRequest
@@ -33,6 +34,7 @@ type (
 
 	AccessService interface {
 		GetAppAuthContext(ctx context.Context, in *GetAppAuthContextRequest, opts ...grpc.CallOption) (*JsonResponse, error)
+		GetAppAuthContextByID(ctx context.Context, in *GetAppAuthContextByIDRequest, opts ...grpc.CallOption) (*JsonResponse, error)
 		CheckReplay(ctx context.Context, in *CheckReplayRequest, opts ...grpc.CallOption) (*JsonResponse, error)
 		CheckAndReserveQuota(ctx context.Context, in *CheckAndReserveQuotaRequest, opts ...grpc.CallOption) (*JsonResponse, error)
 		ReleaseQuotaOnFailure(ctx context.Context, in *ReleaseQuotaOnFailureRequest, opts ...grpc.CallOption) (*JsonResponse, error)
@@ -63,6 +65,11 @@ func NewAccessService(cli zrpc.Client) AccessService {
 func (m *defaultAccessService) GetAppAuthContext(ctx context.Context, in *GetAppAuthContextRequest, opts ...grpc.CallOption) (*JsonResponse, error) {
 	client := accesspb.NewAccessServiceClient(m.cli.Conn())
 	return client.GetAppAuthContext(ctx, in, opts...)
+}
+
+func (m *defaultAccessService) GetAppAuthContextByID(ctx context.Context, in *GetAppAuthContextByIDRequest, opts ...grpc.CallOption) (*JsonResponse, error) {
+	client := accesspb.NewAccessServiceClient(m.cli.Conn())
+	return client.GetAppAuthContextByID(ctx, in, opts...)
 }
 
 func (m *defaultAccessService) CheckReplay(ctx context.Context, in *CheckReplayRequest, opts ...grpc.CallOption) (*JsonResponse, error) {

@@ -53,6 +53,49 @@ func TestPGRedisStoreGetAppAuthContextUsesRedisCache(t *testing.T) {
 	}
 }
 
+func TestPGRedisStoreGetAppAuthContextByIDUsesRedisCacheIndex(t *testing.T) {
+	server := miniredis.RunT(t)
+	client := redis.NewClient(&redis.Options{Addr: server.Addr()})
+	t.Cleanup(func() {
+		_ = client.Close()
+	})
+
+	ctx := context.Background()
+	store := &pgRedisStore{
+		redis: client,
+	}
+
+	cached := appAuthContextCacheValue{
+		TenantID:   "tenant_1",
+		AppID:      "app_1",
+		AppKey:     "app_key_1",
+		AppSecret:  "secret_1",
+		Status:     "active",
+		DailyQuota: 99,
+		QPSLimit:   8,
+	}
+	payload, err := json.Marshal(cached)
+	if err != nil {
+		t.Fatalf("marshal cached auth context: %v", err)
+	}
+	if err := client.Set(ctx, appAuthContextCacheKey("app_key_1"), payload, defaultAppMetadataCacheTTL).Err(); err != nil {
+		t.Fatalf("seed auth cache: %v", err)
+	}
+	if err := client.Set(ctx, appKeyIndexCacheKey("app_1"), "app_key_1", defaultAppMetadataCacheTTL).Err(); err != nil {
+		t.Fatalf("seed app key index cache: %v", err)
+	}
+
+	data, svcErr := store.getAppAuthContextByID(ctx, getAppAuthContextByIDRequest{AppID: "app_1"})
+	if svcErr != nil {
+		t.Fatalf("getAppAuthContextByID returned error: %v", svcErr)
+	}
+
+	payloadMap := data.(map[string]any)
+	if payloadMap["tenant_id"] != "tenant_1" || payloadMap["app_secret"] != "secret_1" {
+		t.Fatalf("unexpected cached auth payload: %#v", payloadMap)
+	}
+}
+
 func TestPGRedisStoreGetTenantAppByIDUsesRedisCache(t *testing.T) {
 	server := miniredis.RunT(t)
 	client := redis.NewClient(&redis.Options{Addr: server.Addr()})

@@ -28,6 +28,11 @@ func (s *AccessServiceServer) GetAppAuthContext(ctx context.Context, in *accessp
 	return l.GetAppAuthContext(in)
 }
 
+func (s *AccessServiceServer) GetAppAuthContextByID(ctx context.Context, in *accesspb.GetAppAuthContextByIDRequest) (*accesspb.JsonResponse, error) {
+	l := logic.NewGetAppAuthContextByIDLogic(ctx, s.svcCtx)
+	return l.GetAppAuthContextByID(in)
+}
+
 func (s *AccessServiceServer) CheckReplay(ctx context.Context, in *accesspb.CheckReplayRequest) (*accesspb.JsonResponse, error) {
 	l := logic.NewCheckReplayLogic(ctx, s.svcCtx)
 	return l.CheckReplay(in)
