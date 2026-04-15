@@ -9,8 +9,8 @@ import (
 	"strings"
 	"testing"
 
+	"xsonar/apps/provider-rpc/internal/config"
 	"xsonar/pkg/proto/providerpb"
-	"xsonar/pkg/shared"
 	"xsonar/pkg/xlog"
 )
 
@@ -21,10 +21,11 @@ func (f roundTripFunc) RoundTrip(req *http.Request) (*http.Response, error) {
 }
 
 func TestExecutePolicyForwardsRequest(t *testing.T) {
-	cfg := shared.DefaultConfig("provider-rpc", 9003)
-	cfg.ProviderBaseURL = "https://provider.example/api"
-	cfg.ProviderAPIKeyHeader = "apiKey"
-	cfg.ProviderTimeoutMS = 1000
+	cfg := config.ProviderConfig{
+		BaseURL:      "https://provider.example/api",
+		APIKeyHeader: "apiKey",
+		TimeoutMS:    1000,
+	}
 
 	client := &http.Client{
 		Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
@@ -76,10 +77,11 @@ func TestExecutePolicyForwardsRequest(t *testing.T) {
 }
 
 func TestExecutePolicyAddsHTTPSchemeToProviderBaseURL(t *testing.T) {
-	cfg := shared.DefaultConfig("provider-rpc", 9003)
-	cfg.ProviderBaseURL = "provider.example/api"
-	cfg.ProviderAPIKeyHeader = "apiKey"
-	cfg.ProviderTimeoutMS = 1000
+	cfg := config.ProviderConfig{
+		BaseURL:      "provider.example/api",
+		APIKeyHeader: "apiKey",
+		TimeoutMS:    1000,
+	}
 
 	client := &http.Client{
 		Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
@@ -111,9 +113,10 @@ func TestExecutePolicyAddsHTTPSchemeToProviderBaseURL(t *testing.T) {
 }
 
 func TestExecutePolicyRejectsInvalidProviderBaseURL(t *testing.T) {
-	cfg := shared.DefaultConfig("provider-rpc", 9003)
-	cfg.ProviderBaseURL = "ftp://provider.example/api"
-	cfg.ProviderTimeoutMS = 1000
+	cfg := config.ProviderConfig{
+		BaseURL:   "ftp://provider.example/api",
+		TimeoutMS: 1000,
+	}
 
 	svc := newProviderServiceWithConfigAndClient(cfg, &http.Client{}, xlog.NewStdout("provider-test"))
 	_, svcErr := svc.executePolicy(context.Background(), executePolicyRequest{
@@ -131,10 +134,11 @@ func TestExecutePolicyRejectsInvalidProviderBaseURL(t *testing.T) {
 }
 
 func TestExecutePolicyRetriesGETOn5XX(t *testing.T) {
-	cfg := shared.DefaultConfig("provider-rpc", 9003)
-	cfg.ProviderBaseURL = "https://provider.example/api"
-	cfg.ProviderRetryCount = 1
-	cfg.ProviderTimeoutMS = 1000
+	cfg := config.ProviderConfig{
+		BaseURL:    "https://provider.example/api",
+		RetryCount: 1,
+		TimeoutMS:  1000,
+	}
 
 	attempts := 0
 	client := &http.Client{
@@ -168,9 +172,10 @@ func TestExecutePolicyRetriesGETOn5XX(t *testing.T) {
 }
 
 func TestExecutePolicyUnwrapsProviderSuccessEnvelope(t *testing.T) {
-	cfg := shared.DefaultConfig("provider-rpc", 9003)
-	cfg.ProviderBaseURL = "https://provider.example/api"
-	cfg.ProviderTimeoutMS = 1000
+	cfg := config.ProviderConfig{
+		BaseURL:   "https://provider.example/api",
+		TimeoutMS: 1000,
+	}
 
 	client := &http.Client{
 		Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
@@ -204,9 +209,10 @@ func TestExecutePolicyUnwrapsProviderSuccessEnvelope(t *testing.T) {
 }
 
 func TestExecutePolicyUnwrapsProviderDataWhenCodeIsNotSuccess(t *testing.T) {
-	cfg := shared.DefaultConfig("provider-rpc", 9003)
-	cfg.ProviderBaseURL = "https://provider.example/api"
-	cfg.ProviderTimeoutMS = 1000
+	cfg := config.ProviderConfig{
+		BaseURL:   "https://provider.example/api",
+		TimeoutMS: 1000,
+	}
 
 	client := &http.Client{
 		Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
@@ -240,9 +246,10 @@ func TestExecutePolicyUnwrapsProviderDataWhenCodeIsNotSuccess(t *testing.T) {
 }
 
 func TestExecutePolicyTreatsStringErrorPayloadAsUpstreamApplicationError(t *testing.T) {
-	cfg := shared.DefaultConfig("provider-rpc", 9003)
-	cfg.ProviderBaseURL = "https://provider.example/api"
-	cfg.ProviderTimeoutMS = 1000
+	cfg := config.ProviderConfig{
+		BaseURL:   "https://provider.example/api",
+		TimeoutMS: 1000,
+	}
 
 	client := &http.Client{
 		Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
@@ -275,9 +282,10 @@ func TestExecutePolicyTreatsStringErrorPayloadAsUpstreamApplicationError(t *test
 }
 
 func TestExecutePolicyTreatsGraphQLErrorPayloadAsUpstreamApplicationError(t *testing.T) {
-	cfg := shared.DefaultConfig("provider-rpc", 9003)
-	cfg.ProviderBaseURL = "https://provider.example/api"
-	cfg.ProviderTimeoutMS = 1000
+	cfg := config.ProviderConfig{
+		BaseURL:   "https://provider.example/api",
+		TimeoutMS: 1000,
+	}
 
 	client := &http.Client{
 		Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
@@ -314,9 +322,10 @@ func TestExecutePolicyTreatsGraphQLErrorPayloadAsUpstreamApplicationError(t *tes
 }
 
 func TestExecutePolicySuppressesPlaceholderUpstreamErrorBody(t *testing.T) {
-	cfg := shared.DefaultConfig("provider-rpc", 9003)
-	cfg.ProviderBaseURL = "https://provider.example/api"
-	cfg.ProviderTimeoutMS = 1000
+	cfg := config.ProviderConfig{
+		BaseURL:   "https://provider.example/api",
+		TimeoutMS: 1000,
+	}
 
 	var logs bytes.Buffer
 	const upstreamBody = `{"additionalProp":{}}`
@@ -362,9 +371,10 @@ func TestExecutePolicySuppressesPlaceholderUpstreamErrorBody(t *testing.T) {
 }
 
 func TestExecutePolicyOmitsUpstreamResponsePreviewOnSuccess(t *testing.T) {
-	cfg := shared.DefaultConfig("provider-rpc", 9003)
-	cfg.ProviderBaseURL = "https://provider.example/api"
-	cfg.ProviderTimeoutMS = 1000
+	cfg := config.ProviderConfig{
+		BaseURL:   "https://provider.example/api",
+		TimeoutMS: 1000,
+	}
 
 	var logs bytes.Buffer
 	rawMessage := strings.Repeat("x", 288)
@@ -403,9 +413,10 @@ func TestExecutePolicyOmitsUpstreamResponsePreviewOnSuccess(t *testing.T) {
 }
 
 func TestBridgeExecutePolicyPreservesLargeIntegersInSuccessPayload(t *testing.T) {
-	cfg := shared.DefaultConfig("provider-rpc", 9003)
-	cfg.ProviderBaseURL = "https://provider.example/api"
-	cfg.ProviderTimeoutMS = 1000
+	cfg := config.ProviderConfig{
+		BaseURL:   "https://provider.example/api",
+		TimeoutMS: 1000,
+	}
 
 	client := &http.Client{
 		Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
@@ -443,9 +454,10 @@ func TestBridgeExecutePolicyPreservesLargeIntegersInSuccessPayload(t *testing.T)
 }
 
 func TestExecutePolicyNormalizesTransportTimeout(t *testing.T) {
-	cfg := shared.DefaultConfig("provider-rpc", 9003)
-	cfg.ProviderBaseURL = "https://provider.example/api"
-	cfg.ProviderTimeoutMS = 1000
+	cfg := config.ProviderConfig{
+		BaseURL:   "https://provider.example/api",
+		TimeoutMS: 1000,
+	}
 
 	client := &http.Client{
 		Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
@@ -474,9 +486,10 @@ func TestExecutePolicyNormalizesTransportTimeout(t *testing.T) {
 }
 
 func TestExecutePolicyLogsStructuredTransportFailure(t *testing.T) {
-	cfg := shared.DefaultConfig("provider-rpc", 9003)
-	cfg.ProviderBaseURL = "https://provider.example/api"
-	cfg.ProviderTimeoutMS = 1000
+	cfg := config.ProviderConfig{
+		BaseURL:   "https://provider.example/api",
+		TimeoutMS: 1000,
+	}
 
 	var logs bytes.Buffer
 	client := &http.Client{
@@ -514,10 +527,11 @@ func TestExecutePolicyLogsStructuredTransportFailure(t *testing.T) {
 }
 
 func TestHealthCheckProviderReportsReachability(t *testing.T) {
-	cfg := shared.DefaultConfig("provider-rpc", 9003)
-	cfg.ProviderBaseURL = "https://provider.example/api"
-	cfg.ProviderHealthPath = "/health"
-	cfg.ProviderTimeoutMS = 1000
+	cfg := config.ProviderConfig{
+		BaseURL:    "https://provider.example/api",
+		HealthPath: "/health",
+		TimeoutMS:  1000,
+	}
 
 	client := &http.Client{
 		Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {

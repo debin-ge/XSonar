@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"xsonar/apps/provider-rpc/internal/config"
 	"xsonar/pkg/model"
 	"xsonar/pkg/shared"
 	"xsonar/pkg/xlog"
@@ -24,7 +25,7 @@ type providerServiceError struct {
 
 type providerService struct {
 	logger *xlog.Logger
-	config shared.Config
+	config config.ProviderConfig
 	client *http.Client
 }
 
@@ -52,34 +53,24 @@ type providerExecutionResult struct {
 	UpstreamDurationMS int64           `json:"upstream_duration_ms"`
 }
 
-func ProviderDefaults() shared.Config {
-	cfg := shared.DefaultConfig("provider-rpc", 9003)
-	cfg.ProviderHealthPath = "/"
-	cfg.ProviderAPIKeyHeader = "apiKey"
-	cfg.ProviderTimeoutMS = 8000
-	cfg.ProviderRetryCount = 1
-	return cfg
-}
-
 func newProviderService(logger *xlog.Logger) *providerService {
-	return newProviderServiceWithConfigAndClient(ProviderDefaults(), nil, logger)
+	return newProviderServiceWithConfigAndClient(config.ProviderConfig{}, nil, logger)
 }
 
-func newProviderServiceWithConfig(config shared.Config, logger *xlog.Logger) *providerService {
-	return newProviderServiceWithConfigAndClient(config, nil, logger)
+func newProviderServiceWithConfig(cfg config.ProviderConfig, logger *xlog.Logger) *providerService {
+	return newProviderServiceWithConfigAndClient(cfg, nil, logger)
 }
 
-func newProviderServiceWithConfigAndClient(config shared.Config, client *http.Client, logger *xlog.Logger) *providerService {
-	config = normalizeProviderConfig(config)
+func newProviderServiceWithConfigAndClient(cfg config.ProviderConfig, client *http.Client, logger *xlog.Logger) *providerService {
 	if client == nil {
 		client = &http.Client{
-			Timeout: time.Duration(config.ProviderTimeoutMS) * time.Millisecond,
+			Timeout: time.Duration(cfg.TimeoutMS) * time.Millisecond,
 		}
 	}
 
 	return &providerService{
 		logger: logger,
-		config: config,
+		config: cfg,
 		client: client,
 	}
 }
@@ -112,10 +103,10 @@ func (s *providerService) executePolicy(ctx context.Context, req executePolicyRe
 	if strings.TrimSpace(req.PolicyKey) == "" || strings.TrimSpace(req.UpstreamPath) == "" {
 		return nil, providerInvalidRequest("policy_key and upstream_path are required")
 	}
-	if strings.TrimSpace(s.config.ProviderBaseURL) == "" {
+	if strings.TrimSpace(s.config.BaseURL) == "" {
 		return nil, providerInternalError("provider_base_url is not configured")
 	}
-	providerBaseURL, err := normalizeProviderBaseURL(s.config.ProviderBaseURL)
+	providerBaseURL, err := normalizeProviderBaseURL(s.config.BaseURL)
 	if err != nil {
 		return nil, providerInternalError("invalid provider_base_url")
 	}
@@ -128,7 +119,7 @@ func (s *providerService) executePolicy(ctx context.Context, req executePolicyRe
 
 	attempts := 1
 	if method == http.MethodGet {
-		attempts += s.config.ProviderRetryCount
+		attempts += s.config.RetryCount
 	}
 
 	start := time.Now()
@@ -142,7 +133,7 @@ func (s *providerService) executePolicy(ctx context.Context, req executePolicyRe
 		if req.RequestID != "" {
 			httpReq.Header.Set("X-Request-ID", req.RequestID)
 		}
-		if headerName := strings.TrimSpace(s.config.ProviderAPIKeyHeader); headerName != "" && strings.TrimSpace(req.ProviderAPIKey) != "" {
+		if headerName := strings.TrimSpace(s.config.APIKeyHeader); headerName != "" && strings.TrimSpace(req.ProviderAPIKey) != "" {
 			httpReq.Header.Set(headerName, req.ProviderAPIKey)
 		}
 
@@ -210,15 +201,15 @@ func (s *providerService) executePolicy(ctx context.Context, req executePolicyRe
 }
 
 func (s *providerService) healthCheckProvider(ctx context.Context, req healthCheckProviderRequest) (any, *providerServiceError) {
-	if strings.TrimSpace(s.config.ProviderBaseURL) == "" {
+	if strings.TrimSpace(s.config.BaseURL) == "" {
 		return nil, providerInternalError("provider_base_url is not configured")
 	}
-	providerBaseURL, err := normalizeProviderBaseURL(s.config.ProviderBaseURL)
+	providerBaseURL, err := normalizeProviderBaseURL(s.config.BaseURL)
 	if err != nil {
 		return nil, providerInternalError("invalid provider_base_url")
 	}
 
-	targetURL, err := buildUpstreamURL(providerBaseURL, firstNonEmpty(s.config.ProviderHealthPath, "/"), nil)
+	targetURL, err := buildUpstreamURL(providerBaseURL, firstNonEmpty(s.config.HealthPath, "/"), nil)
 	if err != nil {
 		return nil, providerInternalError("invalid provider health target")
 	}
@@ -241,15 +232,15 @@ func (s *providerService) healthCheckProvider(ctx context.Context, req healthChe
 			"result_code":           transportResultCode(err),
 			"upstream_duration_ms":  time.Since(start).Milliseconds(),
 			"provider_base_url":     providerBaseURL,
-			"provider_health_path":  firstNonEmpty(s.config.ProviderHealthPath, "/"),
-			"provider_api_key_name": s.config.ProviderAPIKeyHeader,
+			"provider_health_path":  firstNonEmpty(s.config.HealthPath, "/"),
+			"provider_api_key_name": s.config.APIKeyHeader,
 		}
 		shared.LogRequestError(s.logger, "provider health check completed", "", start, map[string]any{
 			"provider_name":   healthData["provider_name"],
 			"status_code":     healthData["status_code"],
 			"result_code":     healthData["result_code"],
 			"health_state":    healthData["health_state"],
-			"upstream_path":   firstNonEmpty(s.config.ProviderHealthPath, "/"),
+			"upstream_path":   firstNonEmpty(s.config.HealthPath, "/"),
 			"upstream_method": http.MethodGet,
 			"upstream_url":    targetURL,
 			"error_summary":   err.Error(),
@@ -268,15 +259,15 @@ func (s *providerService) healthCheckProvider(ctx context.Context, req healthChe
 		"result_code":           upstreamResultCode(resp.StatusCode),
 		"upstream_duration_ms":  time.Since(start).Milliseconds(),
 		"provider_base_url":     providerBaseURL,
-		"provider_health_path":  firstNonEmpty(s.config.ProviderHealthPath, "/"),
-		"provider_api_key_name": s.config.ProviderAPIKeyHeader,
+		"provider_health_path":  firstNonEmpty(s.config.HealthPath, "/"),
+		"provider_api_key_name": s.config.APIKeyHeader,
 	}
 	logFields := map[string]any{
 		"provider_name":   healthData["provider_name"],
 		"status_code":     healthData["status_code"],
 		"result_code":     healthData["result_code"],
 		"health_state":    healthData["health_state"],
-		"upstream_path":   firstNonEmpty(s.config.ProviderHealthPath, "/"),
+		"upstream_path":   firstNonEmpty(s.config.HealthPath, "/"),
 		"upstream_method": http.MethodGet,
 		"upstream_url":    targetURL,
 	}
@@ -303,56 +294,6 @@ func providerInvalidRequest(message string) *providerServiceError {
 
 func providerInternalError(message string) *providerServiceError {
 	return &providerServiceError{statusCode: http.StatusInternalServerError, code: model.CodeInternalError, message: message}
-}
-
-func normalizeProviderConfig(config shared.Config) shared.Config {
-	defaults := ProviderDefaults()
-	if config.ServiceName == "" {
-		config.ServiceName = defaults.ServiceName
-	}
-	if config.HTTPHost == "" {
-		config.HTTPHost = defaults.HTTPHost
-	}
-	if config.HTTPPort == 0 {
-		config.HTTPPort = defaults.HTTPPort
-	}
-	if config.LogDir == "" {
-		config.LogDir = defaults.LogDir
-	}
-	if config.MetricsPath == "" {
-		config.MetricsPath = defaults.MetricsPath
-	}
-	if config.HealthPath == "" {
-		config.HealthPath = defaults.HealthPath
-	}
-	if config.InfoPath == "" {
-		config.InfoPath = defaults.InfoPath
-	}
-	if config.ReadTimeoutMS <= 0 {
-		config.ReadTimeoutMS = defaults.ReadTimeoutMS
-	}
-	if config.WriteTimeoutMS <= 0 {
-		config.WriteTimeoutMS = defaults.WriteTimeoutMS
-	}
-	if config.ShutdownTimeoutMS <= 0 {
-		config.ShutdownTimeoutMS = defaults.ShutdownTimeoutMS
-	}
-	if config.ProviderBaseURL == "" {
-		config.ProviderBaseURL = defaults.ProviderBaseURL
-	}
-	if config.ProviderHealthPath == "" {
-		config.ProviderHealthPath = defaults.ProviderHealthPath
-	}
-	if config.ProviderAPIKeyHeader == "" {
-		config.ProviderAPIKeyHeader = defaults.ProviderAPIKeyHeader
-	}
-	if config.ProviderTimeoutMS <= 0 {
-		config.ProviderTimeoutMS = defaults.ProviderTimeoutMS
-	}
-	if config.ProviderRetryCount < 0 {
-		config.ProviderRetryCount = defaults.ProviderRetryCount
-	}
-	return config
 }
 
 func normalizeProviderBaseURL(baseURL string) (string, error) {
