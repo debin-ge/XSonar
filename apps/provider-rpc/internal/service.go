@@ -167,6 +167,13 @@ func (s *providerService) executePolicy(ctx context.Context, req executePolicyRe
 		}
 
 		lastResultCode = upstreamResultCode(resp.StatusCode)
+
+		if req.UpstreamPath == "/base/apitools/search" && isEmptySearchResponse(bodyBytes) && attempt < attempts {
+			s.logger.Info(fmt.Sprintf("search endpoint returned empty data, retrying (attempt %d/%d)", attempt, attempts), nil)
+			time.Sleep(time.Duration(s.config.RetryIntervalMS) * time.Millisecond)
+			continue
+		}
+
 		if attempt < attempts && shouldRetry(method, resp.StatusCode, nil) {
 			continue
 		}
