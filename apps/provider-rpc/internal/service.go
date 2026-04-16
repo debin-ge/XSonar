@@ -199,6 +199,97 @@ func (s *providerService) executePolicy(ctx context.Context, req executePolicyRe
 		}, nil
 	}
 
+	if req.UpstreamPath == "/base/apitools/search" {
+		fallbackURL := strings.Replace(targetURL, "/base/apitools/search", "/base/apitools/searchUp", 1)
+		s.logger.Info("search endpoint exhausted retries, trying fallback to searchUp", nil)
+
+		fallbackAttempts := 1 + s.config.EmptyDataRetry
+		for attempt := 1; attempt <= fallbackAttempts; attempt++ {
+			httpReq, buildErr := http.NewRequestWithContext(ctx, method, fallbackURL, nil)
+			if buildErr != nil {
+				return nil, providerInternalError("build fallback upstream request failed")
+			}
+			httpReq.Header.Set("Accept", "application/json")
+			if req.RequestID != "" {
+				httpReq.Header.Set("X-Request-ID", req.RequestID)
+			}
+			if headerName := strings.TrimSpace(s.config.APIKeyHeader); headerName != "" && strings.TrimSpace(req.ProviderAPIKey) != "" {
+				httpReq.Header.Set(headerName, req.ProviderAPIKey)
+			}
+
+			resp, doErr := s.client.Do(httpReq)
+			if doErr != nil {
+				if attempt < fallbackAttempts {
+					time.Sleep(time.Duration(s.config.RetryIntervalMS) * time.Millisecond)
+					continue
+				}
+				s.logProviderRequestError("fallback upstream transport failed", start, req, method, fallbackURL, attempt, transportStatusCode(doErr), lastResultCode, doErr.Error())
+				return providerExecutionResult{
+					StatusCode:         transportStatusCode(doErr),
+					ResultCode:         lastResultCode,
+					Body:               mustMarshalProviderBody(map[string]any{"error": doErr.Error()}),
+					UpstreamDurationMS: time.Since(start).Milliseconds(),
+				}, nil
+			}
+
+			bodyBytes, readErr := shared.ReadAllWithLimit(resp.Body, maxUpstreamResponseBytes)
+			_ = resp.Body.Close()
+			if readErr != nil {
+				if attempt < fallbackAttempts {
+					time.Sleep(time.Duration(s.config.RetryIntervalMS) * time.Millisecond)
+					continue
+				}
+				s.logProviderRequestError("fallback upstream read failed", start, req, method, fallbackURL, attempt, http.StatusBadGateway, "UPSTREAM_READ_ERROR", readErr.Error())
+				return providerExecutionResult{
+					StatusCode:         http.StatusBadGateway,
+					ResultCode:         "UPSTREAM_READ_ERROR",
+					Body:               mustMarshalProviderBody(map[string]any{"error": readErr.Error()}),
+					UpstreamDurationMS: time.Since(start).Milliseconds(),
+				}, nil
+			}
+
+			lastResultCode = upstreamResultCode(resp.StatusCode)
+
+			if isEmptySearchResponse(bodyBytes) && attempt < fallbackAttempts {
+				s.logger.Info(fmt.Sprintf("fallback searchUp returned empty data, retrying (attempt %d/%d)", attempt, fallbackAttempts), nil)
+				time.Sleep(time.Duration(s.config.RetryIntervalMS) * time.Millisecond)
+				continue
+			}
+
+			if attempt < fallbackAttempts && shouldRetry(method, resp.StatusCode, nil) {
+				continue
+			}
+
+			normalizedStatusCode, normalizedResultCode, normalizedBody := normalizeUpstreamPayloadRaw(resp.StatusCode, bodyBytes, resp.Header.Get("Content-Type"))
+			lastResultCode = normalizedResultCode
+			logFields := providerLogFields(req, method, fallbackURL, attempt, normalizedStatusCode, lastResultCode, "")
+			logFields["upstream_status_code"] = resp.StatusCode
+			logFields["fallback"] = true
+			for key, value := range providerLogResponseFields(bodyBytes, resp.Header.Get("Content-Type"), normalizedStatusCode >= http.StatusBadRequest) {
+				logFields[key] = value
+			}
+			if normalizedStatusCode >= http.StatusBadRequest {
+				shared.LogRequestError(s.logger, "fallback request executed", req.RequestID, start, logFields)
+			} else {
+				shared.LogRequestInfo(s.logger, "fallback request executed", req.RequestID, start, logFields)
+			}
+
+			return providerExecutionResult{
+				StatusCode:         normalizedStatusCode,
+				ResultCode:         lastResultCode,
+				Body:               normalizedBody,
+				UpstreamDurationMS: time.Since(start).Milliseconds(),
+			}, nil
+		}
+
+		return providerExecutionResult{
+			StatusCode:         http.StatusBadGateway,
+			ResultCode:         firstNonEmpty(lastResultCode, "UPSTREAM_EXECUTION_FAILED"),
+			Body:               mustMarshalProviderBody(map[string]any{"error": "provider fallback exhausted retries"}),
+			UpstreamDurationMS: time.Since(start).Milliseconds(),
+		}, nil
+	}
+
 	return providerExecutionResult{
 		StatusCode:         http.StatusBadGateway,
 		ResultCode:         firstNonEmpty(lastResultCode, "UPSTREAM_EXECUTION_FAILED"),
