@@ -685,6 +685,45 @@ func isEmptyObject(value any) bool {
 	return ok && len(object) == 0
 }
 
+func isEmptySearchResponse(body []byte) bool {
+	if len(body) == 0 {
+		return true
+	}
+
+	var resp struct {
+		Data struct {
+			SearchByRawQuery struct {
+				SearchTimeline struct {
+					Timeline struct {
+						Entries []struct {
+							Content struct {
+								Typename string `json:"__typename"`
+							} `json:"content"`
+						} `json:"entries"`
+					} `json:"timeline"`
+				} `json:"search_timeline"`
+			} `json:"search_by_raw_query"`
+		} `json:"data"`
+	}
+
+	if err := json.Unmarshal(body, &resp); err != nil {
+		return true
+	}
+
+	entries := resp.Data.SearchByRawQuery.SearchTimeline.Timeline.Entries
+	if len(entries) == 0 {
+		return true
+	}
+
+	for _, entry := range entries {
+		if entry.Content.Typename == "TimelineTimelineItem" {
+			return false
+		}
+	}
+
+	return true
+}
+
 func shouldRetry(method string, statusCode int, err error) bool {
 	if strings.ToUpper(method) != http.MethodGet {
 		return false
