@@ -124,18 +124,23 @@ func (s *providerService) executePolicy(ctx context.Context, req executePolicyRe
 
 	start := time.Now()
 	var lastResultCode string
+
+	// Build base request once outside retry loop to ensure headers remain consistent
+	baseReq, buildErr := http.NewRequestWithContext(ctx, method, targetURL, nil)
+	if buildErr != nil {
+		return nil, providerInternalError("build upstream request failed")
+	}
+	baseReq.Header.Set("Accept", "application/json")
+	if req.RequestID != "" {
+		baseReq.Header.Set("X-Request-ID", req.RequestID)
+	}
+	if headerName := strings.TrimSpace(s.config.APIKeyHeader); headerName != "" && strings.TrimSpace(req.ProviderAPIKey) != "" {
+		baseReq.Header.Set(headerName, req.ProviderAPIKey)
+	}
+
 	for attempt := 1; attempt <= attempts; attempt++ {
-		httpReq, buildErr := http.NewRequestWithContext(ctx, method, targetURL, nil)
-		if buildErr != nil {
-			return nil, providerInternalError("build upstream request failed")
-		}
-		httpReq.Header.Set("Accept", "application/json")
-		if req.RequestID != "" {
-			httpReq.Header.Set("X-Request-ID", req.RequestID)
-		}
-		if headerName := strings.TrimSpace(s.config.APIKeyHeader); headerName != "" && strings.TrimSpace(req.ProviderAPIKey) != "" {
-			httpReq.Header.Set(headerName, req.ProviderAPIKey)
-		}
+		// Clone base request for each attempt to keep headers consistent
+		httpReq := baseReq.Clone(ctx)
 
 		resp, doErr := s.client.Do(httpReq)
 		if doErr != nil {
@@ -204,18 +209,20 @@ func (s *providerService) executePolicy(ctx context.Context, req executePolicyRe
 		s.logger.Info("search endpoint exhausted retries, trying fallback to searchUp", nil)
 
 		fallbackAttempts := 1 + s.config.EmptyDataRetry
+		fallbackBaseReq, fallbackBuildErr := http.NewRequestWithContext(ctx, method, fallbackURL, nil)
+		if fallbackBuildErr != nil {
+			return nil, providerInternalError("build fallback upstream request failed")
+		}
+		fallbackBaseReq.Header.Set("Accept", "application/json")
+		if req.RequestID != "" {
+			fallbackBaseReq.Header.Set("X-Request-ID", req.RequestID)
+		}
+		if headerName := strings.TrimSpace(s.config.APIKeyHeader); headerName != "" && strings.TrimSpace(req.ProviderAPIKey) != "" {
+			fallbackBaseReq.Header.Set(headerName, req.ProviderAPIKey)
+		}
+
 		for attempt := 1; attempt <= fallbackAttempts; attempt++ {
-			httpReq, buildErr := http.NewRequestWithContext(ctx, method, fallbackURL, nil)
-			if buildErr != nil {
-				return nil, providerInternalError("build fallback upstream request failed")
-			}
-			httpReq.Header.Set("Accept", "application/json")
-			if req.RequestID != "" {
-				httpReq.Header.Set("X-Request-ID", req.RequestID)
-			}
-			if headerName := strings.TrimSpace(s.config.APIKeyHeader); headerName != "" && strings.TrimSpace(req.ProviderAPIKey) != "" {
-				httpReq.Header.Set(headerName, req.ProviderAPIKey)
-			}
+			httpReq := fallbackBaseReq.Clone(ctx)
 
 			resp, doErr := s.client.Do(httpReq)
 			if doErr != nil {
