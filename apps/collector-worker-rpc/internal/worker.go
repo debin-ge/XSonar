@@ -236,9 +236,41 @@ func (w *worker) handleMessage(ctx context.Context, message runQueueMessage) err
 	}
 
 	if runErr != nil {
-		return runErr
+		if markErr := w.markRunFailed(ctx, message.RunID, runErr); markErr != nil {
+			return markErr
+		}
+		return w.queue.Ack(ctx, w.queueStream, w.queueGroup, message.ID)
 	}
 	return w.queue.Ack(ctx, w.queueStream, w.queueGroup, message.ID)
+}
+
+func (w *worker) markRunFailed(ctx context.Context, runID string, runErr error) error {
+	if w == nil || w.store == nil {
+		return runErr
+	}
+
+	view, err := w.store.LoadRunTask(ctx, runID)
+	if err != nil {
+		return err
+	}
+
+	completedCount := view.Task.CompletedCount + view.Run.NewCount
+	return w.store.MarkRunFinished(ctx, finishRunParams{
+		RunID:          view.Run.RunID,
+		TaskID:         view.Task.TaskID,
+		RunStatus:      RunStatusFailed,
+		TaskStatus:     TaskStatusFailed,
+		StopReason:     view.Run.StopReason,
+		OutputPath:     view.Run.OutputPath,
+		PageCount:      view.Run.PageCount,
+		FetchedCount:   view.Run.FetchedCount,
+		NewCount:       view.Run.NewCount,
+		DuplicateCount: view.Run.DuplicateCount,
+		NextCursor:     view.Run.NextCursor,
+		ErrorMessage:   strings.TrimSpace(runErr.Error()),
+		EndedAt:        time.Now().UTC(),
+		CompletedCount: &completedCount,
+	})
 }
 
 func (w *worker) renewLeaseLoop(ctx context.Context, runID string, errCh chan<- error) {

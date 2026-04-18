@@ -72,7 +72,7 @@ func TestWorkerClaimsStaleMessagesWhenQueueIsIdle(t *testing.T) {
 	}
 }
 
-func TestWorkerDoesNotAckWhenRunnerFails(t *testing.T) {
+func TestWorkerMarksRunFailedAndAcksWhenRunnerFails(t *testing.T) {
 	queue := &fakeRunQueue{
 		readMessages: []runQueueMessage{{ID: "1-0", RunID: "run_1"}},
 	}
@@ -89,11 +89,25 @@ func TestWorkerDoesNotAckWhenRunnerFails(t *testing.T) {
 		LeaseRenewIntervalMS: 50,
 	}, xlog.NewStdout("collector-worker-rpc-test"), store, queue, runner, "worker-1")
 
-	if err := worker.processOnce(context.Background()); err == nil {
-		t.Fatal("expected processOnce to return an error")
+	if err := worker.processOnce(context.Background()); err != nil {
+		t.Fatalf("expected processOnce to recover runner failure, got %v", err)
 	}
-	if len(queue.ackedIDs) != 0 {
-		t.Fatalf("expected no ack on runner error, got %#v", queue.ackedIDs)
+	if len(queue.ackedIDs) != 1 || queue.ackedIDs[0] != "1-0" {
+		t.Fatalf("expected failed run message to be acked, got %#v", queue.ackedIDs)
+	}
+
+	view, err := store.LoadRunTask(context.Background(), "run_1")
+	if err != nil {
+		t.Fatalf("LoadRunTask returned error: %v", err)
+	}
+	if view.Run.Status != RunStatusFailed {
+		t.Fatalf("expected run status failed, got %q", view.Run.Status)
+	}
+	if view.Task.Status != TaskStatusFailed {
+		t.Fatalf("expected task status failed, got %q", view.Task.Status)
+	}
+	if view.Run.ErrorMessage != "boom" {
+		t.Fatalf("expected run error message boom, got %q", view.Run.ErrorMessage)
 	}
 }
 

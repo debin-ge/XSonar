@@ -13,6 +13,9 @@ CREATE TABLE IF NOT EXISTS collector.tasks (
     since TEXT NULL,
     until TEXT NULL,
     required_count BIGINT NULL,
+    per_run_count BIGINT NULL,
+    resume_cursor TEXT NULL,
+    resume_offset BIGINT NOT NULL DEFAULT 0,
     completed_count BIGINT NOT NULL DEFAULT 0,
     status TEXT NOT NULL,
     next_run_at TIMESTAMPTZ NULL,
@@ -20,6 +23,15 @@ CREATE TABLE IF NOT EXISTS collector.tasks (
     created_at TIMESTAMPTZ NOT NULL,
     updated_at TIMESTAMPTZ NOT NULL
 );
+
+ALTER TABLE collector.tasks
+    ADD COLUMN IF NOT EXISTS per_run_count BIGINT NULL;
+
+ALTER TABLE collector.tasks
+    ADD COLUMN IF NOT EXISTS resume_cursor TEXT NULL;
+
+ALTER TABLE collector.tasks
+    ADD COLUMN IF NOT EXISTS resume_offset BIGINT NOT NULL DEFAULT 0;
 
 CREATE INDEX IF NOT EXISTS idx_collector_tasks_status_next_run_at
     ON collector.tasks (status, next_run_at);
@@ -39,9 +51,17 @@ CREATE TABLE IF NOT EXISTS collector.task_runs (
     new_count BIGINT NOT NULL DEFAULT 0,
     duplicate_count BIGINT NOT NULL DEFAULT 0,
     next_cursor TEXT NULL,
+    resume_cursor TEXT NULL,
+    resume_offset BIGINT NOT NULL DEFAULT 0,
     error_message TEXT NULL,
     CONSTRAINT collector_task_runs_task_run_no_key UNIQUE (task_id, run_no)
 );
+
+ALTER TABLE collector.task_runs
+    ADD COLUMN IF NOT EXISTS resume_cursor TEXT NULL;
+
+ALTER TABLE collector.task_runs
+    ADD COLUMN IF NOT EXISTS resume_offset BIGINT NOT NULL DEFAULT 0;
 
 CREATE INDEX IF NOT EXISTS idx_collector_task_runs_task_id_scheduled_at
     ON collector.task_runs (task_id, scheduled_at DESC);

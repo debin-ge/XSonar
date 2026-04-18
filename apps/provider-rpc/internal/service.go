@@ -30,7 +30,6 @@ type providerService struct {
 }
 
 const maxUpstreamResponseBytes = 10 << 20
-const maxUpstreamLogPreviewChars = 256
 
 type executePolicyRequest struct {
 	RequestID      string         `json:"request_id"`
@@ -187,7 +186,8 @@ func (s *providerService) executePolicy(ctx context.Context, req executePolicyRe
 		lastResultCode = normalizedResultCode
 		logFields := providerLogFields(req, method, targetURL, attempt, normalizedStatusCode, lastResultCode, "")
 		logFields["upstream_status_code"] = resp.StatusCode
-		for key, value := range providerLogResponseFields(bodyBytes, resp.Header.Get("Content-Type"), normalizedStatusCode >= http.StatusBadRequest) {
+		includeBody := shouldLogFullUpstreamResponse(resp.StatusCode, normalizedStatusCode, lastResultCode)
+		for key, value := range providerLogResponseFields(bodyBytes, resp.Header.Get("Content-Type"), includeBody) {
 			logFields[key] = value
 		}
 		if normalizedStatusCode >= http.StatusBadRequest {
@@ -272,7 +272,8 @@ func (s *providerService) executePolicy(ctx context.Context, req executePolicyRe
 			logFields := providerLogFields(req, method, fallbackURL, attempt, normalizedStatusCode, lastResultCode, "")
 			logFields["upstream_status_code"] = resp.StatusCode
 			logFields["fallback"] = true
-			for key, value := range providerLogResponseFields(bodyBytes, resp.Header.Get("Content-Type"), normalizedStatusCode >= http.StatusBadRequest) {
+			includeBody := shouldLogFullUpstreamResponse(resp.StatusCode, normalizedStatusCode, lastResultCode)
+			for key, value := range providerLogResponseFields(bodyBytes, resp.Header.Get("Content-Type"), includeBody) {
 				logFields[key] = value
 			}
 			if normalizedStatusCode >= http.StatusBadRequest {
@@ -513,7 +514,7 @@ func decodeUpstreamBody(body []byte, contentType string) any {
 	return string(body)
 }
 
-func providerLogResponseFields(body []byte, contentType string, includePreview bool) map[string]any {
+func providerLogResponseFields(body []byte, contentType string, includeBody bool) map[string]any {
 	fields := map[string]any{
 		"upstream_response_bytes": len(body),
 	}
@@ -522,35 +523,36 @@ func providerLogResponseFields(body []byte, contentType string, includePreview b
 		fields["upstream_content_type"] = trimmedContentType
 	}
 
-	if includePreview {
-		if preview := providerLogResponsePreview(body, contentType); preview != "" {
-			fields["upstream_response_preview"] = preview
+	if includeBody {
+		if responseBody := providerLogResponseBody(body, contentType); responseBody != "" {
+			fields["upstream_response"] = responseBody
 		}
 	}
 
 	return fields
 }
 
-func providerLogResponsePreview(body []byte, contentType string) string {
+func providerLogResponseBody(body []byte, contentType string) string {
 	trimmedBody := bytes.TrimSpace(body)
 	if len(trimmedBody) == 0 {
 		return ""
 	}
 
-	previewBody := trimmedBody
+	logBody := trimmedBody
 	if strings.Contains(strings.ToLower(contentType), "json") || json.Valid(trimmedBody) {
 		var compact bytes.Buffer
 		if err := json.Compact(&compact, trimmedBody); err == nil {
-			previewBody = compact.Bytes()
+			logBody = compact.Bytes()
 		}
 	}
 
-	preview := string(previewBody)
-	if len([]rune(preview)) <= maxUpstreamLogPreviewChars {
-		return preview
-	}
+	return string(logBody)
+}
 
-	return string([]rune(preview)[:maxUpstreamLogPreviewChars]) + "..."
+func shouldLogFullUpstreamResponse(upstreamStatusCode, normalizedStatusCode int, normalizedResultCode string) bool {
+	return upstreamStatusCode >= http.StatusInternalServerError ||
+		normalizedStatusCode >= http.StatusInternalServerError ||
+		normalizedResultCode == "UPSTREAM_APPLICATION_ERROR"
 }
 
 func normalizeUpstreamPayloadRaw(statusCode int, body []byte, contentType string) (int, string, json.RawMessage) {

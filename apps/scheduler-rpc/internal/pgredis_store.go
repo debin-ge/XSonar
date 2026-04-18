@@ -261,6 +261,7 @@ func (s *pgRedisStore) CreateTask(ctx context.Context, item *task) (*task, *serv
 		stringArg(item.Since),
 		stringArg(item.Until),
 		int64Arg(item.RequiredCount),
+		int64Arg(item.PerRunCount),
 	)
 
 	created, err := scanTaskRow(row)
@@ -309,6 +310,19 @@ func (s *pgRedisStore) ListTaskRuns(ctx context.Context, taskID string, limit in
 		return nil, schedulerServiceErrorFromErr(err)
 	}
 	return items, nil
+}
+
+func (s *pgRedisStore) StopTask(ctx context.Context, taskID string) (*task, *serviceError) {
+	if s == nil || s.db == nil {
+		return nil, internalSchedulerError("scheduler database is not configured")
+	}
+
+	row := s.db.QueryRow(ctx, schedulerStopTaskSQL, strings.TrimSpace(taskID))
+	item, err := scanTaskRow(row)
+	if err != nil {
+		return nil, schedulerServiceErrorFromErr(err)
+	}
+	return item, nil
 }
 
 func (s *pgRedisStore) ListDueTasks(ctx context.Context, now time.Time, limit int) ([]task, *serviceError) {
@@ -502,6 +516,8 @@ func scanTaskRow(row schedulerRow) (*task, error) {
 	var since sql.NullString
 	var until sql.NullString
 	var requiredCount sql.NullInt64
+	var perRunCount sql.NullInt64
+	var resumeCursor sql.NullString
 	var nextRunAt sql.NullTime
 	var lastRunAt sql.NullTime
 
@@ -515,6 +531,9 @@ func scanTaskRow(row schedulerRow) (*task, error) {
 		&since,
 		&until,
 		&requiredCount,
+		&perRunCount,
+		&resumeCursor,
+		&item.ResumeOffset,
 		&item.CompletedCount,
 		&item.Status,
 		&nextRunAt,
@@ -537,6 +556,12 @@ func scanTaskRow(row schedulerRow) (*task, error) {
 	if requiredCount.Valid {
 		item.RequiredCount = cloneInt64Ptr(&requiredCount.Int64)
 	}
+	if perRunCount.Valid {
+		item.PerRunCount = cloneInt64Ptr(&perRunCount.Int64)
+	}
+	if resumeCursor.Valid {
+		item.ResumeCursor = resumeCursor.String
+	}
 	if nextRunAt.Valid {
 		item.NextRunAt = cloneTimePtr(&nextRunAt.Time)
 	}
@@ -554,6 +579,7 @@ func scanTaskRunRow(row schedulerRow) (*taskRun, error) {
 	var endedAt sql.NullTime
 	var outputPath sql.NullString
 	var nextCursor sql.NullString
+	var resumeCursor sql.NullString
 	var errorMessage sql.NullString
 
 	if err := row.Scan(
@@ -571,6 +597,8 @@ func scanTaskRunRow(row schedulerRow) (*taskRun, error) {
 		&item.NewCount,
 		&item.DuplicateCount,
 		&nextCursor,
+		&resumeCursor,
+		&item.ResumeOffset,
 		&errorMessage,
 	); err != nil {
 		return nil, err
@@ -590,6 +618,9 @@ func scanTaskRunRow(row schedulerRow) (*taskRun, error) {
 	}
 	if nextCursor.Valid {
 		item.NextCursor = nextCursor.String
+	}
+	if resumeCursor.Valid {
+		item.ResumeCursor = resumeCursor.String
 	}
 	if errorMessage.Valid {
 		item.ErrorMessage = errorMessage.String
@@ -630,6 +661,9 @@ INSERT INTO collector.tasks (
     since,
     until,
     required_count,
+    per_run_count,
+    resume_cursor,
+    resume_offset,
     completed_count,
     status,
     next_run_at,
@@ -638,7 +672,9 @@ INSERT INTO collector.tasks (
     updated_at
 )
 VALUES (
-    $1, $2, $3, $4, $5, $6, $7, $8, $9,
+    $1, $2, $3, $4, $5, $6, $7, $8, $9, $10,
+    NULL,
+    0,
     0,
     'pending',
     NOW(),
@@ -656,6 +692,9 @@ RETURNING
     since,
     until,
     required_count,
+    per_run_count,
+    resume_cursor,
+    resume_offset,
     completed_count,
     status,
     next_run_at,
@@ -675,6 +714,9 @@ SELECT
     since,
     until,
     required_count,
+    per_run_count,
+    resume_cursor,
+    resume_offset,
     completed_count,
     status,
     next_run_at,
@@ -701,6 +743,8 @@ SELECT
     new_count,
     duplicate_count,
     next_cursor,
+    resume_cursor,
+    resume_offset,
     error_message
 FROM collector.task_runs
 WHERE task_id = $1
@@ -719,6 +763,9 @@ SELECT
     since,
     until,
     required_count,
+    per_run_count,
+    resume_cursor,
+    resume_offset,
     completed_count,
     status,
     next_run_at,
@@ -764,6 +811,8 @@ INSERT INTO collector.task_runs (
     new_count,
     duplicate_count,
     next_cursor,
+    resume_cursor,
+    resume_offset,
     error_message
 )
 VALUES (
@@ -781,6 +830,8 @@ VALUES (
     0,
     0,
     NULL,
+    NULL,
+    0,
     NULL
 )
 RETURNING
@@ -798,6 +849,8 @@ RETURNING
     new_count,
     duplicate_count,
     next_cursor,
+    resume_cursor,
+    resume_offset,
     error_message
 `
 
@@ -817,6 +870,9 @@ RETURNING
     since,
     until,
     required_count,
+    per_run_count,
+    resume_cursor,
+    resume_offset,
     completed_count,
     status,
     next_run_at,
@@ -841,6 +897,9 @@ RETURNING
     since,
     until,
     required_count,
+    per_run_count,
+    resume_cursor,
+    resume_offset,
     completed_count,
     status,
     next_run_at,
@@ -875,6 +934,9 @@ updated_task AS (
         since,
         until,
         required_count,
+        per_run_count,
+        resume_cursor,
+        resume_offset,
         completed_count,
         status,
         next_run_at,
@@ -892,6 +954,9 @@ SELECT
     since,
     until,
     required_count,
+    per_run_count,
+    resume_cursor,
+    resume_offset,
     completed_count,
     status,
     next_run_at,
@@ -899,6 +964,33 @@ SELECT
     created_at,
     updated_at
 FROM updated_task
+`
+
+const schedulerStopTaskSQL = `
+UPDATE collector.tasks
+SET status = 'paused',
+    next_run_at = NULL,
+    updated_at = NOW()
+WHERE task_id = $1
+RETURNING
+    task_id,
+    task_type,
+    keyword,
+    created_by,
+    priority,
+    frequency_seconds,
+    since,
+    until,
+    required_count,
+    per_run_count,
+    resume_cursor,
+    resume_offset,
+    completed_count,
+    status,
+    next_run_at,
+    last_run_at,
+    created_at,
+    updated_at
 `
 
 const schedulerQueueBacklogSQL = `

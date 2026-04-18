@@ -49,6 +49,7 @@ type gatewaySchedulerClient interface {
 	CreateTask(ctx context.Context, req *schedulerservice.CreateTaskRequest) (*clients.EnvelopeResponse, error)
 	GetTask(ctx context.Context, req *schedulerservice.GetTaskRequest) (*clients.EnvelopeResponse, error)
 	ListTaskRuns(ctx context.Context, req *schedulerservice.ListTaskRunsRequest) (*clients.EnvelopeResponse, error)
+	StopTask(ctx context.Context, req *schedulerservice.StopTaskRequest) (*clients.EnvelopeResponse, error)
 }
 
 type gatewayService struct {
@@ -386,17 +387,18 @@ func (s *gatewayService) handleCreateCollectorTaskByType(w http.ResponseWriter, 
 		CreatedBy: subject,
 	}
 	switch taskType {
-	case "periodic":
-		var req types.CreatePeriodicCollectorTaskReq
-		if err := json.Unmarshal(body, &req); err != nil {
+		case "periodic":
+			var req types.CreatePeriodicCollectorTaskReq
+			if err := json.Unmarshal(body, &req); err != nil {
 			shared.WriteError(w, http.StatusBadRequest, model.CodeInvalidRequest, "invalid request body", requestID)
 			return
 		}
-		createReq.TaskId = req.TaskID
-		createReq.Keyword = req.Keyword
-		createReq.Priority = req.Priority
-		createReq.FrequencySeconds = req.FrequencySeconds
-		createReq.RequiredCount = req.RequiredCount
+			createReq.TaskId = req.TaskID
+			createReq.Keyword = req.Keyword
+			createReq.Priority = req.Priority
+			createReq.FrequencySeconds = req.FrequencySeconds
+			createReq.PerRunCount = req.PerRunCount
+			createReq.RequiredCount = req.RequiredCount
 	case "range":
 		var req types.CreateRangeCollectorTaskReq
 		if err := json.Unmarshal(body, &req); err != nil {
@@ -464,6 +466,29 @@ func (s *gatewayService) handleListCollectorTaskRuns(w http.ResponseWriter, r *h
 	defer cancel()
 
 	response, callErr := s.schedulerClient.ListTaskRuns(ctx, &schedulerservice.ListTaskRunsRequest{TaskId: taskID})
+	writeAdminDownstreamResult(w, requestID, response, callErr)
+}
+
+func (s *gatewayService) handleStopCollectorTask(w http.ResponseWriter, r *http.Request) {
+	if _, ok := s.requireGatewayAuthSubject(w, r); !ok {
+		return
+	}
+
+	requestID := shared.EnsureRequestID(w, r)
+	taskID := gatewayPathParam(r, "id")
+	if taskID == "" {
+		shared.WriteError(w, http.StatusBadRequest, model.CodeInvalidRequest, "task id is required", requestID)
+		return
+	}
+	if s.schedulerClient == nil {
+		shared.WriteError(w, http.StatusBadGateway, model.CodeInternalError, "scheduler client is unavailable", requestID)
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+	defer cancel()
+
+	response, callErr := s.schedulerClient.StopTask(ctx, &schedulerservice.StopTaskRequest{TaskId: taskID})
 	writeAdminDownstreamResult(w, requestID, response, callErr)
 }
 

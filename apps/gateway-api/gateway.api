@@ -275,6 +275,8 @@ type CreatePeriodicCollectorTaskReq {
 	Priority int32 `json:"priority,optional,example=1"`
 	// 采集频率（秒），例如3600表示每小时执行一次
 	FrequencySeconds *int32 `json:"frequency_seconds,optional,example=3600"`
+	// 单次执行的目标新增采集数量上限
+	PerRunCount *int64 `json:"per_run_count,optional,example=100"`
 	// 需要的采集数量上限
 	RequiredCount *int64 `json:"required_count,optional,example=1000"`
 }
@@ -544,4 +546,11 @@ service gateway-api {
 	)
 	@handler ListCollectorTaskRuns
 	get /v1/collector/tasks/:id/runs (CollectorTaskPathReq) returns (Envelope)
+
+	@doc (
+		summary: "停止采集任务"
+		description: "停止指定采集任务，阻止后续调度；若当前存在执行中的 run，会在本次 run 安全结束后停止。"
+	)
+	@handler StopCollectorTask
+	post /v1/collector/tasks/:id/stop (CollectorTaskPathReq) returns (Envelope)
 }

@@ -87,6 +87,7 @@ func TestCollectorRoutesExistInGeneratedContract(t *testing.T) {
 	expected := []string{
 		"/v1/collector/tasks/:id",
 		"/v1/collector/tasks/:id/runs",
+		"/v1/collector/tasks/:id/stop",
 		"/v1/collector/tasks/periodic",
 		"/v1/collector/tasks/range",
 	}

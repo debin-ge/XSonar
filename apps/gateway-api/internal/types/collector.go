@@ -5,6 +5,7 @@ type CreatePeriodicCollectorTaskReq struct {
 	Keyword          string `json:"keyword"`
 	Priority         int32  `json:"priority,optional"`
 	FrequencySeconds *int32 `json:"frequency_seconds,optional"`
+	PerRunCount      *int64 `json:"per_run_count,optional"`
 	RequiredCount    *int64 `json:"required_count,optional"`
 }
 

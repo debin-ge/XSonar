@@ -16,11 +16,13 @@ type (
 	GetTaskRequest      = schedulerpb.GetTaskRequest
 	JsonResponse        = schedulerpb.JsonResponse
 	ListTaskRunsRequest = schedulerpb.ListTaskRunsRequest
+	StopTaskRequest     = schedulerpb.StopTaskRequest
 
 	SchedulerService interface {
 		CreateTask(ctx context.Context, in *CreateTaskRequest, opts ...grpc.CallOption) (*JsonResponse, error)
 		GetTask(ctx context.Context, in *GetTaskRequest, opts ...grpc.CallOption) (*JsonResponse, error)
 		ListTaskRuns(ctx context.Context, in *ListTaskRunsRequest, opts ...grpc.CallOption) (*JsonResponse, error)
+		StopTask(ctx context.Context, in *StopTaskRequest, opts ...grpc.CallOption) (*JsonResponse, error)
 	}
 
 	defaultSchedulerService struct {
@@ -48,4 +50,9 @@ func (m *defaultSchedulerService) GetTask(ctx context.Context, in *GetTaskReques
 func (m *defaultSchedulerService) ListTaskRuns(ctx context.Context, in *ListTaskRunsRequest, opts ...grpc.CallOption) (*JsonResponse, error) {
 	client := schedulerpb.NewSchedulerServiceClient(m.cli.Conn())
 	return client.ListTaskRuns(ctx, in, opts...)
+}
+
+func (m *defaultSchedulerService) StopTask(ctx context.Context, in *StopTaskRequest, opts ...grpc.CallOption) (*JsonResponse, error) {
+	client := schedulerpb.NewSchedulerServiceClient(m.cli.Conn())
+	return client.StopTask(ctx, in, opts...)
 }

@@ -23,8 +23,13 @@ const (
 	collectorPolicyMethod = http.MethodGet
 	collectorPolicyKey    = "search_tweets_v1"
 	stopReasonPageLimit   = "page_limit"
+	stopReasonPerRun      = "per_run_count_reached"
 	stopReasonRequired    = "required_count_reached"
 	stopReasonEmptyPage   = "empty_page"
+	stopReasonEmptyCursor = "empty_page_with_cursor"
+	stopReasonStopped     = "task_stopped"
+	stopReasonTaskFailed  = "task_failed"
+	stopReasonTaskDone    = "task_completed"
 )
 
 type policyResolver interface {
@@ -147,6 +152,8 @@ func (r *runner) run(ctx context.Context, runID string) error {
 	newCount := view.Run.NewCount
 	duplicateCount := view.Run.DuplicateCount
 	nextCursor := strings.TrimSpace(view.Run.NextCursor)
+	resumeCursor, resumeOffset := initialResumeState(view)
+	updateResume := view.Task.TaskType == TaskTypePeriodic
 
 	if err := r.store.UpdateRunProgress(ctx, updateRunProgressParams{
 		RunID:          view.Run.RunID,
@@ -158,6 +165,9 @@ func (r *runner) run(ctx context.Context, runID string) error {
 		NewCount:       newCount,
 		DuplicateCount: duplicateCount,
 		NextCursor:     nextCursor,
+		ResumeCursor:   resumeCursor,
+		ResumeOffset:   resumeOffset,
+		UpdateResume:   updateResume,
 	}); err != nil {
 		return err
 	}
@@ -167,8 +177,35 @@ func (r *runner) run(ctx context.Context, runID string) error {
 	if view.Task.RequiredCount != nil && *view.Task.RequiredCount > 0 {
 		requiredCount = *view.Task.RequiredCount
 	}
+	perRunCount := int64(0)
+	if view.Task.PerRunCount != nil && *view.Task.PerRunCount > 0 {
+		perRunCount = *view.Task.PerRunCount
+	}
+	taskStatusOverride := ""
 	for {
-		providerPayload, err := r.fetchPage(ctx, policy, view.Task, nextCursor)
+		latestView, err := r.store.LoadRunTask(ctx, view.Run.RunID)
+		if err != nil {
+			return err
+		}
+		view.Task = latestView.Task
+		if requiredCount > 0 && view.Task.CompletedCount+newCount >= requiredCount {
+			stopReason = stopReasonRequired
+			taskStatusOverride = TaskStatusSucceeded
+			break
+		}
+		if perRunCount > 0 && newCount >= perRunCount {
+			stopReason = stopReasonPerRun
+			break
+		}
+		if overrideStatus, overrideReason := inactiveTaskState(view.Task.Status); overrideStatus != "" {
+			taskStatusOverride = overrideStatus
+			stopReason = overrideReason
+			break
+		}
+
+		currentCursor := strings.TrimSpace(resumeCursor)
+		currentOffset := normalizeResumeOffset(resumeOffset)
+		providerPayload, err := r.fetchPage(ctx, policy, view.Task, currentCursor)
 		if err != nil {
 			return err
 		}
@@ -179,12 +216,73 @@ func (r *runner) run(ctx context.Context, runID string) error {
 		}
 
 		pageCount++
-		fetchedCount += int64(len(page.Posts))
+		pageSize := int64(len(page.Posts))
+		fetchedCount += pageSize
+		nextCursor = strings.TrimSpace(page.NextCursor)
+
+		if pageSize == 0 {
+			resumeCursor = ""
+			resumeOffset = 0
+			if view.Task.TaskType == TaskTypePeriodic && nextCursor != "" {
+				stopReason = stopReasonEmptyCursor
+				taskStatusOverride = TaskStatusPaused
+			} else {
+				stopReason = stopReasonEmptyPage
+			}
+			if err := r.store.UpdateRunProgress(ctx, updateRunProgressParams{
+				RunID:          view.Run.RunID,
+				Status:         RunStatusRunning,
+				StartedAt:      &startedAt,
+				OutputPath:     outputPath,
+				PageCount:      pageCount,
+				FetchedCount:   fetchedCount,
+				NewCount:       newCount,
+				DuplicateCount: duplicateCount,
+				NextCursor:     nextCursor,
+				ResumeCursor:   resumeCursor,
+				ResumeOffset:   resumeOffset,
+				UpdateResume:   updateResume,
+			}); err != nil {
+				return err
+			}
+			break
+		}
+
+		if currentOffset >= pageSize {
+			resumeCursor = nextCursor
+			resumeOffset = 0
+			if err := r.store.UpdateRunProgress(ctx, updateRunProgressParams{
+				RunID:          view.Run.RunID,
+				Status:         RunStatusRunning,
+				StartedAt:      &startedAt,
+				OutputPath:     outputPath,
+				PageCount:      pageCount,
+				FetchedCount:   fetchedCount,
+				NewCount:       newCount,
+				DuplicateCount: duplicateCount,
+				NextCursor:     nextCursor,
+				ResumeCursor:   resumeCursor,
+				ResumeOffset:   resumeOffset,
+				UpdateResume:   updateResume,
+			}); err != nil {
+				return err
+			}
+			if view.Task.TaskType == TaskTypePeriodic && pageCount >= r.periodicRunMaxPages {
+				stopReason = stopReasonPageLimit
+				break
+			}
+			if resumeCursor == "" {
+				break
+			}
+			continue
+		}
 
 		seenAt := time.Now().UTC()
 		usageMonth := time.Date(seenAt.Year(), seenAt.Month(), 1, 0, 0, 0, 0, time.UTC).Format("2006-01-02")
 		requiredReached := false
-		for _, post := range page.Posts {
+		processedOffset := currentOffset
+		for _, post := range page.Posts[int(currentOffset):] {
+			processedOffset++
 			if _, err := r.store.RecordKeywordMonthlyUsage(ctx, view.Task.Keyword, usageMonth, post.PostID, view.Task.TaskID, seenAt); err != nil {
 				return err
 			}
@@ -212,12 +310,29 @@ func (r *runner) run(ctx context.Context, runID string) error {
 			}
 			if requiredCount > 0 && view.Task.CompletedCount+newCount >= requiredCount {
 				stopReason = stopReasonRequired
+				taskStatusOverride = TaskStatusSucceeded
+				requiredReached = true
+				break
+			}
+			if perRunCount > 0 && newCount >= perRunCount {
+				stopReason = stopReasonPerRun
 				requiredReached = true
 				break
 			}
 		}
 
-		nextCursor = strings.TrimSpace(page.NextCursor)
+		if requiredReached {
+			if processedOffset >= pageSize {
+				resumeCursor = nextCursor
+				resumeOffset = 0
+			} else {
+				resumeCursor = currentCursor
+				resumeOffset = processedOffset
+			}
+		} else {
+			resumeCursor = nextCursor
+			resumeOffset = 0
+		}
 		if err := r.store.UpdateRunProgress(ctx, updateRunProgressParams{
 			RunID:          view.Run.RunID,
 			Status:         RunStatusRunning,
@@ -228,14 +343,13 @@ func (r *runner) run(ctx context.Context, runID string) error {
 			NewCount:       newCount,
 			DuplicateCount: duplicateCount,
 			NextCursor:     nextCursor,
+			ResumeCursor:   resumeCursor,
+			ResumeOffset:   resumeOffset,
+			UpdateResume:   updateResume,
 		}); err != nil {
 			return err
 		}
 
-		if len(page.Posts) == 0 {
-			stopReason = stopReasonEmptyPage
-			break
-		}
 		if requiredReached {
 			break
 		}
@@ -254,7 +368,9 @@ func (r *runner) run(ctx context.Context, runID string) error {
 	committed = true
 
 	taskStatus := TaskStatusSucceeded
-	if view.Task.TaskType == TaskTypePeriodic && stopReason != stopReasonRequired {
+	if taskStatusOverride != "" {
+		taskStatus = taskStatusOverride
+	} else if view.Task.TaskType == TaskTypePeriodic && stopReason != stopReasonRequired {
 		taskStatus = TaskStatusPending
 	}
 	completedCount := view.Task.CompletedCount + newCount
@@ -270,6 +386,9 @@ func (r *runner) run(ctx context.Context, runID string) error {
 		NewCount:       newCount,
 		DuplicateCount: duplicateCount,
 		NextCursor:     nextCursor,
+		ResumeCursor:   resumeCursor,
+		ResumeOffset:   resumeOffset,
+		UpdateResume:   updateResume,
 		EndedAt:        time.Now().UTC(),
 		CompletedCount: &completedCount,
 	}); err != nil {
@@ -322,13 +441,13 @@ func (r *runner) fetchPage(ctx context.Context, policy resolvedPolicy, task work
 
 	// Apply default product=Top for search_tweets_v1, matching gateway behavior
 	if policy.PolicyKey == "search_tweets_v1" && policy.UpstreamPath == "/base/apitools/search" {
-		if !hasNonEmptyProduct(query["product"]) {
+		if !hasNonEmptyValue(query["product"]) {
 			query["product"] = "Top"
 		}
 	}
 
 	// Apply default resFormat=json when not specified, matching gateway behavior
-	if !hasNonEmptyProduct(query["resFormat"]) {
+	if !hasNonEmptyValue(query["resFormat"]) {
 		query["resFormat"] = "json"
 	}
 
@@ -384,7 +503,53 @@ func (r *runner) resolveOutputPath(view runTaskView) string {
 	return filepath.Join(taskDir, name)
 }
 
-func hasNonEmptyProduct(value any) bool {
+func initialResumeState(view runTaskView) (string, int64) {
+	if shouldSeedRunResumeFromTask(view.Run) {
+		return strings.TrimSpace(view.Task.ResumeCursor), normalizeResumeOffset(view.Task.ResumeOffset)
+	}
+
+	resumeCursor := strings.TrimSpace(view.Run.ResumeCursor)
+	resumeOffset := normalizeResumeOffset(view.Run.ResumeOffset)
+	if resumeCursor == "" && resumeOffset == 0 && strings.TrimSpace(view.Run.NextCursor) != "" {
+		return strings.TrimSpace(view.Run.NextCursor), 0
+	}
+	return resumeCursor, resumeOffset
+}
+
+func shouldSeedRunResumeFromTask(run workerRun) bool {
+	return strings.TrimSpace(run.ResumeCursor) == "" &&
+		run.ResumeOffset == 0 &&
+		strings.TrimSpace(run.NextCursor) == "" &&
+		strings.TrimSpace(run.OutputPath) == "" &&
+		run.PageCount == 0 &&
+		run.FetchedCount == 0 &&
+		run.NewCount == 0 &&
+		run.DuplicateCount == 0 &&
+		run.StartedAt == nil &&
+		run.EndedAt == nil
+}
+
+func normalizeResumeOffset(offset int64) int64 {
+	if offset < 0 {
+		return 0
+	}
+	return offset
+}
+
+func inactiveTaskState(status string) (taskStatus string, stopReason string) {
+	switch strings.TrimSpace(status) {
+	case TaskStatusPaused:
+		return TaskStatusPaused, stopReasonStopped
+	case TaskStatusFailed:
+		return TaskStatusFailed, stopReasonTaskFailed
+	case TaskStatusSucceeded:
+		return TaskStatusSucceeded, stopReasonTaskDone
+	default:
+		return "", ""
+	}
+}
+
+func hasNonEmptyValue(value any) bool {
 	switch typed := value.(type) {
 	case nil:
 		return false
@@ -399,7 +564,7 @@ func hasNonEmptyProduct(value any) bool {
 		return false
 	case []any:
 		for _, item := range typed {
-			if hasNonEmptyProduct(item) {
+			if hasNonEmptyValue(item) {
 				return true
 			}
 		}

@@ -322,7 +322,7 @@ func TestExecutePolicyTreatsGraphQLErrorPayloadAsUpstreamApplicationError(t *tes
 	}
 }
 
-func TestExecutePolicySuppressesPlaceholderUpstreamErrorBody(t *testing.T) {
+func TestExecutePolicyOmitsFullUpstreamBodyForClientErrors(t *testing.T) {
 	cfg := config.ProviderConfig{
 		BaseURL:   "https://provider.example/api",
 		TimeoutMS: 1000,
@@ -357,17 +357,17 @@ func TestExecutePolicySuppressesPlaceholderUpstreamErrorBody(t *testing.T) {
 	}
 
 	entry := decodeProviderLogLine(t, logs.Bytes())
-	if _, exists := entry["upstream_response"]; exists {
-		t.Fatalf("expected full upstream response to be omitted, got %#v", entry)
-	}
 	if entry["upstream_content_type"] != "application/json" {
 		t.Fatalf("expected upstream_content_type to be logged, got %#v", entry)
 	}
 	if entry["upstream_response_bytes"] != float64(len(upstreamBody)) {
 		t.Fatalf("expected upstream_response_bytes to be logged, got %#v", entry)
 	}
-	if entry["upstream_response_preview"] != upstreamBody {
-		t.Fatalf("expected upstream_response_preview to be logged, got %#v", entry)
+	if _, exists := entry["upstream_response"]; exists {
+		t.Fatalf("expected full upstream_response to be omitted for client errors, got %#v", entry)
+	}
+	if _, exists := entry["upstream_response_preview"]; exists {
+		t.Fatalf("expected upstream_response_preview to be omitted, got %#v", entry)
 	}
 }
 
@@ -410,6 +410,55 @@ func TestExecutePolicyOmitsUpstreamResponsePreviewOnSuccess(t *testing.T) {
 	}
 	if _, exists := entry["upstream_response_preview"]; exists {
 		t.Fatalf("expected upstream_response_preview to be omitted on success, got %#v", entry)
+	}
+}
+
+func TestExecutePolicyLogsFullUpstreamBodyForApplicationErrors(t *testing.T) {
+	cfg := config.ProviderConfig{
+		BaseURL:   "https://provider.example/api",
+		TimeoutMS: 1000,
+	}
+
+	var logs bytes.Buffer
+	const upstreamBody = `{"code":1,"data":{"data":{},"errors":[{"message":"strconv.ParseInt: parsing \"\": invalid syntax","path":["threaded_conversation_with_injections_v2","focal_tweet_id"]}]},"msg":"SUCCESS","result":null}`
+	client := &http.Client{
+		Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+			return jsonHTTPResponse(http.StatusOK, upstreamBody), nil
+		}),
+	}
+
+	svc := newProviderServiceWithConfigAndClient(cfg, client, xlog.NewWithWriter("provider-test", &logs))
+	result, svcErr := svc.executePolicy(context.Background(), executePolicyRequest{
+		RequestID:      "req-upstream-app-error",
+		PolicyKey:      "tweets_detail_v1",
+		UpstreamMethod: http.MethodGet,
+		UpstreamPath:   "/base/apitools/tweetTimeline",
+		ProviderAPIKey: "provider-key-1",
+	})
+	if svcErr != nil {
+		t.Fatalf("executePolicy returned error: %+v", svcErr)
+	}
+
+	resultPayload := decodeProviderResult(t, result)
+	if resultPayload.StatusCode != http.StatusBadGateway {
+		t.Fatalf("unexpected status code: %#v", resultPayload.StatusCode)
+	}
+	if resultPayload.ResultCode != "UPSTREAM_APPLICATION_ERROR" {
+		t.Fatalf("unexpected result code: %#v", resultPayload.ResultCode)
+	}
+
+	entry := decodeProviderLogLine(t, logs.Bytes())
+	if entry["upstream_content_type"] != "application/json" {
+		t.Fatalf("expected upstream_content_type to be logged, got %#v", entry)
+	}
+	if entry["upstream_response_bytes"] != float64(len(upstreamBody)) {
+		t.Fatalf("expected upstream_response_bytes to be logged, got %#v", entry)
+	}
+	if entry["upstream_response"] != upstreamBody {
+		t.Fatalf("expected full upstream_response to be logged for application errors, got %#v", entry)
+	}
+	if _, exists := entry["upstream_response_preview"]; exists {
+		t.Fatalf("expected upstream_response_preview to be omitted, got %#v", entry)
 	}
 }
 

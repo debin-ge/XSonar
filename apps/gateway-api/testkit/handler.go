@@ -49,6 +49,7 @@ func NewHandlerWithClientsAndMode(logger *xlog.Logger, accessClient clients.Acce
 		"POST /v1/collector/tasks/range",
 		"GET /v1/collector/tasks/{id}",
 		"GET /v1/collector/tasks/{id}/runs",
+		"POST /v1/collector/tasks/{id}/stop",
 	} {
 		switch route {
 		case "POST /v1/collector/tasks/periodic":
@@ -59,6 +60,8 @@ func NewHandlerWithClientsAndMode(logger *xlog.Logger, accessClient clients.Acce
 			mux.HandleFunc(route, bridge.HandleGetCollectorTask)
 		case "GET /v1/collector/tasks/{id}/runs":
 			mux.HandleFunc(route, bridge.HandleListCollectorTaskRuns)
+		case "POST /v1/collector/tasks/{id}/stop":
+			mux.HandleFunc(route, bridge.HandleStopCollectorTask)
 		default:
 			mux.HandleFunc(route, bridge.HandleProxy)
 		}

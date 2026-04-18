@@ -178,11 +178,16 @@ func RegisterHandlers(server *rest.Server, serverCtx *svc.ServiceContext) {
 				Path:    "/v1/collector/tasks/:id",
 				Handler: serverCtx.Bridge.HandleGetCollectorTask,
 			},
-			{
-				Method:  http.MethodGet,
-				Path:    "/v1/collector/tasks/:id/runs",
-				Handler: serverCtx.Bridge.HandleListCollectorTaskRuns,
+				{
+					Method:  http.MethodGet,
+					Path:    "/v1/collector/tasks/:id/runs",
+					Handler: serverCtx.Bridge.HandleListCollectorTaskRuns,
+				},
+				{
+					Method:  http.MethodPost,
+					Path:    "/v1/collector/tasks/:id/stop",
+					Handler: serverCtx.Bridge.HandleStopCollectorTask,
+				},
 			},
-		},
-	)
+		)
 }

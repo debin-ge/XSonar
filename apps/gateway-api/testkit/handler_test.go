@@ -44,6 +44,7 @@ func TestTestkitIncludesCollectorRoutes(t *testing.T) {
 	expected := []string{
 		"/v1/collector/tasks/:id",
 		"/v1/collector/tasks/:id/runs",
+		"/v1/collector/tasks/:id/stop",
 		"/v1/collector/tasks/periodic",
 		"/v1/collector/tasks/range",
 	}
@@ -150,6 +151,7 @@ func normalizeCollectorRoutePath(path string) string {
 type stubSchedulerRPC struct {
 	getTaskFunc      func(ctx context.Context, req *schedulerservice.GetTaskRequest) (*clients.EnvelopeResponse, error)
 	listTaskRunsFunc func(ctx context.Context, req *schedulerservice.ListTaskRunsRequest) (*clients.EnvelopeResponse, error)
+	stopTaskFunc     func(ctx context.Context, req *schedulerservice.StopTaskRequest) (*clients.EnvelopeResponse, error)
 }
 
 func (s stubSchedulerRPC) Health(context.Context) (*clients.EnvelopeResponse, error) {
@@ -172,6 +174,13 @@ func (s stubSchedulerRPC) ListTaskRuns(ctx context.Context, req *schedulerservic
 		return nil, nil
 	}
 	return s.listTaskRunsFunc(ctx, req)
+}
+
+func (s stubSchedulerRPC) StopTask(ctx context.Context, req *schedulerservice.StopTaskRequest) (*clients.EnvelopeResponse, error) {
+	if s.stopTaskFunc == nil {
+		return nil, nil
+	}
+	return s.stopTaskFunc(ctx, req)
 }
 
 func mustSignAdminJWT(t *testing.T, secret, issuer, subject string) string {

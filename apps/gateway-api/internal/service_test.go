@@ -83,6 +83,10 @@ func (s stubJSONClient) ListTaskRuns(ctx context.Context, req *schedulerservice.
 	return s.call(ctx, "/rpc/ListTaskRuns", req)
 }
 
+func (s stubJSONClient) StopTask(ctx context.Context, req *schedulerservice.StopTaskRequest) (*clients.EnvelopeResponse, error) {
+	return s.call(ctx, "/rpc/StopTask", req)
+}
+
 func setProductionAuthHeaders(req *http.Request, appKey, timestamp, nonce, signature string) {
 	req.Header.Set("Authorization", "Bearer "+mustSignGatewayAppJWTForTests(appKey))
 	_ = timestamp
@@ -269,6 +273,43 @@ func TestGatewayCreateCollectorTaskUsesAdminJWTSubjectAsCreatedBy(t *testing.T) 
 	}
 }
 
+func TestGatewayCreatePeriodicCollectorTaskForwardsPerRunCount(t *testing.T) {
+	var recorded *schedulerservice.CreateTaskRequest
+	schedulerClient := stubJSONClient{
+		postFunc: func(_ context.Context, path string, payload any) (*clients.EnvelopeResponse, error) {
+			if path != "/rpc/CreateTask" {
+				return nil, errors.New("unexpected scheduler path: " + path)
+			}
+			recorded = payload.(*schedulerservice.CreateTaskRequest)
+			return okEnvelope(map[string]any{"task_id": "task-1"}), nil
+		},
+	}
+	svc := newGatewayServiceWithAdmin(
+		xlog.NewStdout("gateway-test"),
+		schedulerClient,
+		"test-secret",
+		"test-issuer",
+	)
+	token := mustSignAdminJWT(t, "test-secret", "test-issuer", "admin-user-1")
+
+	req := httptest.NewRequest(http.MethodPost, "/admin/v1/collector/tasks", strings.NewReader(`{"task_id":"task-1","task_type":"periodic","keyword":"openai","frequency_seconds":60,"per_run_count":25,"required_count":100}`))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+token)
+	rec := httptest.NewRecorder()
+
+	svc.handleCreateCollectorTask(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	if recorded == nil || recorded.PerRunCount == nil {
+		t.Fatalf("expected per_run_count to be forwarded, got %#v", recorded)
+	}
+	if *recorded.PerRunCount != 25 {
+		t.Fatalf("expected per_run_count 25, got %d", *recorded.PerRunCount)
+	}
+}
+
 func TestGatewayCreateCollectorTaskMapsSchedulerConflictTo409(t *testing.T) {
 	schedulerClient := stubJSONClient{
 		postFunc: func(_ context.Context, path string, payload any) (*clients.EnvelopeResponse, error) {
@@ -353,6 +394,13 @@ func TestGatewayCollectorAdminGetRoutesForwardToScheduler(t *testing.T) {
 			expectedPath: "/rpc/ListTaskRuns",
 			expectedTask: "task-1",
 		},
+		{
+			name:         "stop task",
+			url:          "/admin/v1/collector/tasks/task-1/stop",
+			handler:      (*gatewayService).handleStopCollectorTask,
+			expectedPath: "/rpc/StopTask",
+			expectedTask: "task-1",
+		},
 	}
 
 	for _, tt := range tests {
@@ -366,6 +414,8 @@ func TestGatewayCollectorAdminGetRoutesForwardToScheduler(t *testing.T) {
 					case *schedulerservice.GetTaskRequest:
 						calledTaskID = req.TaskId
 					case *schedulerservice.ListTaskRunsRequest:
+						calledTaskID = req.TaskId
+					case *schedulerservice.StopTaskRequest:
 						calledTaskID = req.TaskId
 					default:
 						t.Fatalf("unexpected scheduler payload type %T", payload)

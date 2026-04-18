@@ -52,6 +52,37 @@ func TestCreateTaskRejectsMissingFrequencyForPeriodic(t *testing.T) {
 	assertSchedulerError(t, svcErr, model.CodeInvalidRequest)
 }
 
+func TestCreateTaskRejectsNonPositivePerRunCount(t *testing.T) {
+	svc, _ := newTestSchedulerService()
+
+	_, svcErr := svc.createTask(context.Background(), createTaskRequest{
+		TaskID:           "task-1",
+		TaskType:         "periodic",
+		Keyword:          "openai",
+		FrequencySeconds: int32Ptr(60),
+		PerRunCount:      int64Ptr(0),
+		CreatedBy:        "admin-user-1",
+	})
+
+	assertSchedulerError(t, svcErr, model.CodeInvalidRequest)
+}
+
+func TestCreateTaskRejectsPerRunCountForRange(t *testing.T) {
+	svc, _ := newTestSchedulerService()
+
+	_, svcErr := svc.createTask(context.Background(), createTaskRequest{
+		TaskID:      "task-1",
+		TaskType:    "range",
+		Keyword:     "openai",
+		Since:       "2024-01-01T00:00:00Z",
+		Until:       "2024-01-02T00:00:00Z",
+		PerRunCount: int64Ptr(10),
+		CreatedBy:   "admin-user-1",
+	})
+
+	assertSchedulerError(t, svcErr, model.CodeInvalidRequest)
+}
+
 func TestCreateTaskRejectsMissingSinceUntilForRange(t *testing.T) {
 	svc, _ := newTestSchedulerService()
 
@@ -121,6 +152,29 @@ func TestCreateTaskPreservesCreatedByInStore(t *testing.T) {
 	}
 	if store.lastCreatedTask.CreatedBy != "admin-user-1" {
 		t.Fatalf("expected created_by admin-user-1, got %q", store.lastCreatedTask.CreatedBy)
+	}
+}
+
+func TestCreateTaskPersistsPerRunCount(t *testing.T) {
+	svc, store := newTestSchedulerService()
+
+	_, svcErr := svc.createTask(context.Background(), createTaskRequest{
+		TaskID:           "task-1",
+		TaskType:         "periodic",
+		Keyword:          "openai",
+		FrequencySeconds: int32Ptr(60),
+		PerRunCount:      int64Ptr(25),
+		CreatedBy:        "admin-user-1",
+	})
+	if svcErr != nil {
+		t.Fatalf("createTask returned error: %v", svcErr)
+	}
+
+	if store.lastCreatedTask == nil || store.lastCreatedTask.PerRunCount == nil {
+		t.Fatalf("expected per_run_count to reach store, got %#v", store.lastCreatedTask)
+	}
+	if *store.lastCreatedTask.PerRunCount != 25 {
+		t.Fatalf("expected per_run_count 25, got %d", *store.lastCreatedTask.PerRunCount)
 	}
 }
 
@@ -214,6 +268,58 @@ func TestListTaskRunsRejectsMissingTaskID(t *testing.T) {
 	assertSchedulerError(t, svcErr, model.CodeInvalidRequest)
 }
 
+func TestStopTaskMarksTaskPaused(t *testing.T) {
+	svc, store := newTestSchedulerService()
+	nextRunAt := time.Date(2026, 4, 11, 11, 0, 0, 0, time.UTC)
+
+	if _, svcErr := store.CreateTask(context.Background(), &task{
+		TaskID:           "task-1",
+		TaskType:         "periodic",
+		Keyword:          "openai",
+		FrequencySeconds: int32Ptr(60),
+		CreatedBy:        "admin-user-1",
+		Status:           schedulerTaskStatusPending,
+		NextRunAt:        &nextRunAt,
+		CreatedAt:        time.Date(2026, 4, 11, 10, 0, 0, 0, time.UTC),
+		UpdatedAt:        time.Date(2026, 4, 11, 10, 0, 0, 0, time.UTC),
+	}); svcErr != nil {
+		t.Fatalf("seed task creation failed: %v", svcErr)
+	}
+
+	got, stopErr := svc.stopTask(context.Background(), stopTaskRequest{TaskID: "task-1"})
+	if stopErr != nil {
+		t.Fatalf("stopTask returned error: %v", stopErr)
+	}
+
+	item := got.(*task)
+	if item.Status != TaskStatusPaused {
+		t.Fatalf("expected paused task status, got %q", item.Status)
+	}
+	if item.NextRunAt != nil {
+		t.Fatalf("expected next_run_at to be cleared, got %#v", item.NextRunAt)
+	}
+}
+
+func TestStopTaskRejectsCompletedTask(t *testing.T) {
+	svc, store := newTestSchedulerService()
+
+	if _, svcErr := store.CreateTask(context.Background(), &task{
+		TaskID:           "task-1",
+		TaskType:         "periodic",
+		Keyword:          "openai",
+		FrequencySeconds: int32Ptr(60),
+		CreatedBy:        "admin-user-1",
+		Status:           TaskStatusSucceeded,
+		CreatedAt:        time.Date(2026, 4, 11, 10, 0, 0, 0, time.UTC),
+		UpdatedAt:        time.Date(2026, 4, 11, 10, 0, 0, 0, time.UTC),
+	}); svcErr != nil {
+		t.Fatalf("seed task creation failed: %v", svcErr)
+	}
+
+	_, svcErr := svc.stopTask(context.Background(), stopTaskRequest{TaskID: "task-1"})
+	assertSchedulerError(t, svcErr, model.CodeConflict)
+}
+
 func TestSchedulerConfigDefaults(t *testing.T) {
 	cfg := defaultConfig()
 	if cfg.DispatchScanIntervalMS != 1000 {
@@ -248,5 +354,9 @@ func assertSchedulerError(t *testing.T, svcErr *serviceError, wantCode int) {
 }
 
 func int32Ptr(value int32) *int32 {
+	return &value
+}
+
+func int64Ptr(value int64) *int64 {
 	return &value
 }

@@ -53,6 +53,7 @@ type SchedulerRPC interface {
 	CreateTask(ctx context.Context, req *schedulerservice.CreateTaskRequest) (*EnvelopeResponse, error)
 	GetTask(ctx context.Context, req *schedulerservice.GetTaskRequest) (*EnvelopeResponse, error)
 	ListTaskRuns(ctx context.Context, req *schedulerservice.ListTaskRunsRequest) (*EnvelopeResponse, error)
+	StopTask(ctx context.Context, req *schedulerservice.StopTaskRequest) (*EnvelopeResponse, error)
 }
 
 type CollectorWorkerRPC interface {
@@ -264,6 +265,11 @@ func (c *schedulerRPCClient) GetTask(ctx context.Context, req *schedulerservice.
 
 func (c *schedulerRPCClient) ListTaskRuns(ctx context.Context, req *schedulerservice.ListTaskRunsRequest) (*EnvelopeResponse, error) {
 	resp, err := c.client.ListTaskRuns(ctx, req)
+	return rpcEnvelope(resp, err)
+}
+
+func (c *schedulerRPCClient) StopTask(ctx context.Context, req *schedulerservice.StopTaskRequest) (*EnvelopeResponse, error) {
+	resp, err := c.client.StopTask(ctx, req)
 	return rpcEnvelope(resp, err)
 }
 

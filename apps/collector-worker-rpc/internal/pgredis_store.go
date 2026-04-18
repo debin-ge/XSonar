@@ -266,6 +266,9 @@ func (s *pgRedisWorkerStore) UpdateRunProgress(ctx context.Context, params updat
 		params.NewCount,
 		params.DuplicateCount,
 		nullableString(params.NextCursor),
+		params.UpdateResume,
+		nullableString(params.ResumeCursor),
+		params.ResumeOffset,
 	)
 	return err
 }
@@ -297,6 +300,9 @@ func (s *pgRedisWorkerStore) MarkRunFinished(ctx context.Context, params finishR
 		params.NewCount,
 		params.DuplicateCount,
 		nullableString(params.NextCursor),
+		params.UpdateResume,
+		nullableString(params.ResumeCursor),
+		params.ResumeOffset,
 		nullableString(params.ErrorMessage),
 	); err != nil {
 		return err
@@ -306,6 +312,9 @@ func (s *pgRedisWorkerStore) MarkRunFinished(ctx context.Context, params finishR
 		strings.TrimSpace(params.TaskID),
 		nullableString(params.TaskStatus),
 		completedCount,
+		params.UpdateResume,
+		nullableString(params.ResumeCursor),
+		params.ResumeOffset,
 	); err != nil {
 		return err
 	}
@@ -319,11 +328,14 @@ func scanRunTaskView(row workerRow) (runTaskView, error) {
 	var since sql.NullString
 	var until sql.NullString
 	var requiredCount sql.NullInt64
+	var perRunCount sql.NullInt64
+	var taskResumeCursor sql.NullString
 	var startedAt sql.NullTime
 	var endedAt sql.NullTime
 	var stopReason sql.NullString
 	var outputPath sql.NullString
 	var nextCursor sql.NullString
+	var runResumeCursor sql.NullString
 	var errorMessage sql.NullString
 
 	if err := row.Scan(
@@ -336,6 +348,9 @@ func scanRunTaskView(row workerRow) (runTaskView, error) {
 		&since,
 		&until,
 		&requiredCount,
+		&perRunCount,
+		&taskResumeCursor,
+		&view.Task.ResumeOffset,
 		&view.Task.CompletedCount,
 		&view.Task.Status,
 		&view.Run.RunID,
@@ -351,6 +366,8 @@ func scanRunTaskView(row workerRow) (runTaskView, error) {
 		&view.Run.NewCount,
 		&view.Run.DuplicateCount,
 		&nextCursor,
+		&runResumeCursor,
+		&view.Run.ResumeOffset,
 		&errorMessage,
 	); err != nil {
 		return runTaskView{}, err
@@ -369,6 +386,12 @@ func scanRunTaskView(row workerRow) (runTaskView, error) {
 	if requiredCount.Valid {
 		view.Task.RequiredCount = cloneInt64Ptr(&requiredCount.Int64)
 	}
+	if perRunCount.Valid {
+		view.Task.PerRunCount = cloneInt64Ptr(&perRunCount.Int64)
+	}
+	if taskResumeCursor.Valid {
+		view.Task.ResumeCursor = taskResumeCursor.String
+	}
 	if stopReason.Valid {
 		view.Run.StopReason = stopReason.String
 	}
@@ -383,6 +406,9 @@ func scanRunTaskView(row workerRow) (runTaskView, error) {
 	}
 	if nextCursor.Valid {
 		view.Run.NextCursor = nextCursor.String
+	}
+	if runResumeCursor.Valid {
+		view.Run.ResumeCursor = runResumeCursor.String
 	}
 	if errorMessage.Valid {
 		view.Run.ErrorMessage = errorMessage.String
@@ -419,12 +445,15 @@ SELECT
     t.keyword,
     t.created_by,
     t.priority,
-    t.frequency_seconds,
-    t.since,
-    t.until,
-    t.required_count,
-    t.completed_count,
-    t.status,
+	    t.frequency_seconds,
+	    t.since,
+	    t.until,
+	    t.required_count,
+	    t.per_run_count,
+	    t.resume_cursor,
+	    t.resume_offset,
+	    t.completed_count,
+	    t.status,
     r.run_id,
     r.run_no,
     r.status,
@@ -435,11 +464,13 @@ SELECT
     r.output_path,
     r.page_count,
     r.fetched_count,
-    r.new_count,
-    r.duplicate_count,
-    r.next_cursor,
-    r.error_message
-FROM collector.task_runs r
+	    r.new_count,
+	    r.duplicate_count,
+	    r.next_cursor,
+	    r.resume_cursor,
+	    r.resume_offset,
+	    r.error_message
+	FROM collector.task_runs r
 JOIN collector.tasks t ON t.task_id = r.task_id
 WHERE r.run_id = $1
 `
@@ -471,11 +502,13 @@ SET status = COALESCE($2, status),
     started_at = COALESCE($3::timestamptz, started_at),
     output_path = COALESCE($4, output_path),
     page_count = $5,
-    fetched_count = $6,
-    new_count = $7,
-    duplicate_count = $8,
-    next_cursor = COALESCE($9, next_cursor)
-WHERE run_id = $1
+	    fetched_count = $6,
+	    new_count = $7,
+	    duplicate_count = $8,
+	    next_cursor = COALESCE($9, next_cursor),
+	    resume_cursor = CASE WHEN $10 THEN $11 ELSE resume_cursor END,
+	    resume_offset = CASE WHEN $10 THEN $12 ELSE resume_offset END
+	WHERE run_id = $1
 `
 
 const workerMarkRunFinishedSQL = `
@@ -485,18 +518,22 @@ SET status = $2,
     ended_at = $4,
     output_path = COALESCE($5, output_path),
     page_count = $6,
-    fetched_count = $7,
-    new_count = $8,
-    duplicate_count = $9,
-    next_cursor = COALESCE($10, next_cursor),
-    error_message = COALESCE($11, error_message)
-WHERE run_id = $1
+	    fetched_count = $7,
+	    new_count = $8,
+	    duplicate_count = $9,
+	    next_cursor = COALESCE($10, next_cursor),
+	    resume_cursor = CASE WHEN $11 THEN $12 ELSE resume_cursor END,
+	    resume_offset = CASE WHEN $11 THEN $13 ELSE resume_offset END,
+	    error_message = COALESCE($14, error_message)
+	WHERE run_id = $1
 `
 
 const workerUpdateTaskOnFinishSQL = `
 UPDATE collector.tasks
 SET status = COALESCE($2, status),
     completed_count = COALESCE($3, completed_count),
+    resume_cursor = CASE WHEN $4 THEN $5 ELSE resume_cursor END,
+    resume_offset = CASE WHEN $4 THEN $6 ELSE resume_offset END,
     updated_at = NOW()
 WHERE task_id = $1
 `

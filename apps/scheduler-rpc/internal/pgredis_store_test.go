@@ -469,8 +469,8 @@ func TestSchedulerMarkTaskRunningWithRunUsesSingleAtomicQuery(t *testing.T) {
 							FrequencySeconds: pgInt32Ptr(30),
 							Status:           TaskStatusRunning,
 						}, fakeNow)
-						*(dest[10].(*string)) = TaskStatusRunning
-						*(dest[12].(*sql.NullTime)) = sql.NullTime{Time: fakeNow, Valid: true}
+						*(dest[13].(*string)) = TaskStatusRunning
+						*(dest[15].(*sql.NullTime)) = sql.NullTime{Time: fakeNow, Valid: true}
 						return nil
 					},
 				}
@@ -564,7 +564,7 @@ type taskRunSeed struct {
 }
 
 func assignTaskRowValues(dest []any, item task, now time.Time) {
-	if len(dest) != 15 {
+	if len(dest) != 18 {
 		panic("unexpected task row destination count")
 	}
 
@@ -594,16 +594,39 @@ func assignTaskRowValues(dest []any, item task, now time.Time) {
 	} else {
 		*(dest[8].(*sql.NullInt64)) = sql.NullInt64{Int64: *item.RequiredCount, Valid: true}
 	}
-	*(dest[9].(*int64)) = 0
-	*(dest[10].(*string)) = TaskStatusPending
-	*(dest[11].(*sql.NullTime)) = sql.NullTime{Time: now, Valid: true}
-	*(dest[12].(*sql.NullTime)) = sql.NullTime{}
-	*(dest[13].(*time.Time)) = now.UTC()
-	*(dest[14].(*time.Time)) = now.UTC()
+	if item.PerRunCount == nil {
+		*(dest[9].(*sql.NullInt64)) = sql.NullInt64{}
+	} else {
+		*(dest[9].(*sql.NullInt64)) = sql.NullInt64{Int64: *item.PerRunCount, Valid: true}
+	}
+	if item.ResumeCursor == "" {
+		*(dest[10].(*sql.NullString)) = sql.NullString{}
+	} else {
+		*(dest[10].(*sql.NullString)) = sql.NullString{String: item.ResumeCursor, Valid: true}
+	}
+	*(dest[11].(*int64)) = item.ResumeOffset
+	*(dest[12].(*int64)) = item.CompletedCount
+	if item.Status == "" {
+		*(dest[13].(*string)) = TaskStatusPending
+	} else {
+		*(dest[13].(*string)) = item.Status
+	}
+	if item.NextRunAt == nil {
+		*(dest[14].(*sql.NullTime)) = sql.NullTime{Time: now.UTC(), Valid: true}
+	} else {
+		*(dest[14].(*sql.NullTime)) = sql.NullTime{Time: item.NextRunAt.UTC(), Valid: true}
+	}
+	if item.LastRunAt == nil {
+		*(dest[15].(*sql.NullTime)) = sql.NullTime{}
+	} else {
+		*(dest[15].(*sql.NullTime)) = sql.NullTime{Time: item.LastRunAt.UTC(), Valid: true}
+	}
+	*(dest[16].(*time.Time)) = now.UTC()
+	*(dest[17].(*time.Time)) = now.UTC()
 }
 
 func assignTaskRunRowValues(dest []any, seed taskRunSeed) {
-	if len(dest) != 15 {
+	if len(dest) != 17 {
 		panic("unexpected task run row destination count")
 	}
 
@@ -622,6 +645,8 @@ func assignTaskRunRowValues(dest []any, seed taskRunSeed) {
 	*(dest[12].(*int64)) = 0
 	*(dest[13].(*sql.NullString)) = sql.NullString{}
 	*(dest[14].(*sql.NullString)) = sql.NullString{}
+	*(dest[15].(*int64)) = 0
+	*(dest[16].(*sql.NullString)) = sql.NullString{}
 }
 
 func pgInt32Ptr(v int32) *int32 {

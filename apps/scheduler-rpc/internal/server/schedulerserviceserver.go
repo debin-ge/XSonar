@@ -45,6 +45,15 @@ func (s *SchedulerServiceServer) ListTaskRuns(ctx context.Context, in *scheduler
 	return schedulerinternal.EncodeSchedulerResponse(data, svcErr), nil
 }
 
+func (s *SchedulerServiceServer) StopTask(ctx context.Context, in *schedulerpb.StopTaskRequest) (*schedulerpb.JsonResponse, error) {
+	if s.svcCtx == nil || s.svcCtx.Service == nil {
+		return &schedulerpb.JsonResponse{Code: model.CodeInternalError, Message: "scheduler service unavailable"}, nil
+	}
+
+	data, svcErr := s.svcCtx.Service.StopTask(ctx, internalStopTaskRequest(in))
+	return schedulerinternal.EncodeSchedulerResponse(data, svcErr), nil
+}
+
 func internalCreateTaskRequest(in *schedulerpb.CreateTaskRequest) schedulerinternal.CreateTaskRequest {
 	if in == nil {
 		return schedulerinternal.CreateTaskRequest{}
@@ -59,6 +68,7 @@ func internalCreateTaskRequest(in *schedulerpb.CreateTaskRequest) schedulerinter
 		Since:            in.GetSince(),
 		Until:            in.GetUntil(),
 		RequiredCount:    in.RequiredCount,
+		PerRunCount:      in.PerRunCount,
 		CreatedBy:        in.GetCreatedBy(),
 	}
 }
@@ -77,4 +87,12 @@ func internalListTaskRunsRequest(in *schedulerpb.ListTaskRunsRequest) scheduleri
 	}
 
 	return schedulerinternal.ListTaskRunsRequest{TaskID: in.GetTaskId()}
+}
+
+func internalStopTaskRequest(in *schedulerpb.StopTaskRequest) schedulerinternal.StopTaskRequest {
+	if in == nil {
+		return schedulerinternal.StopTaskRequest{}
+	}
+
+	return schedulerinternal.StopTaskRequest{TaskID: in.GetTaskId()}
 }

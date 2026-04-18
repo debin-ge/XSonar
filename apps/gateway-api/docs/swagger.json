@@ -31,7 +31,7 @@
           "application/json"
         ],
         "schemes": [
-          "https"
+          "http"
         ],
         "tags": [
           "Gateway API"
@@ -57,6 +57,10 @@
                 "keyword": {
                   "type": "string",
                   "example": "XSonar"
+                },
+                "per_run_count": {
+                  "type": "integer",
+                  "example": 100
                 },
                 "priority": {
                   "type": "integer",
@@ -111,7 +115,7 @@
           "application/json"
         ],
         "schemes": [
-          "https"
+          "http"
         ],
         "tags": [
           "Gateway API"
@@ -192,7 +196,7 @@
           "application/json"
         ],
         "schemes": [
-          "https"
+          "http"
         ],
         "tags": [
           "Gateway API"
@@ -241,13 +245,65 @@
           "application/json"
         ],
         "schemes": [
-          "https"
+          "http"
         ],
         "tags": [
           "Gateway API"
         ],
         "summary": "获取采集任务执行记录",
         "operationId": "listCollectorTaskRuns",
+        "parameters": [
+          {
+            "type": "string",
+            "name": "id",
+            "in": "path",
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "schema": {
+              "type": "object",
+              "properties": {
+                "code": {
+                  "type": "integer"
+                },
+                "data": {},
+                "message": {
+                  "type": "string"
+                },
+                "request_id": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/collector/tasks/{id}/stop": {
+      "post": {
+        "security": [
+          {
+            "gatewayBearer": []
+          }
+        ],
+        "description": "停止指定采集任务，阻止后续调度；若当前存在执行中的 run，会在本次 run 安全结束后停止。",
+        "consumes": [
+          "application/x-www-form-urlencoded"
+        ],
+        "produces": [
+          "application/json"
+        ],
+        "schemes": [
+          "http"
+        ],
+        "tags": [
+          "Gateway API"
+        ],
+        "summary": "停止采集任务",
+        "operationId": "stopCollectorTask",
         "parameters": [
           {
             "type": "string",
@@ -290,7 +346,7 @@
           "application/json"
         ],
         "schemes": [
-          "https"
+          "http"
         ],
         "tags": [
           "Gateway API"
@@ -339,7 +395,7 @@
           "application/json"
         ],
         "schemes": [
-          "https"
+          "http"
         ],
         "tags": [
           "Gateway API"
@@ -394,7 +450,7 @@
           "application/json"
         ],
         "schemes": [
-          "https"
+          "http"
         ],
         "tags": [
           "Gateway API"
@@ -449,7 +505,7 @@
           "application/json"
         ],
         "schemes": [
-          "https"
+          "http"
         ],
         "tags": [
           "Gateway API"
@@ -490,7 +546,7 @@
           "application/json"
         ],
         "schemes": [
-          "https"
+          "http"
         ],
         "tags": [
           "Gateway API"
@@ -531,7 +587,7 @@
           "application/json"
         ],
         "schemes": [
-          "https"
+          "http"
         ],
         "tags": [
           "Gateway API"
@@ -572,7 +628,7 @@
           "application/json"
         ],
         "schemes": [
-          "https"
+          "http"
         ],
         "tags": [
           "Gateway API"
@@ -613,7 +669,7 @@
           "application/json"
         ],
         "schemes": [
-          "https"
+          "http"
         ],
         "tags": [
           "Gateway API"
@@ -654,7 +710,7 @@
           "application/json"
         ],
         "schemes": [
-          "https"
+          "http"
         ],
         "tags": [
           "Gateway API"
@@ -703,7 +759,7 @@
           "application/json"
         ],
         "schemes": [
-          "https"
+          "http"
         ],
         "tags": [
           "Gateway API"
@@ -842,7 +898,7 @@
           "application/json"
         ],
         "schemes": [
-          "https"
+          "http"
         ],
         "tags": [
           "Gateway API"
@@ -897,7 +953,7 @@
           "application/json"
         ],
         "schemes": [
-          "https"
+          "http"
         ],
         "tags": [
           "Gateway API"
@@ -946,7 +1002,7 @@
           "application/json"
         ],
         "schemes": [
-          "https"
+          "http"
         ],
         "tags": [
           "Gateway API"
@@ -1001,7 +1057,7 @@
           "application/json"
         ],
         "schemes": [
-          "https"
+          "http"
         ],
         "tags": [
           "Gateway API"
@@ -1062,7 +1118,7 @@
           "application/json"
         ],
         "schemes": [
-          "https"
+          "http"
         ],
         "tags": [
           "Gateway API"
@@ -1123,7 +1179,7 @@
           "application/json"
         ],
         "schemes": [
-          "https"
+          "http"
         ],
         "tags": [
           "Gateway API"
@@ -1178,7 +1234,7 @@
           "application/json"
         ],
         "schemes": [
-          "https"
+          "http"
         ],
         "tags": [
           "Gateway API"
@@ -1239,7 +1295,7 @@
           "application/json"
         ],
         "schemes": [
-          "https"
+          "http"
         ],
         "tags": [
           "Gateway API"
@@ -1294,7 +1350,7 @@
           "application/json"
         ],
         "schemes": [
-          "https"
+          "http"
         ],
         "tags": [
           "Gateway API"
@@ -1355,7 +1411,7 @@
           "application/json"
         ],
         "schemes": [
-          "https"
+          "http"
         ],
         "tags": [
           "Gateway API"
@@ -1416,7 +1472,7 @@
           "application/json"
         ],
         "schemes": [
-          "https"
+          "http"
         ],
         "tags": [
           "Gateway API"
@@ -1471,7 +1527,7 @@
           "application/json"
         ],
         "schemes": [
-          "https"
+          "http"
         ],
         "tags": [
           "Gateway API"
@@ -1520,7 +1576,7 @@
           "application/json"
         ],
         "schemes": [
-          "https"
+          "http"
         ],
         "tags": [
           "Gateway API"
@@ -1569,7 +1625,7 @@
           "application/json"
         ],
         "schemes": [
-          "https"
+          "http"
         ],
         "tags": [
           "Gateway API"
@@ -1624,7 +1680,7 @@
           "application/json"
         ],
         "schemes": [
-          "https"
+          "http"
         ],
         "tags": [
           "Gateway API"
@@ -1679,7 +1735,7 @@
           "application/json"
         ],
         "schemes": [
-          "https"
+          "http"
         ],
         "tags": [
           "Gateway API"
@@ -1740,7 +1796,7 @@
           "application/json"
         ],
         "schemes": [
-          "https"
+          "http"
         ],
         "tags": [
           "Gateway API"
@@ -1801,7 +1857,7 @@
           "application/json"
         ],
         "schemes": [
-          "https"
+          "http"
         ],
         "tags": [
           "Gateway API"
@@ -1880,7 +1936,7 @@
           "application/json"
         ],
         "schemes": [
-          "https"
+          "http"
         ],
         "tags": [
           "Gateway API"
@@ -1926,7 +1982,6 @@
       "in": "header"
     }
   },
-  "x-date": "2026-04-15 18:18:01",
   "x-description": "This is a goctl generated swagger file.",
   "x-github": "https://github.com/zeromicro/go-zero",
   "x-go-zero-doc": "https://go-zero.dev/",

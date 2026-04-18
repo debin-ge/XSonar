@@ -8,6 +8,7 @@ service SchedulerService {
   rpc CreateTask(CreateTaskRequest) returns (JsonResponse);
   rpc GetTask(GetTaskRequest) returns (JsonResponse);
   rpc ListTaskRuns(ListTaskRunsRequest) returns (JsonResponse);
+  rpc StopTask(StopTaskRequest) returns (JsonResponse);
 }
 
 message JsonResponse {
@@ -27,6 +28,7 @@ message CreateTaskRequest {
   string until = 7;
   optional int64 required_count = 8;
   string created_by = 9;
+  optional int64 per_run_count = 10;
 }
 
 message GetTaskRequest {
@@ -34,5 +36,9 @@ message GetTaskRequest {
 }
 
 message ListTaskRunsRequest {
+  string task_id = 1;
+}
+
+message StopTaskRequest {
   string task_id = 1;
 }

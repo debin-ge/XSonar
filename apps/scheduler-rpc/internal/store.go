@@ -15,6 +15,7 @@ type SchedulerStore interface {
 	CreateTask(ctx context.Context, item *task) (*task, *serviceError)
 	GetTask(ctx context.Context, taskID string) (*task, *serviceError)
 	ListTaskRuns(ctx context.Context, taskID string, limit int) ([]taskRun, *serviceError)
+	StopTask(ctx context.Context, taskID string) (*task, *serviceError)
 	ListDueTasks(ctx context.Context, now time.Time, limit int) ([]task, *serviceError)
 	CreateRun(ctx context.Context, item *taskRun) (*taskRun, *serviceError)
 	NextRunNo(ctx context.Context, taskID string) (int64, *serviceError)
@@ -38,6 +39,9 @@ type task struct {
 	Since            string     `json:"since,omitempty"`
 	Until            string     `json:"until,omitempty"`
 	RequiredCount    *int64     `json:"required_count,omitempty"`
+	PerRunCount      *int64     `json:"per_run_count,omitempty"`
+	ResumeCursor     string     `json:"-"`
+	ResumeOffset     int64      `json:"-"`
 	CompletedCount   int64      `json:"completed_count"`
 	CreatedBy        string     `json:"created_by"`
 	Status           string     `json:"status"`
@@ -62,6 +66,8 @@ type taskRun struct {
 	NewCount       int64      `json:"new_count"`
 	DuplicateCount int64      `json:"duplicate_count"`
 	NextCursor     string     `json:"next_cursor,omitempty"`
+	ResumeCursor   string     `json:"-"`
+	ResumeOffset   int64      `json:"-"`
 	ErrorMessage   string     `json:"error_message,omitempty"`
 }
 
@@ -164,6 +170,21 @@ func (s *memorySchedulerStore) ListTaskRuns(_ context.Context, taskID string, li
 		items = items[:limit]
 	}
 	return items, nil
+}
+
+func (s *memorySchedulerStore) StopTask(_ context.Context, taskID string) (*task, *serviceError) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	item, exists := s.tasks[strings.TrimSpace(taskID)]
+	if !exists {
+		return nil, schedulerNotFound("task not found")
+	}
+
+	item.Status = TaskStatusPaused
+	item.NextRunAt = nil
+	item.UpdatedAt = time.Now().UTC()
+	return cloneTask(item), nil
 }
 
 func (s *memorySchedulerStore) ListDueTasks(_ context.Context, now time.Time, limit int) ([]task, *serviceError) {
@@ -429,6 +450,21 @@ func (s *FakeSchedulerStore) ListTaskRuns(_ context.Context, taskID string, limi
 	return items, nil
 }
 
+func (s *FakeSchedulerStore) StopTask(_ context.Context, taskID string) (*task, *serviceError) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	item, exists := s.tasks[strings.TrimSpace(taskID)]
+	if !exists {
+		return nil, schedulerNotFound("task not found")
+	}
+
+	item.Status = TaskStatusPaused
+	item.NextRunAt = nil
+	item.UpdatedAt = time.Now().UTC()
+	return cloneTask(item), nil
+}
+
 func (s *FakeSchedulerStore) ListDueTasks(_ context.Context, now time.Time, limit int) ([]task, *serviceError) {
 	s.mu.RLock()
 	items := make([]task, 0, len(s.tasks))
@@ -656,6 +692,16 @@ func (s *FakeSchedulerStore) LastCreatedTaskCreatedBy() string {
 	return s.lastCreatedTask.CreatedBy
 }
 
+func (s *FakeSchedulerStore) LastCreatedTaskPerRunCount() *int64 {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	if s.lastCreatedTask == nil {
+		return nil
+	}
+	return cloneInt64Ptr(s.lastCreatedTask.PerRunCount)
+}
+
 func cloneAndSortTaskRuns(runs []taskRun) []taskRun {
 	items := make([]taskRun, 0, len(runs))
 	for _, run := range runs {
@@ -696,6 +742,7 @@ func cloneTask(src *task) *task {
 	dst := *src
 	dst.FrequencySeconds = cloneInt32Ptr(src.FrequencySeconds)
 	dst.RequiredCount = cloneInt64Ptr(src.RequiredCount)
+	dst.PerRunCount = cloneInt64Ptr(src.PerRunCount)
 	dst.NextRunAt = cloneTimePtr(src.NextRunAt)
 	dst.LastRunAt = cloneTimePtr(src.LastRunAt)
 	return &dst

@@ -33,6 +33,9 @@ type workerTask struct {
 	Since            string
 	Until            string
 	RequiredCount    *int64
+	PerRunCount      *int64
+	ResumeCursor     string
+	ResumeOffset     int64
 	CompletedCount   int64
 	Status           string
 }
@@ -52,6 +55,8 @@ type workerRun struct {
 	NewCount       int64
 	DuplicateCount int64
 	NextCursor     string
+	ResumeCursor   string
+	ResumeOffset   int64
 	ErrorMessage   string
 }
 
@@ -65,6 +70,9 @@ type updateRunProgressParams struct {
 	NewCount       int64
 	DuplicateCount int64
 	NextCursor     string
+	ResumeCursor   string
+	ResumeOffset   int64
+	UpdateResume   bool
 }
 
 type finishRunParams struct {
@@ -79,6 +87,9 @@ type finishRunParams struct {
 	NewCount       int64
 	DuplicateCount int64
 	NextCursor     string
+	ResumeCursor   string
+	ResumeOffset   int64
+	UpdateResume   bool
 	ErrorMessage   string
 	EndedAt        time.Time
 	CompletedCount *int64
@@ -238,6 +249,10 @@ func (s *memoryWorkerStore) UpdateRunProgress(_ context.Context, params updateRu
 	view.Run.NewCount = params.NewCount
 	view.Run.DuplicateCount = params.DuplicateCount
 	view.Run.NextCursor = strings.TrimSpace(params.NextCursor)
+	if params.UpdateResume {
+		view.Run.ResumeCursor = strings.TrimSpace(params.ResumeCursor)
+		view.Run.ResumeOffset = params.ResumeOffset
+	}
 	s.views[params.RunID] = cloneRunTaskView(view)
 	return nil
 }
@@ -259,6 +274,10 @@ func (s *memoryWorkerStore) MarkRunFinished(_ context.Context, params finishRunP
 	view.Run.NewCount = params.NewCount
 	view.Run.DuplicateCount = params.DuplicateCount
 	view.Run.NextCursor = strings.TrimSpace(params.NextCursor)
+	if params.UpdateResume {
+		view.Run.ResumeCursor = strings.TrimSpace(params.ResumeCursor)
+		view.Run.ResumeOffset = params.ResumeOffset
+	}
 	view.Run.ErrorMessage = strings.TrimSpace(params.ErrorMessage)
 	endedAt := params.EndedAt.UTC()
 	view.Run.EndedAt = cloneTimePtr(&endedAt)
@@ -267,6 +286,10 @@ func (s *memoryWorkerStore) MarkRunFinished(_ context.Context, params finishRunP
 	}
 	if params.CompletedCount != nil {
 		view.Task.CompletedCount = *params.CompletedCount
+	}
+	if params.UpdateResume {
+		view.Task.ResumeCursor = strings.TrimSpace(params.ResumeCursor)
+		view.Task.ResumeOffset = params.ResumeOffset
 	}
 
 	s.views[params.RunID] = cloneRunTaskView(view)
@@ -284,6 +307,7 @@ func cloneRunTaskView(src runTaskView) runTaskView {
 	dst := src
 	dst.Task.FrequencySeconds = cloneInt32Ptr(src.Task.FrequencySeconds)
 	dst.Task.RequiredCount = cloneInt64Ptr(src.Task.RequiredCount)
+	dst.Task.PerRunCount = cloneInt64Ptr(src.Task.PerRunCount)
 	dst.Run.StartedAt = cloneTimePtr(src.Run.StartedAt)
 	dst.Run.EndedAt = cloneTimePtr(src.Run.EndedAt)
 	return dst

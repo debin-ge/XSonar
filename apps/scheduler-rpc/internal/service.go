@@ -63,6 +63,7 @@ type SchedulerService interface {
 	CreateTask(ctx context.Context, req CreateTaskRequest) (any, *serviceError)
 	GetTask(ctx context.Context, req GetTaskRequest) (any, *serviceError)
 	ListTaskRuns(ctx context.Context, req ListTaskRunsRequest) (any, *serviceError)
+	StopTask(ctx context.Context, req StopTaskRequest) (any, *serviceError)
 	Close(ctx context.Context) error
 }
 
@@ -82,6 +83,7 @@ type createTaskRequest struct {
 	Since            string
 	Until            string
 	RequiredCount    *int64
+	PerRunCount      *int64
 	CreatedBy        string
 }
 
@@ -98,6 +100,12 @@ type listTaskRunsRequest struct {
 }
 
 type ListTaskRunsRequest = listTaskRunsRequest
+
+type stopTaskRequest struct {
+	TaskID string
+}
+
+type StopTaskRequest = stopTaskRequest
 
 func defaultConfig() config.Config {
 	return config.Config{
@@ -216,9 +224,15 @@ func (s *schedulerService) createTask(ctx context.Context, req createTaskRequest
 		if req.FrequencySeconds == nil || *req.FrequencySeconds <= 0 {
 			return nil, schedulerInvalidRequest("frequency_seconds is required for periodic tasks")
 		}
+		if req.PerRunCount != nil && *req.PerRunCount <= 0 {
+			return nil, schedulerInvalidRequest("per_run_count must be greater than 0")
+		}
 	case schedulerTaskTypeRange:
 		if strings.TrimSpace(req.Since) == "" || strings.TrimSpace(req.Until) == "" {
 			return nil, schedulerInvalidRequest("since and until are required for range tasks")
+		}
+		if req.PerRunCount != nil {
+			return nil, schedulerInvalidRequest("per_run_count is only supported for periodic tasks")
 		}
 	default:
 		return nil, schedulerInvalidRequest("task_type must be periodic or range")
@@ -234,6 +248,7 @@ func (s *schedulerService) createTask(ctx context.Context, req createTaskRequest
 		Since:            strings.TrimSpace(req.Since),
 		Until:            strings.TrimSpace(req.Until),
 		RequiredCount:    cloneInt64Ptr(req.RequiredCount),
+		PerRunCount:      cloneInt64Ptr(req.PerRunCount),
 		CreatedBy:        strings.TrimSpace(req.CreatedBy),
 		CompletedCount:   0,
 		Status:           schedulerTaskStatusPending,
@@ -285,6 +300,31 @@ func (s *schedulerService) listTaskRuns(ctx context.Context, req listTaskRunsReq
 
 func (s *schedulerService) ListTaskRuns(ctx context.Context, req ListTaskRunsRequest) (any, *serviceError) {
 	return s.listTaskRuns(ctx, req)
+}
+
+func (s *schedulerService) stopTask(ctx context.Context, req stopTaskRequest) (any, *serviceError) {
+	taskID := strings.TrimSpace(req.TaskID)
+	if taskID == "" {
+		return nil, schedulerInvalidRequest("task_id is required")
+	}
+
+	item, svcErr := s.store.GetTask(ctx, taskID)
+	if svcErr != nil {
+		return nil, svcErr
+	}
+
+	switch item.Status {
+	case TaskStatusPaused:
+		return item, nil
+	case TaskStatusSucceeded, TaskStatusFailed:
+		return nil, schedulerConflict("task is already completed")
+	}
+
+	return s.store.StopTask(ctx, taskID)
+}
+
+func (s *schedulerService) StopTask(ctx context.Context, req StopTaskRequest) (any, *serviceError) {
+	return s.stopTask(ctx, req)
 }
 
 func encodeSchedulerResponse(data any, svcErr *serviceError) *schedulerpb.JsonResponse {

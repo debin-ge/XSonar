@@ -62,6 +62,10 @@ func (b *Bridge) HandleListCollectorTaskRuns(w http.ResponseWriter, r *http.Requ
 	b.svc.handleListCollectorTaskRuns(w, r)
 }
 
+func (b *Bridge) HandleStopCollectorTask(w http.ResponseWriter, r *http.Request) {
+	b.svc.handleStopCollectorTask(w, r)
+}
+
 func (b *Bridge) Close() {
 	if b == nil || b.svc == nil {
 		return

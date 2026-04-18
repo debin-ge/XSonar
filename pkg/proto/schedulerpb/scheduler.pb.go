@@ -93,6 +93,7 @@ type CreateTaskRequest struct {
 	Until         string `protobuf:"bytes,7,opt,name=until,proto3" json:"until,omitempty"`
 	RequiredCount *int64 `protobuf:"varint,8,opt,name=required_count,json=requiredCount,proto3,oneof" json:"required_count,omitempty"`
 	CreatedBy     string `protobuf:"bytes,9,opt,name=created_by,json=createdBy,proto3" json:"created_by,omitempty"`
+	PerRunCount   *int64 `protobuf:"varint,10,opt,name=per_run_count,json=perRunCount,proto3,oneof" json:"per_run_count,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -190,6 +191,13 @@ func (x *CreateTaskRequest) GetCreatedBy() string {
 	return ""
 }
 
+func (x *CreateTaskRequest) GetPerRunCount() int64 {
+	if x != nil && x.PerRunCount != nil {
+		return *x.PerRunCount
+	}
+	return 0
+}
+
 type GetTaskRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	TaskId        string                 `protobuf:"bytes,1,opt,name=task_id,json=taskId,proto3" json:"task_id,omitempty"`
@@ -278,6 +286,50 @@ func (x *ListTaskRunsRequest) GetTaskId() string {
 	return ""
 }
 
+type StopTaskRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	TaskId        string                 `protobuf:"bytes,1,opt,name=task_id,json=taskId,proto3" json:"task_id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *StopTaskRequest) Reset() {
+	*x = StopTaskRequest{}
+	mi := &file_apps_scheduler_rpc_scheduler_proto_msgTypes[4]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *StopTaskRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*StopTaskRequest) ProtoMessage() {}
+
+func (x *StopTaskRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_apps_scheduler_rpc_scheduler_proto_msgTypes[4]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use StopTaskRequest.ProtoReflect.Descriptor instead.
+func (*StopTaskRequest) Descriptor() ([]byte, []int) {
+	return file_apps_scheduler_rpc_scheduler_proto_rawDescGZIP(), []int{4}
+}
+
+func (x *StopTaskRequest) GetTaskId() string {
+	if x != nil {
+		return x.TaskId
+	}
+	return ""
+}
+
 var File_apps_scheduler_rpc_scheduler_proto protoreflect.FileDescriptor
 
 const file_apps_scheduler_rpc_scheduler_proto_rawDesc = "" +
@@ -286,7 +338,7 @@ const file_apps_scheduler_rpc_scheduler_proto_rawDesc = "" +
 	"\fJsonResponse\x12\x12\n" +
 	"\x04code\x18\x01 \x01(\x05R\x04code\x12\x18\n" +
 	"\amessage\x18\x02 \x01(\tR\amessage\x12\x1b\n" +
-	"\tdata_json\x18\x03 \x01(\tR\bdataJson\"\xd1\x02\n" +
+	"\tdata_json\x18\x03 \x01(\tR\bdataJson\"\x8c\x03\n" +
 	"\x11CreateTaskRequest\x12\x17\n" +
 	"\atask_id\x18\x01 \x01(\tR\x06taskId\x12\x1b\n" +
 	"\ttask_type\x18\x02 \x01(\tR\btaskType\x12\x18\n" +
@@ -297,18 +349,24 @@ const file_apps_scheduler_rpc_scheduler_proto_rawDesc = "" +
 	"\x05until\x18\a \x01(\tR\x05until\x12*\n" +
 	"\x0erequired_count\x18\b \x01(\x03H\x01R\rrequiredCount\x88\x01\x01\x12\x1d\n" +
 	"\n" +
-	"created_by\x18\t \x01(\tR\tcreatedByB\x14\n" +
+	"created_by\x18\t \x01(\tR\tcreatedBy\x12'\n" +
+	"\rper_run_count\x18\n" +
+	" \x01(\x03H\x02R\vperRunCount\x88\x01\x01B\x14\n" +
 	"\x12_frequency_secondsB\x11\n" +
-	"\x0f_required_count\")\n" +
+	"\x0f_required_countB\x10\n" +
+	"\x0e_per_run_count\")\n" +
 	"\x0eGetTaskRequest\x12\x17\n" +
 	"\atask_id\x18\x01 \x01(\tR\x06taskId\".\n" +
 	"\x13ListTaskRunsRequest\x12\x17\n" +
-	"\atask_id\x18\x01 \x01(\tR\x06taskId2\x9b\x02\n" +
+	"\atask_id\x18\x01 \x01(\tR\x06taskId\"*\n" +
+	"\x0fStopTaskRequest\x12\x17\n" +
+	"\atask_id\x18\x01 \x01(\tR\x06taskId2\xf0\x02\n" +
 	"\x10SchedulerService\x12W\n" +
 	"\n" +
 	"CreateTask\x12&.xsonar.scheduler.v1.CreateTaskRequest\x1a!.xsonar.scheduler.v1.JsonResponse\x12Q\n" +
 	"\aGetTask\x12#.xsonar.scheduler.v1.GetTaskRequest\x1a!.xsonar.scheduler.v1.JsonResponse\x12[\n" +
-	"\fListTaskRuns\x12(.xsonar.scheduler.v1.ListTaskRunsRequest\x1a!.xsonar.scheduler.v1.JsonResponseB\x1eZ\x1cxsonar/pkg/proto/schedulerpbb\x06proto3"
+	"\fListTaskRuns\x12(.xsonar.scheduler.v1.ListTaskRunsRequest\x1a!.xsonar.scheduler.v1.JsonResponse\x12S\n" +
+	"\bStopTask\x12$.xsonar.scheduler.v1.StopTaskRequest\x1a!.xsonar.scheduler.v1.JsonResponseB\x1eZ\x1cxsonar/pkg/proto/schedulerpbb\x06proto3"
 
 var (
 	file_apps_scheduler_rpc_scheduler_proto_rawDescOnce sync.Once
@@ -322,22 +380,25 @@ func file_apps_scheduler_rpc_scheduler_proto_rawDescGZIP() []byte {
 	return file_apps_scheduler_rpc_scheduler_proto_rawDescData
 }
 
-var file_apps_scheduler_rpc_scheduler_proto_msgTypes = make([]protoimpl.MessageInfo, 4)
+var file_apps_scheduler_rpc_scheduler_proto_msgTypes = make([]protoimpl.MessageInfo, 5)
 var file_apps_scheduler_rpc_scheduler_proto_goTypes = []any{
 	(*JsonResponse)(nil),        // 0: xsonar.scheduler.v1.JsonResponse
 	(*CreateTaskRequest)(nil),   // 1: xsonar.scheduler.v1.CreateTaskRequest
 	(*GetTaskRequest)(nil),      // 2: xsonar.scheduler.v1.GetTaskRequest
 	(*ListTaskRunsRequest)(nil), // 3: xsonar.scheduler.v1.ListTaskRunsRequest
+	(*StopTaskRequest)(nil),     // 4: xsonar.scheduler.v1.StopTaskRequest
 }
 var file_apps_scheduler_rpc_scheduler_proto_depIdxs = []int32{
 	1, // 0: xsonar.scheduler.v1.SchedulerService.CreateTask:input_type -> xsonar.scheduler.v1.CreateTaskRequest
 	2, // 1: xsonar.scheduler.v1.SchedulerService.GetTask:input_type -> xsonar.scheduler.v1.GetTaskRequest
 	3, // 2: xsonar.scheduler.v1.SchedulerService.ListTaskRuns:input_type -> xsonar.scheduler.v1.ListTaskRunsRequest
-	0, // 3: xsonar.scheduler.v1.SchedulerService.CreateTask:output_type -> xsonar.scheduler.v1.JsonResponse
-	0, // 4: xsonar.scheduler.v1.SchedulerService.GetTask:output_type -> xsonar.scheduler.v1.JsonResponse
-	0, // 5: xsonar.scheduler.v1.SchedulerService.ListTaskRuns:output_type -> xsonar.scheduler.v1.JsonResponse
-	3, // [3:6] is the sub-list for method output_type
-	0, // [0:3] is the sub-list for method input_type
+	4, // 3: xsonar.scheduler.v1.SchedulerService.StopTask:input_type -> xsonar.scheduler.v1.StopTaskRequest
+	0, // 4: xsonar.scheduler.v1.SchedulerService.CreateTask:output_type -> xsonar.scheduler.v1.JsonResponse
+	0, // 5: xsonar.scheduler.v1.SchedulerService.GetTask:output_type -> xsonar.scheduler.v1.JsonResponse
+	0, // 6: xsonar.scheduler.v1.SchedulerService.ListTaskRuns:output_type -> xsonar.scheduler.v1.JsonResponse
+	0, // 7: xsonar.scheduler.v1.SchedulerService.StopTask:output_type -> xsonar.scheduler.v1.JsonResponse
+	4, // [4:8] is the sub-list for method output_type
+	0, // [0:4] is the sub-list for method input_type
 	0, // [0:0] is the sub-list for extension type_name
 	0, // [0:0] is the sub-list for extension extendee
 	0, // [0:0] is the sub-list for field type_name
@@ -355,7 +416,7 @@ func file_apps_scheduler_rpc_scheduler_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_apps_scheduler_rpc_scheduler_proto_rawDesc), len(file_apps_scheduler_rpc_scheduler_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   4,
+			NumMessages:   5,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

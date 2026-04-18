@@ -13,6 +13,7 @@ Thumbs.db
 # Local environment and shell tooling
 .env
 .env.local
+.env*
 .env.*.local
 .envrc
 .direnv/
@@ -38,6 +39,7 @@ runtime/
 tests/
 .worktrees/
 docs/
+.sisyphus/
 
 # Temporary files
 tmp/

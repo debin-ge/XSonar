@@ -22,6 +22,7 @@ const (
 	SchedulerService_CreateTask_FullMethodName   = "/xsonar.scheduler.v1.SchedulerService/CreateTask"
 	SchedulerService_GetTask_FullMethodName      = "/xsonar.scheduler.v1.SchedulerService/GetTask"
 	SchedulerService_ListTaskRuns_FullMethodName = "/xsonar.scheduler.v1.SchedulerService/ListTaskRuns"
+	SchedulerService_StopTask_FullMethodName     = "/xsonar.scheduler.v1.SchedulerService/StopTask"
 )
 
 // SchedulerServiceClient is the client API for SchedulerService service.
@@ -31,6 +32,7 @@ type SchedulerServiceClient interface {
 	CreateTask(ctx context.Context, in *CreateTaskRequest, opts ...grpc.CallOption) (*JsonResponse, error)
 	GetTask(ctx context.Context, in *GetTaskRequest, opts ...grpc.CallOption) (*JsonResponse, error)
 	ListTaskRuns(ctx context.Context, in *ListTaskRunsRequest, opts ...grpc.CallOption) (*JsonResponse, error)
+	StopTask(ctx context.Context, in *StopTaskRequest, opts ...grpc.CallOption) (*JsonResponse, error)
 }
 
 type schedulerServiceClient struct {
@@ -71,6 +73,16 @@ func (c *schedulerServiceClient) ListTaskRuns(ctx context.Context, in *ListTaskR
 	return out, nil
 }
 
+func (c *schedulerServiceClient) StopTask(ctx context.Context, in *StopTaskRequest, opts ...grpc.CallOption) (*JsonResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(JsonResponse)
+	err := c.cc.Invoke(ctx, SchedulerService_StopTask_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // SchedulerServiceServer is the server API for SchedulerService service.
 // All implementations must embed UnimplementedSchedulerServiceServer
 // for forward compatibility.
@@ -78,6 +90,7 @@ type SchedulerServiceServer interface {
 	CreateTask(context.Context, *CreateTaskRequest) (*JsonResponse, error)
 	GetTask(context.Context, *GetTaskRequest) (*JsonResponse, error)
 	ListTaskRuns(context.Context, *ListTaskRunsRequest) (*JsonResponse, error)
+	StopTask(context.Context, *StopTaskRequest) (*JsonResponse, error)
 	mustEmbedUnimplementedSchedulerServiceServer()
 }
 
@@ -96,6 +109,9 @@ func (UnimplementedSchedulerServiceServer) GetTask(context.Context, *GetTaskRequ
 }
 func (UnimplementedSchedulerServiceServer) ListTaskRuns(context.Context, *ListTaskRunsRequest) (*JsonResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method ListTaskRuns not implemented")
+}
+func (UnimplementedSchedulerServiceServer) StopTask(context.Context, *StopTaskRequest) (*JsonResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method StopTask not implemented")
 }
 func (UnimplementedSchedulerServiceServer) mustEmbedUnimplementedSchedulerServiceServer() {}
 func (UnimplementedSchedulerServiceServer) testEmbeddedByValue()                          {}
@@ -172,6 +188,24 @@ func _SchedulerService_ListTaskRuns_Handler(srv interface{}, ctx context.Context
 	return interceptor(ctx, in, info, handler)
 }
 
+func _SchedulerService_StopTask_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(StopTaskRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(SchedulerServiceServer).StopTask(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: SchedulerService_StopTask_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(SchedulerServiceServer).StopTask(ctx, req.(*StopTaskRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // SchedulerService_ServiceDesc is the grpc.ServiceDesc for SchedulerService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -190,6 +224,10 @@ var SchedulerService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "ListTaskRuns",
 			Handler:    _SchedulerService_ListTaskRuns_Handler,
+		},
+		{
+			MethodName: "StopTask",
+			Handler:    _SchedulerService_StopTask_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

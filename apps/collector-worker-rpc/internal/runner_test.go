@@ -76,6 +76,177 @@ func TestRunnerStopsPeriodicRunAtPageLimit(t *testing.T) {
 	}
 }
 
+func TestRunnerStopsPeriodicRunWhenPerRunCountReached(t *testing.T) {
+	root := t.TempDir()
+	perRunCount := int64(2)
+	store := newMemoryWorkerStore()
+	store.seedRunTask(runTaskView{
+		Task: workerTask{
+			TaskID:      "task_periodic_per_run_1",
+			TaskType:    TaskTypePeriodic,
+			Keyword:     "openai",
+			PerRunCount: &perRunCount,
+			Status:      TaskStatusPending,
+		},
+		Run: workerRun{
+			RunID:       "run_periodic_per_run_1",
+			TaskID:      "task_periodic_per_run_1",
+			RunNo:       1,
+			Status:      RunStatusQueued,
+			ScheduledAt: time.Date(2026, 4, 13, 10, 0, 0, 0, time.UTC),
+		},
+	})
+
+	provider := &fakeProviderExecutor{
+		responses: []providerPage{
+			{
+				Body: map[string]any{
+					"tweets": []map[string]any{
+						{"id": "post_1", "text": "one"},
+						{"id": "post_2", "text": "two"},
+						{"id": "post_3", "text": "three"},
+					},
+					"next_cursor": "cursor_1",
+				},
+			},
+		},
+	}
+
+	runner := newRunner(testRunnerConfig(root, 20), xlog.NewStdout("collector-worker-rpc-test"), store, fakePolicyResolver{}, provider, "worker-1")
+
+	if err := runner.run(context.Background(), "run_periodic_per_run_1"); err != nil {
+		t.Fatalf("run returned error: %v", err)
+	}
+
+	view, err := store.LoadRunTask(context.Background(), "run_periodic_per_run_1")
+	if err != nil {
+		t.Fatalf("LoadRunTask returned error: %v", err)
+	}
+	if view.Run.StopReason != "per_run_count_reached" {
+		t.Fatalf("expected stop_reason per_run_count_reached, got %q", view.Run.StopReason)
+	}
+	if view.Run.NewCount != 2 || view.Task.CompletedCount != 2 {
+		t.Fatalf("unexpected counts: run=%+v task=%+v", view.Run, view.Task)
+	}
+	if view.Task.Status != TaskStatusPending {
+		t.Fatalf("expected periodic task to remain pending, got %q", view.Task.Status)
+	}
+	if len(provider.queries) != 1 || strings.Contains(provider.queries[0], `"count"`) {
+		t.Fatalf("expected provider query to omit count, got %#v", provider.queries)
+	}
+	if view.Task.ResumeCursor != "" || view.Task.ResumeOffset != 2 {
+		t.Fatalf("expected task resume state to capture homepage offset, got task=%+v", view.Task)
+	}
+	if view.Run.ResumeCursor != "" || view.Run.ResumeOffset != 2 {
+		t.Fatalf("expected run resume state to capture homepage offset, got run=%+v", view.Run)
+	}
+}
+
+func TestRunnerPeriodicRunResumesRemainingPostsFromSavedOffset(t *testing.T) {
+	root := t.TempDir()
+	perRunCount := int64(2)
+	store := newMemoryWorkerStore()
+	store.seedRunTask(runTaskView{
+		Task: workerTask{
+			TaskID:      "task_periodic_resume_1",
+			TaskType:    TaskTypePeriodic,
+			Keyword:     "openai",
+			PerRunCount: &perRunCount,
+			Status:      TaskStatusPending,
+		},
+		Run: workerRun{
+			RunID:       "run_periodic_resume_1",
+			TaskID:      "task_periodic_resume_1",
+			RunNo:       1,
+			Status:      RunStatusQueued,
+			ScheduledAt: time.Date(2026, 4, 13, 10, 0, 0, 0, time.UTC),
+		},
+	})
+
+	firstProvider := &fakeProviderExecutor{
+		responses: []providerPage{
+			{
+				Body: map[string]any{
+					"tweets": []map[string]any{
+						{"id": "post_1", "text": "one"},
+						{"id": "post_2", "text": "two"},
+						{"id": "post_3", "text": "three"},
+					},
+					"next_cursor": "cursor_1",
+				},
+			},
+		},
+	}
+
+	runner := newRunner(testRunnerConfig(root, 20), xlog.NewStdout("collector-worker-rpc-test"), store, fakePolicyResolver{}, firstProvider, "worker-1")
+	if err := runner.run(context.Background(), "run_periodic_resume_1"); err != nil {
+		t.Fatalf("first run returned error: %v", err)
+	}
+
+	firstView, err := store.LoadRunTask(context.Background(), "run_periodic_resume_1")
+	if err != nil {
+		t.Fatalf("LoadRunTask returned error: %v", err)
+	}
+
+	store.seedRunTask(runTaskView{
+		Task: firstView.Task,
+		Run: workerRun{
+			RunID:       "run_periodic_resume_2",
+			TaskID:      "task_periodic_resume_1",
+			RunNo:       2,
+			Status:      RunStatusQueued,
+			ScheduledAt: time.Date(2026, 4, 13, 10, 1, 0, 0, time.UTC),
+		},
+	})
+
+	secondProvider := &fakeProviderExecutor{
+		responses: []providerPage{
+			{
+				Body: map[string]any{
+					"tweets": []map[string]any{
+						{"id": "post_1", "text": "one"},
+						{"id": "post_2", "text": "two"},
+						{"id": "post_3", "text": "three"},
+					},
+					"next_cursor": "cursor_1",
+				},
+			},
+			{
+				Body: map[string]any{
+					"tweets": []map[string]any{
+						{"id": "post_4", "text": "four"},
+					},
+				},
+			},
+		},
+	}
+
+	runner = newRunner(testRunnerConfig(root, 20), xlog.NewStdout("collector-worker-rpc-test"), store, fakePolicyResolver{}, secondProvider, "worker-1")
+	if err := runner.run(context.Background(), "run_periodic_resume_2"); err != nil {
+		t.Fatalf("second run returned error: %v", err)
+	}
+
+	view, err := store.LoadRunTask(context.Background(), "run_periodic_resume_2")
+	if err != nil {
+		t.Fatalf("LoadRunTask returned error: %v", err)
+	}
+	if view.Run.NewCount != 2 || view.Run.DuplicateCount != 0 {
+		t.Fatalf("expected resumed run to collect two fresh posts, got %+v", view.Run)
+	}
+	if len(secondProvider.queries) != 2 {
+		t.Fatalf("expected two provider calls, got %#v", secondProvider.queries)
+	}
+	if !strings.Contains(secondProvider.queries[0], `"words":"openai"`) || strings.Contains(secondProvider.queries[0], `"cursor"`) {
+		t.Fatalf("expected first resumed query to restart from homepage without count, got %#v", secondProvider.queries)
+	}
+	if !strings.Contains(secondProvider.queries[1], `"cursor":"cursor_1"`) {
+		t.Fatalf("expected second resumed query to advance to next cursor, got %#v", secondProvider.queries)
+	}
+	if view.Task.ResumeCursor != "" || view.Task.ResumeOffset != 0 {
+		t.Fatalf("expected task resume state to clear after exhausting pages, got %+v", view.Task)
+	}
+}
+
 func TestRunnerStopsPeriodicRunWhenPageContainsNoPosts(t *testing.T) {
 	root := t.TempDir()
 	store := newMemoryWorkerStore()
@@ -140,8 +311,8 @@ func TestRunnerStopsPeriodicRunWhenPageContainsNoPosts(t *testing.T) {
 	if err != nil {
 		t.Fatalf("LoadRunTask returned error: %v", err)
 	}
-	if view.Run.StopReason != "empty_page" {
-		t.Fatalf("expected stop_reason empty_page, got %q", view.Run.StopReason)
+	if view.Run.StopReason != "empty_page_with_cursor" {
+		t.Fatalf("expected stop_reason empty_page_with_cursor, got %q", view.Run.StopReason)
 	}
 	if view.Run.PageCount != 1 {
 		t.Fatalf("expected page_count 1, got %d", view.Run.PageCount)
@@ -152,8 +323,106 @@ func TestRunnerStopsPeriodicRunWhenPageContainsNoPosts(t *testing.T) {
 	if provider.calls != 1 {
 		t.Fatalf("expected provider to stop after first empty page, got %d calls", provider.calls)
 	}
+	if view.Task.Status != TaskStatusPaused {
+		t.Fatalf("expected periodic task to pause, got %q", view.Task.Status)
+	}
+	if view.Task.ResumeCursor != "" || view.Task.ResumeOffset != 0 {
+		t.Fatalf("expected resume state to clear after empty page with cursor, got task=%+v", view.Task)
+	}
+}
+
+func TestRunnerKeepsPeriodicTaskPendingWhenEmptyPageHasNoCursor(t *testing.T) {
+	root := t.TempDir()
+	store := newMemoryWorkerStore()
+	store.seedRunTask(runTaskView{
+		Task: workerTask{
+			TaskID:   "task_periodic_empty_final_1",
+			TaskType: TaskTypePeriodic,
+			Keyword:  "openai",
+			Status:   TaskStatusPending,
+		},
+		Run: workerRun{
+			RunID:       "run_periodic_empty_final_1",
+			TaskID:      "task_periodic_empty_final_1",
+			RunNo:       1,
+			Status:      RunStatusQueued,
+			ScheduledAt: time.Date(2026, 4, 13, 10, 0, 0, 0, time.UTC),
+		},
+	})
+
+	provider := &fakeProviderExecutor{
+		responses: []providerPage{
+			{
+				Body: map[string]any{
+					"tweets": []map[string]any{},
+				},
+			},
+		},
+	}
+
+	runner := newRunner(testRunnerConfig(root, 20), xlog.NewStdout("collector-worker-rpc-test"), store, fakePolicyResolver{}, provider, "worker-1")
+	if err := runner.run(context.Background(), "run_periodic_empty_final_1"); err != nil {
+		t.Fatalf("run returned error: %v", err)
+	}
+
+	view, err := store.LoadRunTask(context.Background(), "run_periodic_empty_final_1")
+	if err != nil {
+		t.Fatalf("LoadRunTask returned error: %v", err)
+	}
+	if view.Run.StopReason != "empty_page" {
+		t.Fatalf("expected stop_reason empty_page, got %q", view.Run.StopReason)
+	}
 	if view.Task.Status != TaskStatusPending {
 		t.Fatalf("expected periodic task to remain pending, got %q", view.Task.Status)
+	}
+	if view.Task.ResumeCursor != "" || view.Task.ResumeOffset != 0 {
+		t.Fatalf("expected empty terminal page to clear resume state, got task=%+v", view.Task)
+	}
+}
+
+func TestRunnerStopsPausedTaskWithoutFetching(t *testing.T) {
+	root := t.TempDir()
+	store := newMemoryWorkerStore()
+	store.seedRunTask(runTaskView{
+		Task: workerTask{
+			TaskID:   "task_periodic_stopped_1",
+			TaskType: TaskTypePeriodic,
+			Keyword:  "openai",
+			Status:   TaskStatusPaused,
+		},
+		Run: workerRun{
+			RunID:       "run_periodic_stopped_1",
+			TaskID:      "task_periodic_stopped_1",
+			RunNo:       1,
+			Status:      RunStatusQueued,
+			ScheduledAt: time.Date(2026, 4, 13, 10, 0, 0, 0, time.UTC),
+		},
+	})
+
+	provider := &fakeProviderExecutor{
+		responses: []providerPage{
+			{Body: map[string]any{"tweets": []map[string]any{{"id": "post_1", "text": "one"}}}},
+		},
+	}
+
+	runner := newRunner(testRunnerConfig(root, 20), xlog.NewStdout("collector-worker-rpc-test"), store, fakePolicyResolver{}, provider, "worker-1")
+
+	if err := runner.run(context.Background(), "run_periodic_stopped_1"); err != nil {
+		t.Fatalf("run returned error: %v", err)
+	}
+
+	view, err := store.LoadRunTask(context.Background(), "run_periodic_stopped_1")
+	if err != nil {
+		t.Fatalf("LoadRunTask returned error: %v", err)
+	}
+	if view.Run.StopReason != "task_stopped" {
+		t.Fatalf("expected stop_reason task_stopped, got %q", view.Run.StopReason)
+	}
+	if provider.calls != 0 {
+		t.Fatalf("expected stopped task to skip provider calls, got %d", provider.calls)
+	}
+	if view.Task.Status != TaskStatusPaused {
+		t.Fatalf("expected paused task status, got %q", view.Task.Status)
 	}
 }
 
@@ -510,6 +779,7 @@ func (fakePolicyResolver) ResolvePolicy(ctx context.Context, req *policyservice.
 type fakeProviderExecutor struct {
 	responses []providerPage
 	calls     int
+	queries   []string
 }
 
 type capturingWorkerStore struct {
@@ -524,7 +794,7 @@ func (s *capturingWorkerStore) RecordKeywordMonthlyUsage(ctx context.Context, ke
 
 func (f *fakeProviderExecutor) ExecutePolicy(ctx context.Context, req *providerservice.ExecutePolicyRequest) (*clients.EnvelopeResponse, error) {
 	_ = ctx
-	_ = req
+	f.queries = append(f.queries, req.GetQueryJson())
 	if f.calls >= len(f.responses) {
 		return nil, nil
 	}
