@@ -13,13 +13,18 @@ x-common-app-env: &common-app-env
   COMMON_REDIS_PASSWORD: "${COMMON_REDIS_PASSWORD:-}"
   COMMON_REDIS_DB: "${COMMON_REDIS_DB:-0}"
 
+x-multiarch-platforms: &multiarch-platforms
+  - linux/amd64
+  - linux/arm64
+
 services:
   gateway-api:
     image: "${XSONAR_IMAGE_PREFIX:-xsonar}/gateway-api:${XSONAR_IMAGE_TAG:-latest}"
-    platform: "${XSONAR_IMAGE_PLATFORM:-linux/amd64}"
     build:
       context: ../..
       dockerfile: deploy/docker/gateway-api.Dockerfile
+      x-bake:
+        platforms: *multiarch-platforms
     env_file:
       - ${ENV_FILE:-.env}
     environment:
@@ -52,10 +57,11 @@ services:
 
   console-api:
     image: "${XSONAR_IMAGE_PREFIX:-xsonar}/console-api:${XSONAR_IMAGE_TAG:-latest}"
-    platform: "${XSONAR_IMAGE_PLATFORM:-linux/amd64}"
     build:
       context: ../..
       dockerfile: deploy/docker/console-api.Dockerfile
+      x-bake:
+        platforms: *multiarch-platforms
     env_file:
       - ${ENV_FILE:-.env}
     environment:
@@ -84,10 +90,11 @@ services:
 
   access-rpc:
     image: "${XSONAR_IMAGE_PREFIX:-xsonar}/access-rpc:${XSONAR_IMAGE_TAG:-latest}"
-    platform: "${XSONAR_IMAGE_PLATFORM:-linux/amd64}"
     build:
       context: ../..
       dockerfile: deploy/docker/access-rpc.Dockerfile
+      x-bake:
+        platforms: *multiarch-platforms
     env_file:
       - ${ENV_FILE:-.env}
     environment:
@@ -112,10 +119,11 @@ services:
 
   policy-rpc:
     image: "${XSONAR_IMAGE_PREFIX:-xsonar}/policy-rpc:${XSONAR_IMAGE_TAG:-latest}"
-    platform: "${XSONAR_IMAGE_PLATFORM:-linux/amd64}"
     build:
       context: ../..
       dockerfile: deploy/docker/policy-rpc.Dockerfile
+      x-bake:
+        platforms: *multiarch-platforms
     env_file:
       - ${ENV_FILE:-.env}
     environment:
@@ -138,10 +146,11 @@ services:
 
   provider-rpc:
     image: "${XSONAR_IMAGE_PREFIX:-xsonar}/provider-rpc:${XSONAR_IMAGE_TAG:-latest}"
-    platform: "${XSONAR_IMAGE_PLATFORM:-linux/amd64}"
     build:
       context: ../..
       dockerfile: deploy/docker/provider-rpc.Dockerfile
+      x-bake:
+        platforms: *multiarch-platforms
     env_file:
       - ${ENV_FILE:-.env}
     environment:
@@ -159,10 +168,11 @@ services:
 
   scheduler-rpc:
     image: "${XSONAR_IMAGE_PREFIX:-xsonar}/scheduler-rpc:${XSONAR_IMAGE_TAG:-latest}"
-    platform: "${XSONAR_IMAGE_PLATFORM:-linux/amd64}"
     build:
       context: ../..
       dockerfile: deploy/docker/scheduler-rpc.Dockerfile
+      x-bake:
+        platforms: *multiarch-platforms
     env_file:
       - ${ENV_FILE:-.env}
     environment:
@@ -186,10 +196,11 @@ services:
 
   collector-worker-rpc:
     image: "${XSONAR_IMAGE_PREFIX:-xsonar}/collector-worker-rpc:${XSONAR_IMAGE_TAG:-latest}"
-    platform: "${XSONAR_IMAGE_PLATFORM:-linux/amd64}"
     build:
       context: ../..
       dockerfile: deploy/docker/collector-worker-rpc.Dockerfile
+      x-bake:
+        platforms: *multiarch-platforms
     env_file:
       - ${ENV_FILE:-.env}
     environment:
