@@ -15,6 +15,7 @@ x-common-app-env: &common-app-env
 
 services:
   gateway-api:
+    image: "${XSONAR_IMAGE_PREFIX:-xsonar}/gateway-api:${XSONAR_IMAGE_TAG:-latest}"
     build:
       context: ../..
       dockerfile: deploy/docker/gateway-api.Dockerfile
@@ -49,6 +50,7 @@ services:
       - xsonar-net
 
   console-api:
+    image: "${XSONAR_IMAGE_PREFIX:-xsonar}/console-api:${XSONAR_IMAGE_TAG:-latest}"
     build:
       context: ../..
       dockerfile: deploy/docker/console-api.Dockerfile
@@ -79,6 +81,7 @@ services:
       - xsonar-net
 
   access-rpc:
+    image: "${XSONAR_IMAGE_PREFIX:-xsonar}/access-rpc:${XSONAR_IMAGE_TAG:-latest}"
     build:
       context: ../..
       dockerfile: deploy/docker/access-rpc.Dockerfile
@@ -105,6 +108,7 @@ services:
       - xsonar-net
 
   policy-rpc:
+    image: "${XSONAR_IMAGE_PREFIX:-xsonar}/policy-rpc:${XSONAR_IMAGE_TAG:-latest}"
     build:
       context: ../..
       dockerfile: deploy/docker/policy-rpc.Dockerfile
@@ -129,6 +133,7 @@ services:
       - xsonar-net
 
   provider-rpc:
+    image: "${XSONAR_IMAGE_PREFIX:-xsonar}/provider-rpc:${XSONAR_IMAGE_TAG:-latest}"
     build:
       context: ../..
       dockerfile: deploy/docker/provider-rpc.Dockerfile
@@ -148,6 +153,7 @@ services:
       - xsonar-net
 
   scheduler-rpc:
+    image: "${XSONAR_IMAGE_PREFIX:-xsonar}/scheduler-rpc:${XSONAR_IMAGE_TAG:-latest}"
     build:
       context: ../..
       dockerfile: deploy/docker/scheduler-rpc.Dockerfile
@@ -173,6 +179,7 @@ services:
       - xsonar-net
 
   collector-worker-rpc:
+    image: "${XSONAR_IMAGE_PREFIX:-xsonar}/collector-worker-rpc:${XSONAR_IMAGE_TAG:-latest}"
     build:
       context: ../..
       dockerfile: deploy/docker/collector-worker-rpc.Dockerfile
