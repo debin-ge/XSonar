@@ -18,6 +18,7 @@ Thumbs.db
 .envrc
 .direnv/
 deploy/xsonar/.env
+deploy/xsonar/docker-compose.local.yml
 !deploy/xsonar/.env.example
 
 # Go build and test artifacts
