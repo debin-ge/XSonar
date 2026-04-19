@@ -1,3 +1,4 @@
+//lint:file-ignore SA5008 go-zero config tags use non-standard json options.
 package config
 
 import "github.com/zeromicro/go-zero/zrpc"

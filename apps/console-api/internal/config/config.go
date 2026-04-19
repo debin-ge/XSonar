@@ -1,6 +1,7 @@
 // Code scaffolded by goctl. Safe to edit.
 // goctl 1.10.1
 
+//lint:file-ignore SA5008 go-zero config tags use non-standard json options.
 package config
 
 import (

@@ -6,6 +6,7 @@ import (
 
 	"xsonar/pkg/model"
 	"xsonar/pkg/proto/policypb"
+	"xsonar/pkg/shared"
 	"xsonar/pkg/xlog"
 )
 
@@ -69,8 +70,12 @@ func (b *Bridge) BindAppPolicies(ctx context.Context, in *policypb.BindAppPolici
 
 func encodePolicyResponse(data any, svcErr *policyServiceError) *policypb.JsonResponse {
 	if svcErr != nil {
+		code, err := shared.Int32FromInt(svcErr.code)
+		if err != nil {
+			code = model.CodeInternalError
+		}
 		return &policypb.JsonResponse{
-			Code:    int32(svcErr.code),
+			Code:    code,
 			Message: svcErr.message,
 		}
 	}

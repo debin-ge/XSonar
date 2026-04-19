@@ -33,12 +33,15 @@ message CreateTaskRequest {
 
 message GetTaskRequest {
   string task_id = 1;
+  string created_by = 2;
 }
 
 message ListTaskRunsRequest {
   string task_id = 1;
+  string created_by = 2;
 }
 
 message StopTaskRequest {
   string task_id = 1;
+  string created_by = 2;
 }

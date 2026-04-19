@@ -11,6 +11,7 @@ import (
 	"strings"
 )
 
+// #nosec G101 -- versioned ciphertext prefix, not a credential.
 const secretCipherPrefix = "enc:v1:gcm:"
 
 var (

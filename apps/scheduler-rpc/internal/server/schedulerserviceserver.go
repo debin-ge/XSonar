@@ -78,7 +78,10 @@ func internalGetTaskRequest(in *schedulerpb.GetTaskRequest) schedulerinternal.Ge
 		return schedulerinternal.GetTaskRequest{}
 	}
 
-	return schedulerinternal.GetTaskRequest{TaskID: in.GetTaskId()}
+	return schedulerinternal.GetTaskRequest{
+		TaskID:    in.GetTaskId(),
+		CreatedBy: in.GetCreatedBy(),
+	}
 }
 
 func internalListTaskRunsRequest(in *schedulerpb.ListTaskRunsRequest) schedulerinternal.ListTaskRunsRequest {
@@ -86,7 +89,10 @@ func internalListTaskRunsRequest(in *schedulerpb.ListTaskRunsRequest) scheduleri
 		return schedulerinternal.ListTaskRunsRequest{}
 	}
 
-	return schedulerinternal.ListTaskRunsRequest{TaskID: in.GetTaskId()}
+	return schedulerinternal.ListTaskRunsRequest{
+		TaskID:    in.GetTaskId(),
+		CreatedBy: in.GetCreatedBy(),
+	}
 }
 
 func internalStopTaskRequest(in *schedulerpb.StopTaskRequest) schedulerinternal.StopTaskRequest {
@@ -94,5 +100,8 @@ func internalStopTaskRequest(in *schedulerpb.StopTaskRequest) schedulerinternal.
 		return schedulerinternal.StopTaskRequest{}
 	}
 
-	return schedulerinternal.StopTaskRequest{TaskID: in.GetTaskId()}
+	return schedulerinternal.StopTaskRequest{
+		TaskID:    in.GetTaskId(),
+		CreatedBy: in.GetCreatedBy(),
+	}
 }

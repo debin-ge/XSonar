@@ -15,7 +15,7 @@ QueueGroup: collector-workers
 QueueBlockMS: 2000
 RunLeaseTTLMS: 120000
 LeaseRenewIntervalMS: 30000
-PeriodicRunMaxPages: 20
+PeriodicRunMaxPages: 3
 NDJSONFlushEveryRecords: 100
 NDJSONFsyncOnClose: true
 OutputRootDir: runtime/collector

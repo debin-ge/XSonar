@@ -35,7 +35,7 @@ func TestDispatcherOnlyLeaderDispatchesDueTasks(t *testing.T) {
 		t.Fatalf("second tick returned error: %v", err)
 	}
 
-	runs, svcErr := store.ListTaskRuns(context.Background(), "task_range_1", 10)
+	runs, svcErr := store.ListTaskRuns(context.Background(), "task_range_1", "", 10)
 	if svcErr != nil {
 		t.Fatalf("ListTaskRuns returned error: %v", svcErr)
 	}
@@ -69,7 +69,7 @@ func TestDispatcherSkipsPeriodicTaskWithOpenRun(t *testing.T) {
 		t.Fatalf("tick returned error: %v", err)
 	}
 
-	runs, svcErr := store.ListTaskRuns(context.Background(), "task_periodic_1", 10)
+	runs, svcErr := store.ListTaskRuns(context.Background(), "task_periodic_1", "", 10)
 	if svcErr != nil {
 		t.Fatalf("ListTaskRuns returned error: %v", svcErr)
 	}
@@ -108,7 +108,7 @@ func TestDispatcherPausesOnHardBacklog(t *testing.T) {
 		t.Fatalf("tick returned error: %v", err)
 	}
 
-	runs, svcErr := store.ListTaskRuns(context.Background(), "task_range_1", 10)
+	runs, svcErr := store.ListTaskRuns(context.Background(), "task_range_1", "", 10)
 	if svcErr != nil {
 		t.Fatalf("ListTaskRuns returned error: %v", svcErr)
 	}
@@ -116,7 +116,7 @@ func TestDispatcherPausesOnHardBacklog(t *testing.T) {
 		t.Fatalf("expected hard backlog protection to prevent dispatch, got %d runs", len(runs))
 	}
 
-	task, svcErr := store.GetTask(context.Background(), "task_range_1")
+	task, svcErr := store.GetTask(context.Background(), "task_range_1", "")
 	if svcErr != nil {
 		t.Fatalf("GetTask returned error: %v", svcErr)
 	}
@@ -143,7 +143,7 @@ func TestDispatcherCoalescesMissedPeriodicTicks(t *testing.T) {
 		t.Fatalf("second tick returned error: %v", err)
 	}
 
-	runs, svcErr := store.ListTaskRuns(context.Background(), "task_periodic_1", 10)
+	runs, svcErr := store.ListTaskRuns(context.Background(), "task_periodic_1", "", 10)
 	if svcErr != nil {
 		t.Fatalf("ListTaskRuns returned error: %v", svcErr)
 	}
@@ -157,7 +157,7 @@ func TestDispatcherCoalescesMissedPeriodicTicks(t *testing.T) {
 		t.Fatalf("expected one stream publish, got %d", len(store.enqueuedRunIDs))
 	}
 
-	task, svcErr := store.GetTask(context.Background(), "task_periodic_1")
+	task, svcErr := store.GetTask(context.Background(), "task_periodic_1", "")
 	if svcErr != nil {
 		t.Fatalf("GetTask returned error: %v", svcErr)
 	}

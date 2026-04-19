@@ -205,20 +205,6 @@ func (s *consoleService) handleIssueGatewayToken(w http.ResponseWriter, r *http.
 	}, requestID)
 }
 
-func (s *consoleService) handleCreateTenant(w http.ResponseWriter, r *http.Request) {
-	if !s.requireAdminAuth(w, r) {
-		return
-	}
-
-	var req types.CreateTenantReq
-	if !parseValidatedRequest(w, r, &req, validateCreateTenantReq) {
-		return
-	}
-	s.serveCreateTenant(w, r, &accessservice.CreateTenantRequest{
-		Name: req.Name,
-	})
-}
-
 func (s *consoleService) serveCreateTenant(w http.ResponseWriter, r *http.Request, payload *accessservice.CreateTenantRequest) {
 	requestID := shared.EnsureRequestID(w, r)
 	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
@@ -287,30 +273,6 @@ func (s *consoleService) handleGetTenantDetail(w http.ResponseWriter, r *http.Re
 	}, requestID)
 }
 
-func (s *consoleService) handleCreateTenantApp(w http.ResponseWriter, r *http.Request) {
-	if !s.requireAdminAuth(w, r) {
-		return
-	}
-
-	requestID := shared.EnsureRequestID(w, r)
-	tenantID := pathParam(r, "id")
-	if tenantID == "" {
-		shared.WriteError(w, http.StatusBadRequest, model.CodeInvalidRequest, "tenant id is required", requestID)
-		return
-	}
-
-	var req types.CreateTenantAppReq
-	if !parseValidatedRequest(w, r, &req, validateCreateTenantAppReq) {
-		return
-	}
-	s.serveCreateTenantApp(w, r, &accessservice.CreateTenantAppRequest{
-		TenantId:   tenantID,
-		Name:       req.Name,
-		DailyQuota: req.DailyQuota,
-		QpsLimit:   int32(req.QpsLimit),
-	})
-}
-
 func (s *consoleService) serveCreateTenantApp(w http.ResponseWriter, r *http.Request, payload *accessservice.CreateTenantAppRequest) {
 	requestID := shared.EnsureRequestID(w, r)
 	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
@@ -320,28 +282,6 @@ func (s *consoleService) serveCreateTenantApp(w http.ResponseWriter, r *http.Req
 	writeDownstreamResult(w, requestID, response, err)
 }
 
-func (s *consoleService) handleUpdateAppStatus(w http.ResponseWriter, r *http.Request) {
-	if !s.requireAdminAuth(w, r) {
-		return
-	}
-
-	requestID := shared.EnsureRequestID(w, r)
-	appID := pathParam(r, "id")
-	if appID == "" {
-		shared.WriteError(w, http.StatusBadRequest, model.CodeInvalidRequest, "app id is required", requestID)
-		return
-	}
-
-	var req types.UpdateAppStatusReq
-	if !parseValidatedRequest(w, r, &req, validateUpdateAppStatusReq) {
-		return
-	}
-	s.serveUpdateAppStatus(w, r, &accessservice.UpdateTenantAppStatusRequest{
-		AppId:  appID,
-		Status: req.Status,
-	})
-}
-
 func (s *consoleService) serveUpdateAppStatus(w http.ResponseWriter, r *http.Request, payload *accessservice.UpdateTenantAppStatusRequest) {
 	requestID := shared.EnsureRequestID(w, r)
 	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
@@ -349,29 +289,6 @@ func (s *consoleService) serveUpdateAppStatus(w http.ResponseWriter, r *http.Req
 
 	response, err := s.accessClient.UpdateTenantAppStatus(ctx, payload)
 	writeDownstreamResult(w, requestID, response, err)
-}
-
-func (s *consoleService) handleUpdateAppQuota(w http.ResponseWriter, r *http.Request) {
-	if !s.requireAdminAuth(w, r) {
-		return
-	}
-
-	requestID := shared.EnsureRequestID(w, r)
-	appID := pathParam(r, "id")
-	if appID == "" {
-		shared.WriteError(w, http.StatusBadRequest, model.CodeInvalidRequest, "app id is required", requestID)
-		return
-	}
-
-	var req types.UpdateAppQuotaReq
-	if !parseValidatedRequest(w, r, &req, validateUpdateAppQuotaReq) {
-		return
-	}
-	s.serveUpdateAppQuota(w, r, &accessservice.UpdateAppQuotaRequest{
-		AppId:      appID,
-		DailyQuota: req.DailyQuota,
-		QpsLimit:   int32(req.QpsLimit),
-	})
 }
 
 func (s *consoleService) serveUpdateAppQuota(w http.ResponseWriter, r *http.Request, payload *accessservice.UpdateAppQuotaRequest) {
@@ -396,29 +313,6 @@ func (s *consoleService) handleListPolicies(w http.ResponseWriter, r *http.Reque
 	writeDownstreamResult(w, requestID, response, err)
 }
 
-func (s *consoleService) handlePublishPolicyConfig(w http.ResponseWriter, r *http.Request) {
-	if !s.requireAdminAuth(w, r) {
-		return
-	}
-
-	var req types.PublishPolicyConfigReq
-	if !parseValidatedRequest(w, r, &req, validatePublishPolicyConfigReq) {
-		return
-	}
-	s.servePublishPolicyConfig(w, r, &policyservice.PublishPolicyConfigRequest{
-		PolicyKey:            req.PolicyKey,
-		DisplayName:          req.DisplayName,
-		PublicMethod:         req.PublicMethod,
-		PublicPath:           req.PublicPath,
-		UpstreamMethod:       req.UpstreamMethod,
-		UpstreamPath:         req.UpstreamPath,
-		AllowedParams:        req.AllowedParams,
-		DeniedParams:         req.DeniedParams,
-		DefaultParams:        req.DefaultParams,
-		ProviderCredentialId: req.ProviderCredentialID,
-	})
-}
-
 func (s *consoleService) servePublishPolicyConfig(w http.ResponseWriter, r *http.Request, payload *policyservice.PublishPolicyConfigRequest) {
 	requestID := shared.EnsureRequestID(w, r)
 	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
@@ -426,28 +320,6 @@ func (s *consoleService) servePublishPolicyConfig(w http.ResponseWriter, r *http
 
 	response, err := s.policyClient.PublishPolicyConfig(ctx, payload)
 	writeDownstreamResult(w, requestID, response, err)
-}
-
-func (s *consoleService) handleBindAppPolicies(w http.ResponseWriter, r *http.Request) {
-	if !s.requireAdminAuth(w, r) {
-		return
-	}
-
-	requestID := shared.EnsureRequestID(w, r)
-	appID := pathParam(r, "id")
-	if appID == "" {
-		shared.WriteError(w, http.StatusBadRequest, model.CodeInvalidRequest, "app id is required", requestID)
-		return
-	}
-
-	var req types.BindAppPoliciesReq
-	if !parseValidatedRequest(w, r, &req, validateBindAppPoliciesReq) {
-		return
-	}
-	s.serveBindAppPolicies(w, r, &policyservice.BindAppPoliciesRequest{
-		AppId:      appID,
-		PolicyKeys: req.PolicyKeys,
-	})
 }
 
 func (s *consoleService) serveBindAppPolicies(w http.ResponseWriter, r *http.Request, payload *policyservice.BindAppPoliciesRequest) {
@@ -495,6 +367,10 @@ func (s *consoleService) handleUsageReport(w http.ResponseWriter, r *http.Reques
 }
 
 func (s *consoleService) handleServiceHealth(w http.ResponseWriter, r *http.Request) {
+	if !s.requireAdminAuth(w, r) {
+		return
+	}
+
 	requestID := shared.EnsureRequestID(w, r)
 	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
 	defer cancel()
@@ -577,11 +453,6 @@ func (s *consoleService) requireAdminAuth(w http.ResponseWriter, r *http.Request
 		return false
 	}
 	return true
-}
-
-func checkHealth(ctx context.Context, client healthClient) bool {
-	response, err := client.Health(ctx)
-	return err == nil && response != nil && response.Code == model.CodeOK
 }
 
 type healthClient interface {

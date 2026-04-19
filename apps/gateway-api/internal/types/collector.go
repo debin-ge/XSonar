@@ -1,3 +1,4 @@
+//lint:file-ignore SA5008 go-zero API types use non-standard json options.
 package types
 
 type CreatePeriodicCollectorTaskReq struct {

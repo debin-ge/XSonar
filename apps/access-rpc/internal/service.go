@@ -2,7 +2,6 @@ package internal
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"math"
 	"net/http"
@@ -230,154 +229,6 @@ func (s *service) seed(username, password string) {
 		"username": user.Username,
 		"role":     user.Role,
 	})
-}
-
-func (s *service) handleAuthenticateConsoleUser(w http.ResponseWriter, r *http.Request) {
-	requestID := shared.EnsureRequestID(w, r)
-	var req authenticateConsoleUserRequest
-	if err := shared.DecodeJSONBody(r, &req); err != nil {
-		shared.WriteError(w, http.StatusBadRequest, model.CodeInvalidRequest, "invalid JSON body", requestID)
-		return
-	}
-
-	data, svcErr := s.authenticateConsoleUser(r.Context(), req)
-	writeServiceResult(w, requestID, data, svcErr)
-}
-
-func (s *service) handleCreateTenant(w http.ResponseWriter, r *http.Request) {
-	requestID := shared.EnsureRequestID(w, r)
-	var req createTenantRequest
-	if err := shared.DecodeJSONBody(r, &req); err != nil {
-		shared.WriteError(w, http.StatusBadRequest, model.CodeInvalidRequest, "invalid JSON body", requestID)
-		return
-	}
-
-	data, svcErr := s.createTenant(r.Context(), req)
-	writeServiceResult(w, requestID, data, svcErr)
-}
-
-func (s *service) handleListTenants(w http.ResponseWriter, r *http.Request) {
-	requestID := shared.EnsureRequestID(w, r)
-	data, svcErr := s.listTenants(r.Context())
-	writeServiceResult(w, requestID, data, svcErr)
-}
-
-func (s *service) handleCreateTenantApp(w http.ResponseWriter, r *http.Request) {
-	requestID := shared.EnsureRequestID(w, r)
-	var req createTenantAppRequest
-	if err := shared.DecodeJSONBody(r, &req); err != nil {
-		shared.WriteError(w, http.StatusBadRequest, model.CodeInvalidRequest, "invalid JSON body", requestID)
-		return
-	}
-
-	data, svcErr := s.createTenantApp(r.Context(), req)
-	writeServiceResult(w, requestID, data, svcErr)
-}
-
-func (s *service) handleListTenantApps(w http.ResponseWriter, r *http.Request) {
-	requestID := shared.EnsureRequestID(w, r)
-	data, svcErr := s.listTenantApps(r.Context(), r.URL.Query().Get("tenant_id"))
-	writeServiceResult(w, requestID, data, svcErr)
-}
-
-func (s *service) handleUpdateTenantAppStatus(w http.ResponseWriter, r *http.Request) {
-	requestID := shared.EnsureRequestID(w, r)
-	var req updateTenantAppStatusRequest
-	if err := shared.DecodeJSONBody(r, &req); err != nil {
-		shared.WriteError(w, http.StatusBadRequest, model.CodeInvalidRequest, "invalid JSON body", requestID)
-		return
-	}
-
-	data, svcErr := s.updateTenantAppStatus(r.Context(), req)
-	writeServiceResult(w, requestID, data, svcErr)
-}
-
-func (s *service) handleUpdateAppQuota(w http.ResponseWriter, r *http.Request) {
-	requestID := shared.EnsureRequestID(w, r)
-	var req updateAppQuotaRequest
-	if err := shared.DecodeJSONBody(r, &req); err != nil {
-		shared.WriteError(w, http.StatusBadRequest, model.CodeInvalidRequest, "invalid JSON body", requestID)
-		return
-	}
-
-	data, svcErr := s.updateAppQuota(r.Context(), req)
-	writeServiceResult(w, requestID, data, svcErr)
-}
-
-func (s *service) handleCheckReplay(w http.ResponseWriter, r *http.Request) {
-	requestID := shared.EnsureRequestID(w, r)
-	var req checkReplayRequest
-	if err := shared.DecodeJSONBody(r, &req); err != nil {
-		shared.WriteError(w, http.StatusBadRequest, model.CodeInvalidRequest, "invalid JSON body", requestID)
-		return
-	}
-
-	data, svcErr := s.checkReplay(r.Context(), req)
-	writeServiceResult(w, requestID, data, svcErr)
-}
-
-func (s *service) handleCheckAndReserveQuota(w http.ResponseWriter, r *http.Request) {
-	requestID := shared.EnsureRequestID(w, r)
-	var req checkAndReserveQuotaRequest
-	if err := shared.DecodeJSONBody(r, &req); err != nil {
-		shared.WriteError(w, http.StatusBadRequest, model.CodeInvalidRequest, "invalid JSON body", requestID)
-		return
-	}
-
-	if req.RequestID == "" {
-		req.RequestID = requestID
-	}
-
-	data, svcErr := s.checkAndReserveQuota(r.Context(), req)
-	writeServiceResult(w, requestID, data, svcErr)
-}
-
-func (s *service) handleReleaseQuotaOnFailure(w http.ResponseWriter, r *http.Request) {
-	requestID := shared.EnsureRequestID(w, r)
-	var req releaseQuotaOnFailureRequest
-	if err := shared.DecodeJSONBody(r, &req); err != nil {
-		shared.WriteError(w, http.StatusBadRequest, model.CodeInvalidRequest, "invalid JSON body", requestID)
-		return
-	}
-
-	data, svcErr := s.releaseQuotaOnFailure(r.Context(), req)
-	writeServiceResult(w, requestID, data, svcErr)
-}
-
-func (s *service) handleRecordUsageStat(w http.ResponseWriter, r *http.Request) {
-	requestID := shared.EnsureRequestID(w, r)
-	var req recordUsageStatRequest
-	if err := shared.DecodeJSONBody(r, &req); err != nil {
-		shared.WriteError(w, http.StatusBadRequest, model.CodeInvalidRequest, "invalid JSON body", requestID)
-		return
-	}
-
-	data, svcErr := s.recordUsageStat(r.Context(), req)
-	writeServiceResult(w, requestID, data, svcErr)
-}
-
-func (s *service) handleQueryUsageStats(w http.ResponseWriter, r *http.Request) {
-	requestID := shared.EnsureRequestID(w, r)
-	var req queryUsageStatsRequest
-	if err := shared.DecodeJSONBody(r, &req); err != nil {
-		shared.WriteError(w, http.StatusBadRequest, model.CodeInvalidRequest, "invalid JSON body", requestID)
-		return
-	}
-
-	data, svcErr := s.queryUsageStats(r.Context(), req)
-	writeServiceResult(w, requestID, data, svcErr)
-}
-
-func (s *service) handleCheckIPBan(w http.ResponseWriter, r *http.Request) {
-	requestID := shared.EnsureRequestID(w, r)
-	var req checkIPBanRequest
-	if err := shared.DecodeJSONBody(r, &req); err != nil {
-		shared.WriteError(w, http.StatusBadRequest, model.CodeInvalidRequest, "invalid JSON body", requestID)
-		return
-	}
-
-	data, svcErr := s.checkIPBan(r.Context(), req)
-	writeServiceResult(w, requestID, data, svcErr)
 }
 
 func (s *service) authenticateConsoleUser(ctx context.Context, req authenticateConsoleUserRequest) (any, *serviceError) {
@@ -841,15 +692,6 @@ func (s *service) checkIPBan(ctx context.Context, req checkIPBanRequest) (any, *
 	}, nil
 }
 
-func writeServiceResult(w http.ResponseWriter, requestID string, data any, svcErr *serviceError) {
-	if svcErr != nil {
-		shared.WriteError(w, svcErr.statusCode, svcErr.code, svcErr.message, requestID)
-		return
-	}
-
-	shared.WriteOK(w, data, requestID)
-}
-
 func statsKey(bucketStart time.Time, tenantID, appID, policyKey string) string {
 	return strings.Join([]string{
 		strconv.FormatInt(bucketStart.Unix(), 10),
@@ -888,12 +730,4 @@ func conflict(message string) *serviceError {
 
 func rateLimited(message string) *serviceError {
 	return &serviceError{statusCode: http.StatusTooManyRequests, code: model.CodeRateLimited, message: message}
-}
-
-func marshalJSON(value any) string {
-	payload, err := json.Marshal(value)
-	if err != nil {
-		return "{}"
-	}
-	return string(payload)
 }

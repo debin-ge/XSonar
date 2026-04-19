@@ -366,7 +366,7 @@ func TestSchedulerGetTaskScansNullableColumns(t *testing.T) {
 		},
 	}
 
-	got, err := store.GetTask(context.Background(), "task_1")
+	got, err := store.GetTask(context.Background(), "task_1", "admin")
 	if err != nil {
 		t.Fatalf("GetTask returned error: %v", err)
 	}
@@ -389,8 +389,11 @@ func TestSchedulerListTaskRunsUsesRequestedLimit(t *testing.T) {
 				if args[0] != "task_1" {
 					t.Fatalf("unexpected task_id arg: %#v", args[0])
 				}
-				if args[1] != 25 {
-					t.Fatalf("unexpected limit arg: %#v", args[1])
+				if args[1] != "admin" {
+					t.Fatalf("unexpected created_by arg: %#v", args[1])
+				}
+				if args[2] != 25 {
+					t.Fatalf("unexpected limit arg: %#v", args[2])
 				}
 				return &fakeSchedulerRows{
 					rows: []fakeSchedulerRow{
@@ -412,7 +415,7 @@ func TestSchedulerListTaskRunsUsesRequestedLimit(t *testing.T) {
 		},
 	}
 
-	got, err := store.ListTaskRuns(context.Background(), "task_1", 25)
+	got, err := store.ListTaskRuns(context.Background(), "task_1", "admin", 25)
 	if err != nil {
 		t.Fatalf("ListTaskRuns returned error: %v", err)
 	}

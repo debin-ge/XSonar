@@ -77,11 +77,17 @@ func (b *Bridge) HandleCreateTenantApp(w http.ResponseWriter, r *http.Request) {
 	if !parseValidatedRequest(w, r, &req, validateCreateTenantAppReq) {
 		return
 	}
+	qpsLimit, err := shared.Int32FromInt(req.QpsLimit)
+	if err != nil {
+		requestID := shared.EnsureRequestID(w, r)
+		shared.WriteError(w, http.StatusBadRequest, model.CodeInvalidRequest, "qps_limit is out of range", requestID)
+		return
+	}
 	b.svc.serveCreateTenantApp(w, r, &accessservice.CreateTenantAppRequest{
 		TenantId:   tenantID,
 		Name:       req.Name,
 		DailyQuota: req.DailyQuota,
-		QpsLimit:   int32(req.QpsLimit),
+		QpsLimit:   qpsLimit,
 	})
 }
 
@@ -119,10 +125,16 @@ func (b *Bridge) HandleUpdateAppQuota(w http.ResponseWriter, r *http.Request) {
 	if !parseValidatedRequest(w, r, &req, validateUpdateAppQuotaReq) {
 		return
 	}
+	qpsLimit, err := shared.Int32FromInt(req.QpsLimit)
+	if err != nil {
+		requestID := shared.EnsureRequestID(w, r)
+		shared.WriteError(w, http.StatusBadRequest, model.CodeInvalidRequest, "qps_limit is out of range", requestID)
+		return
+	}
 	b.svc.serveUpdateAppQuota(w, r, &accessservice.UpdateAppQuotaRequest{
 		AppId:      appID,
 		DailyQuota: req.DailyQuota,
-		QpsLimit:   int32(req.QpsLimit),
+		QpsLimit:   qpsLimit,
 	})
 }
 

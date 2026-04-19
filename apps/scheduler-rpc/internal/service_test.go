@@ -196,7 +196,10 @@ func TestGetTaskReturnsTaskFromStore(t *testing.T) {
 		t.Fatalf("seed task creation failed: %v", svcErr)
 	}
 
-	got, getErr := svc.getTask(context.Background(), getTaskRequest{TaskID: "task-1"})
+	got, getErr := svc.getTask(context.Background(), getTaskRequest{
+		TaskID:    "task-1",
+		CreatedBy: "admin-user-1",
+	})
 	if getErr != nil {
 		t.Fatalf("getTask returned error: %v", getErr)
 	}
@@ -212,6 +215,36 @@ func TestGetTaskRejectsMissingTaskID(t *testing.T) {
 
 	_, svcErr := svc.getTask(context.Background(), getTaskRequest{})
 	assertSchedulerError(t, svcErr, model.CodeInvalidRequest)
+}
+
+func TestGetTaskRejectsMissingCreatedBy(t *testing.T) {
+	svc, _ := newTestSchedulerService()
+
+	_, svcErr := svc.getTask(context.Background(), getTaskRequest{TaskID: "task-1"})
+	assertSchedulerError(t, svcErr, model.CodeInvalidRequest)
+}
+
+func TestGetTaskRejectsCrossOwnerAccess(t *testing.T) {
+	svc, store := newTestSchedulerService()
+
+	if _, svcErr := store.CreateTask(context.Background(), &task{
+		TaskID:           "task-1",
+		TaskType:         "periodic",
+		Keyword:          "openai",
+		FrequencySeconds: int32Ptr(60),
+		CreatedBy:        "owner-a",
+		Status:           schedulerTaskStatusPending,
+		CreatedAt:        time.Date(2026, 4, 11, 10, 0, 0, 0, time.UTC),
+		UpdatedAt:        time.Date(2026, 4, 11, 10, 0, 0, 0, time.UTC),
+	}); svcErr != nil {
+		t.Fatalf("seed task creation failed: %v", svcErr)
+	}
+
+	_, svcErr := svc.getTask(context.Background(), getTaskRequest{
+		TaskID:    "task-1",
+		CreatedBy: "owner-b",
+	})
+	assertSchedulerError(t, svcErr, model.CodeNotFound)
 }
 
 func TestListTaskRunsReturnsRunsFromStore(t *testing.T) {
@@ -246,7 +279,10 @@ func TestListTaskRunsReturnsRunsFromStore(t *testing.T) {
 		ScheduledAt: time.Date(2026, 4, 11, 11, 0, 0, 0, time.UTC),
 	})
 
-	got, listErr := svc.listTaskRuns(context.Background(), listTaskRunsRequest{TaskID: "task-1"})
+	got, listErr := svc.listTaskRuns(context.Background(), listTaskRunsRequest{
+		TaskID:    "task-1",
+		CreatedBy: "admin-user-1",
+	})
 	if listErr != nil {
 		t.Fatalf("listTaskRuns returned error: %v", listErr)
 	}
@@ -268,6 +304,13 @@ func TestListTaskRunsRejectsMissingTaskID(t *testing.T) {
 	assertSchedulerError(t, svcErr, model.CodeInvalidRequest)
 }
 
+func TestListTaskRunsRejectsMissingCreatedBy(t *testing.T) {
+	svc, _ := newTestSchedulerService()
+
+	_, svcErr := svc.listTaskRuns(context.Background(), listTaskRunsRequest{TaskID: "task-1"})
+	assertSchedulerError(t, svcErr, model.CodeInvalidRequest)
+}
+
 func TestStopTaskMarksTaskPaused(t *testing.T) {
 	svc, store := newTestSchedulerService()
 	nextRunAt := time.Date(2026, 4, 11, 11, 0, 0, 0, time.UTC)
@@ -286,7 +329,10 @@ func TestStopTaskMarksTaskPaused(t *testing.T) {
 		t.Fatalf("seed task creation failed: %v", svcErr)
 	}
 
-	got, stopErr := svc.stopTask(context.Background(), stopTaskRequest{TaskID: "task-1"})
+	got, stopErr := svc.stopTask(context.Background(), stopTaskRequest{
+		TaskID:    "task-1",
+		CreatedBy: "admin-user-1",
+	})
 	if stopErr != nil {
 		t.Fatalf("stopTask returned error: %v", stopErr)
 	}
@@ -316,8 +362,34 @@ func TestStopTaskRejectsCompletedTask(t *testing.T) {
 		t.Fatalf("seed task creation failed: %v", svcErr)
 	}
 
-	_, svcErr := svc.stopTask(context.Background(), stopTaskRequest{TaskID: "task-1"})
+	_, svcErr := svc.stopTask(context.Background(), stopTaskRequest{
+		TaskID:    "task-1",
+		CreatedBy: "admin-user-1",
+	})
 	assertSchedulerError(t, svcErr, model.CodeConflict)
+}
+
+func TestStopTaskRejectsCrossOwnerAccess(t *testing.T) {
+	svc, store := newTestSchedulerService()
+
+	if _, svcErr := store.CreateTask(context.Background(), &task{
+		TaskID:           "task-1",
+		TaskType:         "periodic",
+		Keyword:          "openai",
+		FrequencySeconds: int32Ptr(60),
+		CreatedBy:        "owner-a",
+		Status:           schedulerTaskStatusPending,
+		CreatedAt:        time.Date(2026, 4, 11, 10, 0, 0, 0, time.UTC),
+		UpdatedAt:        time.Date(2026, 4, 11, 10, 0, 0, 0, time.UTC),
+	}); svcErr != nil {
+		t.Fatalf("seed task creation failed: %v", svcErr)
+	}
+
+	_, svcErr := svc.stopTask(context.Background(), stopTaskRequest{
+		TaskID:    "task-1",
+		CreatedBy: "owner-b",
+	})
+	assertSchedulerError(t, svcErr, model.CodeNotFound)
 }
 
 func TestSchedulerConfigDefaults(t *testing.T) {

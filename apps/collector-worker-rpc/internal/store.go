@@ -12,6 +12,7 @@ type workerStore interface {
 	LeaseRun(ctx context.Context, runID, workerID string, ttl time.Duration) (bool, error)
 	RenewRunLease(ctx context.Context, runID, workerID string, ttl time.Duration) (bool, error)
 	LoadRunTask(ctx context.Context, runID string) (runTaskView, error)
+	ListTaskSeenPosts(ctx context.Context, taskID string, postIDs []string) (map[string]bool, error)
 	RecordTaskSeenPost(ctx context.Context, taskID, postID, runID string, seenAt time.Time) (bool, error)
 	RecordKeywordMonthlyUsage(ctx context.Context, keyword, usageMonth, postID, taskID string, seenAt time.Time) (bool, error)
 	UpdateRunProgress(ctx context.Context, params updateRunProgressParams) error
@@ -175,6 +176,34 @@ func (s *memoryWorkerStore) LoadRunTask(_ context.Context, runID string) (runTas
 		return runTaskView{}, errors.New("run not found")
 	}
 	return cloneRunTaskView(view), nil
+}
+
+func (s *memoryWorkerStore) ListTaskSeenPosts(_ context.Context, taskID string, postIDs []string) (map[string]bool, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	taskID = strings.TrimSpace(taskID)
+	if taskID == "" {
+		return nil, errors.New("task_id is required")
+	}
+
+	seenPosts := s.taskSeenPosts[taskID]
+	result := make(map[string]bool)
+	if len(seenPosts) == 0 {
+		return result, nil
+	}
+
+	for _, postID := range postIDs {
+		postID = strings.TrimSpace(postID)
+		if postID == "" {
+			continue
+		}
+		if seenPosts[postID] {
+			result[postID] = true
+		}
+	}
+
+	return result, nil
 }
 
 func (s *memoryWorkerStore) RecordTaskSeenPost(_ context.Context, taskID, postID, runID string, seenAt time.Time) (bool, error) {

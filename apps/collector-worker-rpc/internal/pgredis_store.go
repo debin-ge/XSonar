@@ -189,9 +189,18 @@ func (s *pgRedisWorkerStore) LeaseRun(ctx context.Context, runID, workerID strin
 
 	runID = strings.TrimSpace(runID)
 	workerID = strings.TrimSpace(workerID)
-	acquired, err := s.redis.SetNX(ctx, collector.RunLeaseKey(runID), workerID, normalizeWorkerLeaseTTL(ttl)).Result()
-	if err != nil || !acquired {
-		return acquired, err
+	result, err := s.redis.SetArgs(ctx, collector.RunLeaseKey(runID), workerID, redis.SetArgs{
+		Mode: "NX",
+		TTL:  normalizeWorkerLeaseTTL(ttl),
+	}).Result()
+	if err != nil {
+		if errors.Is(err, redis.Nil) {
+			return false, nil
+		}
+		return false, err
+	}
+	if result != "OK" {
+		return false, nil
 	}
 
 	if _, err := s.db.Exec(ctx, workerLeaseRunSQL, runID); err != nil {
@@ -220,6 +229,39 @@ func (s *pgRedisWorkerStore) LoadRunTask(ctx context.Context, runID string) (run
 
 	row := s.db.QueryRow(ctx, workerLoadRunTaskSQL, strings.TrimSpace(runID))
 	return scanRunTaskView(row)
+}
+
+func (s *pgRedisWorkerStore) ListTaskSeenPosts(ctx context.Context, taskID string, postIDs []string) (map[string]bool, error) {
+	if s == nil || s.db == nil {
+		return nil, errors.New("worker database is not configured")
+	}
+
+	taskID = strings.TrimSpace(taskID)
+	if taskID == "" {
+		return nil, errors.New("task_id is required")
+	}
+
+	normalizedPostIDs := uniqueTrimmedPostIDs(postIDs)
+	result := make(map[string]bool)
+	if len(normalizedPostIDs) == 0 {
+		return result, nil
+	}
+
+	row := s.db.QueryRow(ctx, workerListTaskSeenPostsSQL, taskID, normalizedPostIDs)
+	var seenPostIDs []string
+	if err := row.Scan(&seenPostIDs); err != nil {
+		return nil, err
+	}
+
+	for _, postID := range seenPostIDs {
+		postID = strings.TrimSpace(postID)
+		if postID == "" {
+			continue
+		}
+		result[postID] = true
+	}
+
+	return result, nil
 }
 
 func (s *pgRedisWorkerStore) RecordTaskSeenPost(ctx context.Context, taskID, postID, runID string, seenAt time.Time) (bool, error) {
@@ -424,6 +466,28 @@ func nullableString(value string) any {
 	return strings.TrimSpace(value)
 }
 
+func uniqueTrimmedPostIDs(postIDs []string) []string {
+	if len(postIDs) == 0 {
+		return nil
+	}
+
+	seen := make(map[string]struct{}, len(postIDs))
+	unique := make([]string, 0, len(postIDs))
+	for _, postID := range postIDs {
+		postID = strings.TrimSpace(postID)
+		if postID == "" {
+			continue
+		}
+		if _, ok := seen[postID]; ok {
+			continue
+		}
+		seen[postID] = struct{}{}
+		unique = append(unique, postID)
+	}
+
+	return unique
+}
+
 func normalizeUsageMonth(usageMonth string, seenAt time.Time) string {
 	if strings.TrimSpace(usageMonth) != "" {
 		return strings.TrimSpace(usageMonth)
@@ -473,6 +537,13 @@ SELECT
 	FROM collector.task_runs r
 JOIN collector.tasks t ON t.task_id = r.task_id
 WHERE r.run_id = $1
+`
+
+const workerListTaskSeenPostsSQL = `
+SELECT COALESCE(array_agg(post_id), '{}')
+FROM collector.task_seen_posts
+WHERE task_id = $1
+  AND post_id = ANY($2)
 `
 
 const workerInsertTaskSeenPostSQL = `

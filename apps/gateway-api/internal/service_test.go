@@ -379,6 +379,7 @@ func TestGatewayCollectorAdminGetRoutesForwardToScheduler(t *testing.T) {
 		handler      func(*gatewayService, http.ResponseWriter, *http.Request)
 		expectedPath string
 		expectedTask string
+		expectedSub  string
 	}{
 		{
 			name:         "get task detail",
@@ -386,6 +387,7 @@ func TestGatewayCollectorAdminGetRoutesForwardToScheduler(t *testing.T) {
 			handler:      (*gatewayService).handleGetCollectorTask,
 			expectedPath: "/rpc/GetTask",
 			expectedTask: "task-1",
+			expectedSub:  "admin-user-1",
 		},
 		{
 			name:         "get task runs",
@@ -393,6 +395,7 @@ func TestGatewayCollectorAdminGetRoutesForwardToScheduler(t *testing.T) {
 			handler:      (*gatewayService).handleListCollectorTaskRuns,
 			expectedPath: "/rpc/ListTaskRuns",
 			expectedTask: "task-1",
+			expectedSub:  "admin-user-1",
 		},
 		{
 			name:         "stop task",
@@ -400,6 +403,7 @@ func TestGatewayCollectorAdminGetRoutesForwardToScheduler(t *testing.T) {
 			handler:      (*gatewayService).handleStopCollectorTask,
 			expectedPath: "/rpc/StopTask",
 			expectedTask: "task-1",
+			expectedSub:  "admin-user-1",
 		},
 	}
 
@@ -407,16 +411,20 @@ func TestGatewayCollectorAdminGetRoutesForwardToScheduler(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			var calledPath string
 			var calledTaskID string
+			var calledCreatedBy string
 			schedulerClient := stubJSONClient{
 				postFunc: func(_ context.Context, path string, payload any) (*clients.EnvelopeResponse, error) {
 					calledPath = path
 					switch req := payload.(type) {
 					case *schedulerservice.GetTaskRequest:
 						calledTaskID = req.TaskId
+						calledCreatedBy = req.CreatedBy
 					case *schedulerservice.ListTaskRunsRequest:
 						calledTaskID = req.TaskId
+						calledCreatedBy = req.CreatedBy
 					case *schedulerservice.StopTaskRequest:
 						calledTaskID = req.TaskId
+						calledCreatedBy = req.CreatedBy
 					default:
 						t.Fatalf("unexpected scheduler payload type %T", payload)
 					}
@@ -446,6 +454,9 @@ func TestGatewayCollectorAdminGetRoutesForwardToScheduler(t *testing.T) {
 			}
 			if calledTaskID != tt.expectedTask {
 				t.Fatalf("expected task id %s, got %s", tt.expectedTask, calledTaskID)
+			}
+			if calledCreatedBy != tt.expectedSub {
+				t.Fatalf("expected created_by %s, got %s", tt.expectedSub, calledCreatedBy)
 			}
 		})
 	}

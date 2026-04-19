@@ -1,10 +1,13 @@
 package internal
 
 import (
+	"bufio"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 	"syscall"
 )
 
@@ -12,25 +15,27 @@ type ndjsonWriter struct {
 	partPath     string
 	finalPath    string
 	file         *os.File
+	buffer       *bufio.Writer
+	flushEvery   int
+	pendingLines int
 	fsyncOnClose bool
 	closed       bool
 	committed    bool
 }
 
 func newNDJSONWriter(finalPath string, flushEvery int, fsyncOnClose bool) (*ndjsonWriter, error) {
-	_ = flushEvery
-
 	finalPath = filepath.Clean(finalPath)
 	partPath := finalPath + ".part"
-	if err := os.MkdirAll(filepath.Dir(finalPath), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Dir(finalPath), 0o750); err != nil {
 		return nil, err
 	}
 
-	file, err := os.OpenFile(partPath, os.O_CREATE|os.O_APPEND|os.O_RDWR, 0o644)
+	// #nosec G304 -- partPath is derived from the worker-controlled output path.
+	file, err := os.OpenFile(partPath, os.O_CREATE|os.O_APPEND|os.O_RDWR, 0o600)
 	if err != nil {
 		return nil, err
 	}
-	if err := syscall.Flock(int(file.Fd()), syscall.LOCK_EX); err != nil {
+	if err := lockNDJSONFile(file, syscall.LOCK_EX); err != nil {
 		_ = file.Close()
 		return nil, err
 	}
@@ -39,6 +44,8 @@ func newNDJSONWriter(finalPath string, flushEvery int, fsyncOnClose bool) (*ndjs
 		partPath:     partPath,
 		finalPath:    finalPath,
 		file:         file,
+		buffer:       bufio.NewWriter(file),
+		flushEvery:   normalizeNDJSONFlushEvery(flushEvery),
 		fsyncOnClose: fsyncOnClose,
 	}, nil
 }
@@ -56,8 +63,29 @@ func (w *ndjsonWriter) Append(record any) error {
 		return err
 	}
 	line = append(line, '\n')
-	_, err = w.file.Write(line)
-	return err
+	if _, err = w.buffer.Write(line); err != nil {
+		return err
+	}
+
+	w.pendingLines++
+	if w.pendingLines < w.flushEvery {
+		return nil
+	}
+	return w.flushBuffer()
+}
+
+func (w *ndjsonWriter) AppendAndFlush(record any) error {
+	if err := w.Append(record); err != nil {
+		return err
+	}
+	return w.Flush()
+}
+
+func (w *ndjsonWriter) Flush() error {
+	if w == nil {
+		return nil
+	}
+	return w.flushBuffer()
 }
 
 func (w *ndjsonWriter) Commit() error {
@@ -104,25 +132,70 @@ func (w *ndjsonWriter) closeFile() error {
 		return nil
 	}
 
+	if err := w.flushBuffer(); err != nil {
+		_ = lockNDJSONFile(w.file, syscall.LOCK_UN)
+		_ = w.file.Close()
+		w.closed = true
+		w.file = nil
+		w.buffer = nil
+		return err
+	}
 	if w.fsyncOnClose {
 		if err := w.file.Sync(); err != nil {
-			_ = syscall.Flock(int(w.file.Fd()), syscall.LOCK_UN)
+			_ = lockNDJSONFile(w.file, syscall.LOCK_UN)
 			_ = w.file.Close()
 			w.closed = true
+			w.file = nil
+			w.buffer = nil
 			return err
 		}
 	}
-	if err := syscall.Flock(int(w.file.Fd()), syscall.LOCK_UN); err != nil {
+	if err := lockNDJSONFile(w.file, syscall.LOCK_UN); err != nil {
 		_ = w.file.Close()
 		w.closed = true
+		w.file = nil
+		w.buffer = nil
 		return err
 	}
 	if err := w.file.Close(); err != nil {
 		w.closed = true
+		w.file = nil
+		w.buffer = nil
 		return err
 	}
 
 	w.closed = true
 	w.file = nil
+	w.buffer = nil
 	return nil
+}
+
+func (w *ndjsonWriter) flushBuffer() error {
+	if w == nil || w.buffer == nil || w.pendingLines == 0 {
+		return nil
+	}
+	if err := w.buffer.Flush(); err != nil {
+		return err
+	}
+	w.pendingLines = 0
+	return nil
+}
+
+func normalizeNDJSONFlushEvery(flushEvery int) int {
+	if flushEvery <= 0 {
+		return 1
+	}
+	return flushEvery
+}
+
+func lockNDJSONFile(file *os.File, mode int) error {
+	if file == nil {
+		return errors.New("ndjson writer file is nil")
+	}
+
+	fd, err := strconv.Atoi(fmt.Sprint(file.Fd()))
+	if err != nil {
+		return err
+	}
+	return syscall.Flock(fd, mode)
 }
