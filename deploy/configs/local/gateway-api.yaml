@@ -15,6 +15,10 @@ ProviderRPC:
   Endpoints:
     - provider-rpc:9003
   Timeout: 10000
+SchedulerRPC:
+  Endpoints:
+    - scheduler-rpc:9004
+  Timeout: 5000
 UsageStatQueueSize: 1024
 UsageStatWorkers: 2
 UsageStatTimeoutMS: 500

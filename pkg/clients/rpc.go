@@ -5,8 +5,10 @@ import (
 	"encoding/json"
 
 	"xsonar/apps/access-rpc/accessservice"
+	"xsonar/apps/collector-worker-rpc/collectorworkerservice"
 	"xsonar/apps/policy-rpc/policyservice"
 	"xsonar/apps/provider-rpc/providerservice"
+	"xsonar/apps/scheduler-rpc/schedulerservice"
 	"xsonar/pkg/model"
 
 	"github.com/zeromicro/go-zero/zrpc"
@@ -15,7 +17,7 @@ import (
 
 type AccessRPC interface {
 	Health(ctx context.Context) (*EnvelopeResponse, error)
-	GetAppAuthContext(ctx context.Context, req *accessservice.GetAppAuthContextRequest) (*EnvelopeResponse, error)
+	GetAppAuthContextByID(ctx context.Context, req *accessservice.GetAppAuthContextByIDRequest) (*EnvelopeResponse, error)
 	CheckReplay(ctx context.Context, req *accessservice.CheckReplayRequest) (*EnvelopeResponse, error)
 	CheckAndReserveQuota(ctx context.Context, req *accessservice.CheckAndReserveQuotaRequest) (*EnvelopeResponse, error)
 	ReleaseQuotaOnFailure(ctx context.Context, req *accessservice.ReleaseQuotaOnFailureRequest) (*EnvelopeResponse, error)
@@ -26,7 +28,6 @@ type AccessRPC interface {
 	ListTenants(ctx context.Context, req *accessservice.ListTenantsRequest) (*EnvelopeResponse, error)
 	CreateTenantApp(ctx context.Context, req *accessservice.CreateTenantAppRequest) (*EnvelopeResponse, error)
 	ListTenantApps(ctx context.Context, req *accessservice.ListTenantAppsRequest) (*EnvelopeResponse, error)
-	RotateAppSecret(ctx context.Context, req *accessservice.RotateAppSecretRequest) (*EnvelopeResponse, error)
 	UpdateTenantAppStatus(ctx context.Context, req *accessservice.UpdateTenantAppStatusRequest) (*EnvelopeResponse, error)
 	UpdateAppQuota(ctx context.Context, req *accessservice.UpdateAppQuotaRequest) (*EnvelopeResponse, error)
 	CheckIpBan(ctx context.Context, req *accessservice.CheckIpBanRequest) (*EnvelopeResponse, error)
@@ -47,6 +48,19 @@ type ProviderRPC interface {
 	HealthCheckProvider(ctx context.Context, req *providerservice.HealthCheckProviderRequest) (*EnvelopeResponse, error)
 }
 
+type SchedulerRPC interface {
+	Health(ctx context.Context) (*EnvelopeResponse, error)
+	CreateTask(ctx context.Context, req *schedulerservice.CreateTaskRequest) (*EnvelopeResponse, error)
+	GetTask(ctx context.Context, req *schedulerservice.GetTaskRequest) (*EnvelopeResponse, error)
+	ListTaskRuns(ctx context.Context, req *schedulerservice.ListTaskRunsRequest) (*EnvelopeResponse, error)
+	StopTask(ctx context.Context, req *schedulerservice.StopTaskRequest) (*EnvelopeResponse, error)
+}
+
+type CollectorWorkerRPC interface {
+	Health(ctx context.Context) (*EnvelopeResponse, error)
+	GetWorkerState(ctx context.Context, req *collectorworkerservice.GetWorkerStateRequest) (*EnvelopeResponse, error)
+}
+
 type accessRPCClient struct {
 	rpcClient zrpc.Client
 	client    accessservice.AccessService
@@ -60,6 +74,16 @@ type policyRPCClient struct {
 type providerRPCClient struct {
 	rpcClient zrpc.Client
 	client    providerservice.ProviderService
+}
+
+type schedulerRPCClient struct {
+	rpcClient zrpc.Client
+	client    schedulerservice.SchedulerService
+}
+
+type collectorWorkerRPCClient struct {
+	rpcClient zrpc.Client
+	client    collectorworkerservice.CollectorWorkerService
 }
 
 type jsonRPCResponse interface {
@@ -92,12 +116,28 @@ func NewProviderRPC(conf zrpc.RpcClientConf) ProviderRPC {
 	}
 }
 
+func NewSchedulerRPC(conf zrpc.RpcClientConf) SchedulerRPC {
+	cli := zrpc.MustNewClient(conf)
+	return &schedulerRPCClient{
+		rpcClient: cli,
+		client:    schedulerservice.NewSchedulerService(cli),
+	}
+}
+
+func NewCollectorWorkerRPC(conf zrpc.RpcClientConf) CollectorWorkerRPC {
+	cli := zrpc.MustNewClient(conf)
+	return &collectorWorkerRPCClient{
+		rpcClient: cli,
+		client:    collectorworkerservice.NewCollectorWorkerService(cli),
+	}
+}
+
 func (c *accessRPCClient) Health(ctx context.Context) (*EnvelopeResponse, error) {
 	return grpcHealthEnvelope(ctx, c.rpcClient)
 }
 
-func (c *accessRPCClient) GetAppAuthContext(ctx context.Context, req *accessservice.GetAppAuthContextRequest) (*EnvelopeResponse, error) {
-	resp, err := c.client.GetAppAuthContext(ctx, req)
+func (c *accessRPCClient) GetAppAuthContextByID(ctx context.Context, req *accessservice.GetAppAuthContextByIDRequest) (*EnvelopeResponse, error) {
+	resp, err := c.client.GetAppAuthContextByID(ctx, req)
 	return rpcEnvelope(resp, err)
 }
 
@@ -148,11 +188,6 @@ func (c *accessRPCClient) CreateTenantApp(ctx context.Context, req *accessservic
 
 func (c *accessRPCClient) ListTenantApps(ctx context.Context, req *accessservice.ListTenantAppsRequest) (*EnvelopeResponse, error) {
 	resp, err := c.client.ListTenantApps(ctx, req)
-	return rpcEnvelope(resp, err)
-}
-
-func (c *accessRPCClient) RotateAppSecret(ctx context.Context, req *accessservice.RotateAppSecretRequest) (*EnvelopeResponse, error) {
-	resp, err := c.client.RotateAppSecret(ctx, req)
 	return rpcEnvelope(resp, err)
 }
 
@@ -211,6 +246,39 @@ func (c *providerRPCClient) ExecutePolicy(ctx context.Context, req *providerserv
 
 func (c *providerRPCClient) HealthCheckProvider(ctx context.Context, req *providerservice.HealthCheckProviderRequest) (*EnvelopeResponse, error) {
 	resp, err := c.client.HealthCheckProvider(ctx, req)
+	return rpcEnvelope(resp, err)
+}
+
+func (c *schedulerRPCClient) Health(ctx context.Context) (*EnvelopeResponse, error) {
+	return grpcHealthEnvelope(ctx, c.rpcClient)
+}
+
+func (c *schedulerRPCClient) CreateTask(ctx context.Context, req *schedulerservice.CreateTaskRequest) (*EnvelopeResponse, error) {
+	resp, err := c.client.CreateTask(ctx, req)
+	return rpcEnvelope(resp, err)
+}
+
+func (c *schedulerRPCClient) GetTask(ctx context.Context, req *schedulerservice.GetTaskRequest) (*EnvelopeResponse, error) {
+	resp, err := c.client.GetTask(ctx, req)
+	return rpcEnvelope(resp, err)
+}
+
+func (c *schedulerRPCClient) ListTaskRuns(ctx context.Context, req *schedulerservice.ListTaskRunsRequest) (*EnvelopeResponse, error) {
+	resp, err := c.client.ListTaskRuns(ctx, req)
+	return rpcEnvelope(resp, err)
+}
+
+func (c *schedulerRPCClient) StopTask(ctx context.Context, req *schedulerservice.StopTaskRequest) (*EnvelopeResponse, error) {
+	resp, err := c.client.StopTask(ctx, req)
+	return rpcEnvelope(resp, err)
+}
+
+func (c *collectorWorkerRPCClient) Health(ctx context.Context) (*EnvelopeResponse, error) {
+	return grpcHealthEnvelope(ctx, c.rpcClient)
+}
+
+func (c *collectorWorkerRPCClient) GetWorkerState(ctx context.Context, req *collectorworkerservice.GetWorkerStateRequest) (*EnvelopeResponse, error) {
+	resp, err := c.client.GetWorkerState(ctx, req)
 	return rpcEnvelope(resp, err)
 }
 

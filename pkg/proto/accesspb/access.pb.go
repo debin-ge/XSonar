@@ -81,27 +81,27 @@ func (x *JsonResponse) GetDataJson() string {
 	return ""
 }
 
-type GetAppAuthContextRequest struct {
+type GetAppAuthContextByIDRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	AppKey        string                 `protobuf:"bytes,1,opt,name=app_key,json=appKey,proto3" json:"app_key,omitempty"`
+	AppId         string                 `protobuf:"bytes,1,opt,name=app_id,json=appId,proto3" json:"app_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
-func (x *GetAppAuthContextRequest) Reset() {
-	*x = GetAppAuthContextRequest{}
+func (x *GetAppAuthContextByIDRequest) Reset() {
+	*x = GetAppAuthContextByIDRequest{}
 	mi := &file_apps_access_rpc_access_proto_msgTypes[1]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
 
-func (x *GetAppAuthContextRequest) String() string {
+func (x *GetAppAuthContextByIDRequest) String() string {
 	return protoimpl.X.MessageStringOf(x)
 }
 
-func (*GetAppAuthContextRequest) ProtoMessage() {}
+func (*GetAppAuthContextByIDRequest) ProtoMessage() {}
 
-func (x *GetAppAuthContextRequest) ProtoReflect() protoreflect.Message {
+func (x *GetAppAuthContextByIDRequest) ProtoReflect() protoreflect.Message {
 	mi := &file_apps_access_rpc_access_proto_msgTypes[1]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
@@ -113,14 +113,14 @@ func (x *GetAppAuthContextRequest) ProtoReflect() protoreflect.Message {
 	return mi.MessageOf(x)
 }
 
-// Deprecated: Use GetAppAuthContextRequest.ProtoReflect.Descriptor instead.
-func (*GetAppAuthContextRequest) Descriptor() ([]byte, []int) {
+// Deprecated: Use GetAppAuthContextByIDRequest.ProtoReflect.Descriptor instead.
+func (*GetAppAuthContextByIDRequest) Descriptor() ([]byte, []int) {
 	return file_apps_access_rpc_access_proto_rawDescGZIP(), []int{1}
 }
 
-func (x *GetAppAuthContextRequest) GetAppKey() string {
+func (x *GetAppAuthContextByIDRequest) GetAppId() string {
 	if x != nil {
-		return x.AppKey
+		return x.AppId
 	}
 	return ""
 }
@@ -725,50 +725,6 @@ func (x *ListTenantAppsRequest) GetTenantId() string {
 	return ""
 }
 
-type RotateAppSecretRequest struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	AppId         string                 `protobuf:"bytes,1,opt,name=app_id,json=appId,proto3" json:"app_id,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
-}
-
-func (x *RotateAppSecretRequest) Reset() {
-	*x = RotateAppSecretRequest{}
-	mi := &file_apps_access_rpc_access_proto_msgTypes[12]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *RotateAppSecretRequest) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*RotateAppSecretRequest) ProtoMessage() {}
-
-func (x *RotateAppSecretRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_apps_access_rpc_access_proto_msgTypes[12]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use RotateAppSecretRequest.ProtoReflect.Descriptor instead.
-func (*RotateAppSecretRequest) Descriptor() ([]byte, []int) {
-	return file_apps_access_rpc_access_proto_rawDescGZIP(), []int{12}
-}
-
-func (x *RotateAppSecretRequest) GetAppId() string {
-	if x != nil {
-		return x.AppId
-	}
-	return ""
-}
-
 type UpdateTenantAppStatusRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	AppId         string                 `protobuf:"bytes,1,opt,name=app_id,json=appId,proto3" json:"app_id,omitempty"`
@@ -779,7 +735,7 @@ type UpdateTenantAppStatusRequest struct {
 
 func (x *UpdateTenantAppStatusRequest) Reset() {
 	*x = UpdateTenantAppStatusRequest{}
-	mi := &file_apps_access_rpc_access_proto_msgTypes[13]
+	mi := &file_apps_access_rpc_access_proto_msgTypes[12]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -791,7 +747,7 @@ func (x *UpdateTenantAppStatusRequest) String() string {
 func (*UpdateTenantAppStatusRequest) ProtoMessage() {}
 
 func (x *UpdateTenantAppStatusRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_apps_access_rpc_access_proto_msgTypes[13]
+	mi := &file_apps_access_rpc_access_proto_msgTypes[12]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -804,7 +760,7 @@ func (x *UpdateTenantAppStatusRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UpdateTenantAppStatusRequest.ProtoReflect.Descriptor instead.
 func (*UpdateTenantAppStatusRequest) Descriptor() ([]byte, []int) {
-	return file_apps_access_rpc_access_proto_rawDescGZIP(), []int{13}
+	return file_apps_access_rpc_access_proto_rawDescGZIP(), []int{12}
 }
 
 func (x *UpdateTenantAppStatusRequest) GetAppId() string {
@@ -832,7 +788,7 @@ type UpdateAppQuotaRequest struct {
 
 func (x *UpdateAppQuotaRequest) Reset() {
 	*x = UpdateAppQuotaRequest{}
-	mi := &file_apps_access_rpc_access_proto_msgTypes[14]
+	mi := &file_apps_access_rpc_access_proto_msgTypes[13]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -844,7 +800,7 @@ func (x *UpdateAppQuotaRequest) String() string {
 func (*UpdateAppQuotaRequest) ProtoMessage() {}
 
 func (x *UpdateAppQuotaRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_apps_access_rpc_access_proto_msgTypes[14]
+	mi := &file_apps_access_rpc_access_proto_msgTypes[13]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -857,7 +813,7 @@ func (x *UpdateAppQuotaRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UpdateAppQuotaRequest.ProtoReflect.Descriptor instead.
 func (*UpdateAppQuotaRequest) Descriptor() ([]byte, []int) {
-	return file_apps_access_rpc_access_proto_rawDescGZIP(), []int{14}
+	return file_apps_access_rpc_access_proto_rawDescGZIP(), []int{13}
 }
 
 func (x *UpdateAppQuotaRequest) GetAppId() string {
@@ -890,7 +846,7 @@ type CheckIpBanRequest struct {
 
 func (x *CheckIpBanRequest) Reset() {
 	*x = CheckIpBanRequest{}
-	mi := &file_apps_access_rpc_access_proto_msgTypes[15]
+	mi := &file_apps_access_rpc_access_proto_msgTypes[14]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -902,7 +858,7 @@ func (x *CheckIpBanRequest) String() string {
 func (*CheckIpBanRequest) ProtoMessage() {}
 
 func (x *CheckIpBanRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_apps_access_rpc_access_proto_msgTypes[15]
+	mi := &file_apps_access_rpc_access_proto_msgTypes[14]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -915,7 +871,7 @@ func (x *CheckIpBanRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CheckIpBanRequest.ProtoReflect.Descriptor instead.
 func (*CheckIpBanRequest) Descriptor() ([]byte, []int) {
-	return file_apps_access_rpc_access_proto_rawDescGZIP(), []int{15}
+	return file_apps_access_rpc_access_proto_rawDescGZIP(), []int{14}
 }
 
 func (x *CheckIpBanRequest) GetIp() string {
@@ -933,9 +889,9 @@ const file_apps_access_rpc_access_proto_rawDesc = "" +
 	"\fJsonResponse\x12\x12\n" +
 	"\x04code\x18\x01 \x01(\x05R\x04code\x12\x18\n" +
 	"\amessage\x18\x02 \x01(\tR\amessage\x12\x1b\n" +
-	"\tdata_json\x18\x03 \x01(\tR\bdataJson\"3\n" +
-	"\x18GetAppAuthContextRequest\x12\x17\n" +
-	"\aapp_key\x18\x01 \x01(\tR\x06appKey\"_\n" +
+	"\tdata_json\x18\x03 \x01(\tR\bdataJson\"5\n" +
+	"\x1cGetAppAuthContextByIDRequest\x12\x15\n" +
+	"\x06app_id\x18\x01 \x01(\tR\x05appId\"_\n" +
 	"\x12CheckReplayRequest\x12\x15\n" +
 	"\x06app_id\x18\x01 \x01(\tR\x05appId\x12\x14\n" +
 	"\x05nonce\x18\x02 \x01(\tR\x05nonce\x12\x1c\n" +
@@ -986,9 +942,7 @@ const file_apps_access_rpc_access_proto_rawDesc = "" +
 	"dailyQuota\x12\x1b\n" +
 	"\tqps_limit\x18\x04 \x01(\x05R\bqpsLimit\"4\n" +
 	"\x15ListTenantAppsRequest\x12\x1b\n" +
-	"\ttenant_id\x18\x01 \x01(\tR\btenantId\"/\n" +
-	"\x16RotateAppSecretRequest\x12\x15\n" +
-	"\x06app_id\x18\x01 \x01(\tR\x05appId\"M\n" +
+	"\ttenant_id\x18\x01 \x01(\tR\btenantId\"M\n" +
 	"\x1cUpdateTenantAppStatusRequest\x12\x15\n" +
 	"\x06app_id\x18\x01 \x01(\tR\x05appId\x12\x16\n" +
 	"\x06status\x18\x02 \x01(\tR\x06status\"l\n" +
@@ -998,9 +952,10 @@ const file_apps_access_rpc_access_proto_rawDesc = "" +
 	"dailyQuota\x12\x1b\n" +
 	"\tqps_limit\x18\x03 \x01(\x05R\bqpsLimit\"#\n" +
 	"\x11CheckIpBanRequest\x12\x0e\n" +
-	"\x02ip\x18\x01 \x01(\tR\x02ip2\x94\v\n" +
-	"\rAccessService\x12_\n" +
-	"\x11GetAppAuthContext\x12*.xsonar.access.v1.GetAppAuthContextRequest\x1a\x1e.xsonar.access.v1.JsonResponse\x12S\n" +
+	"\x02ip\x18\x01 \x01(\tR\x02ip2\xbf\n" +
+	"\n" +
+	"\rAccessService\x12g\n" +
+	"\x15GetAppAuthContextByID\x12..xsonar.access.v1.GetAppAuthContextByIDRequest\x1a\x1e.xsonar.access.v1.JsonResponse\x12S\n" +
 	"\vCheckReplay\x12$.xsonar.access.v1.CheckReplayRequest\x1a\x1e.xsonar.access.v1.JsonResponse\x12e\n" +
 	"\x14CheckAndReserveQuota\x12-.xsonar.access.v1.CheckAndReserveQuotaRequest\x1a\x1e.xsonar.access.v1.JsonResponse\x12g\n" +
 	"\x15ReleaseQuotaOnFailure\x12..xsonar.access.v1.ReleaseQuotaOnFailureRequest\x1a\x1e.xsonar.access.v1.JsonResponse\x12[\n" +
@@ -1010,8 +965,7 @@ const file_apps_access_rpc_access_proto_rawDesc = "" +
 	"\fCreateTenant\x12%.xsonar.access.v1.CreateTenantRequest\x1a\x1e.xsonar.access.v1.JsonResponse\x12S\n" +
 	"\vListTenants\x12$.xsonar.access.v1.ListTenantsRequest\x1a\x1e.xsonar.access.v1.JsonResponse\x12[\n" +
 	"\x0fCreateTenantApp\x12(.xsonar.access.v1.CreateTenantAppRequest\x1a\x1e.xsonar.access.v1.JsonResponse\x12Y\n" +
-	"\x0eListTenantApps\x12'.xsonar.access.v1.ListTenantAppsRequest\x1a\x1e.xsonar.access.v1.JsonResponse\x12[\n" +
-	"\x0fRotateAppSecret\x12(.xsonar.access.v1.RotateAppSecretRequest\x1a\x1e.xsonar.access.v1.JsonResponse\x12g\n" +
+	"\x0eListTenantApps\x12'.xsonar.access.v1.ListTenantAppsRequest\x1a\x1e.xsonar.access.v1.JsonResponse\x12g\n" +
 	"\x15UpdateTenantAppStatus\x12..xsonar.access.v1.UpdateTenantAppStatusRequest\x1a\x1e.xsonar.access.v1.JsonResponse\x12Y\n" +
 	"\x0eUpdateAppQuota\x12'.xsonar.access.v1.UpdateAppQuotaRequest\x1a\x1e.xsonar.access.v1.JsonResponse\x12Q\n" +
 	"\n" +
@@ -1029,10 +983,10 @@ func file_apps_access_rpc_access_proto_rawDescGZIP() []byte {
 	return file_apps_access_rpc_access_proto_rawDescData
 }
 
-var file_apps_access_rpc_access_proto_msgTypes = make([]protoimpl.MessageInfo, 16)
+var file_apps_access_rpc_access_proto_msgTypes = make([]protoimpl.MessageInfo, 15)
 var file_apps_access_rpc_access_proto_goTypes = []any{
 	(*JsonResponse)(nil),                   // 0: xsonar.access.v1.JsonResponse
-	(*GetAppAuthContextRequest)(nil),       // 1: xsonar.access.v1.GetAppAuthContextRequest
+	(*GetAppAuthContextByIDRequest)(nil),   // 1: xsonar.access.v1.GetAppAuthContextByIDRequest
 	(*CheckReplayRequest)(nil),             // 2: xsonar.access.v1.CheckReplayRequest
 	(*CheckAndReserveQuotaRequest)(nil),    // 3: xsonar.access.v1.CheckAndReserveQuotaRequest
 	(*ReleaseQuotaOnFailureRequest)(nil),   // 4: xsonar.access.v1.ReleaseQuotaOnFailureRequest
@@ -1043,13 +997,12 @@ var file_apps_access_rpc_access_proto_goTypes = []any{
 	(*ListTenantsRequest)(nil),             // 9: xsonar.access.v1.ListTenantsRequest
 	(*CreateTenantAppRequest)(nil),         // 10: xsonar.access.v1.CreateTenantAppRequest
 	(*ListTenantAppsRequest)(nil),          // 11: xsonar.access.v1.ListTenantAppsRequest
-	(*RotateAppSecretRequest)(nil),         // 12: xsonar.access.v1.RotateAppSecretRequest
-	(*UpdateTenantAppStatusRequest)(nil),   // 13: xsonar.access.v1.UpdateTenantAppStatusRequest
-	(*UpdateAppQuotaRequest)(nil),          // 14: xsonar.access.v1.UpdateAppQuotaRequest
-	(*CheckIpBanRequest)(nil),              // 15: xsonar.access.v1.CheckIpBanRequest
+	(*UpdateTenantAppStatusRequest)(nil),   // 12: xsonar.access.v1.UpdateTenantAppStatusRequest
+	(*UpdateAppQuotaRequest)(nil),          // 13: xsonar.access.v1.UpdateAppQuotaRequest
+	(*CheckIpBanRequest)(nil),              // 14: xsonar.access.v1.CheckIpBanRequest
 }
 var file_apps_access_rpc_access_proto_depIdxs = []int32{
-	1,  // 0: xsonar.access.v1.AccessService.GetAppAuthContext:input_type -> xsonar.access.v1.GetAppAuthContextRequest
+	1,  // 0: xsonar.access.v1.AccessService.GetAppAuthContextByID:input_type -> xsonar.access.v1.GetAppAuthContextByIDRequest
 	2,  // 1: xsonar.access.v1.AccessService.CheckReplay:input_type -> xsonar.access.v1.CheckReplayRequest
 	3,  // 2: xsonar.access.v1.AccessService.CheckAndReserveQuota:input_type -> xsonar.access.v1.CheckAndReserveQuotaRequest
 	4,  // 3: xsonar.access.v1.AccessService.ReleaseQuotaOnFailure:input_type -> xsonar.access.v1.ReleaseQuotaOnFailureRequest
@@ -1060,27 +1013,25 @@ var file_apps_access_rpc_access_proto_depIdxs = []int32{
 	9,  // 8: xsonar.access.v1.AccessService.ListTenants:input_type -> xsonar.access.v1.ListTenantsRequest
 	10, // 9: xsonar.access.v1.AccessService.CreateTenantApp:input_type -> xsonar.access.v1.CreateTenantAppRequest
 	11, // 10: xsonar.access.v1.AccessService.ListTenantApps:input_type -> xsonar.access.v1.ListTenantAppsRequest
-	12, // 11: xsonar.access.v1.AccessService.RotateAppSecret:input_type -> xsonar.access.v1.RotateAppSecretRequest
-	13, // 12: xsonar.access.v1.AccessService.UpdateTenantAppStatus:input_type -> xsonar.access.v1.UpdateTenantAppStatusRequest
-	14, // 13: xsonar.access.v1.AccessService.UpdateAppQuota:input_type -> xsonar.access.v1.UpdateAppQuotaRequest
-	15, // 14: xsonar.access.v1.AccessService.CheckIpBan:input_type -> xsonar.access.v1.CheckIpBanRequest
-	0,  // 15: xsonar.access.v1.AccessService.GetAppAuthContext:output_type -> xsonar.access.v1.JsonResponse
-	0,  // 16: xsonar.access.v1.AccessService.CheckReplay:output_type -> xsonar.access.v1.JsonResponse
-	0,  // 17: xsonar.access.v1.AccessService.CheckAndReserveQuota:output_type -> xsonar.access.v1.JsonResponse
-	0,  // 18: xsonar.access.v1.AccessService.ReleaseQuotaOnFailure:output_type -> xsonar.access.v1.JsonResponse
-	0,  // 19: xsonar.access.v1.AccessService.RecordUsageStat:output_type -> xsonar.access.v1.JsonResponse
-	0,  // 20: xsonar.access.v1.AccessService.QueryUsageStats:output_type -> xsonar.access.v1.JsonResponse
-	0,  // 21: xsonar.access.v1.AccessService.AuthenticateConsoleUser:output_type -> xsonar.access.v1.JsonResponse
-	0,  // 22: xsonar.access.v1.AccessService.CreateTenant:output_type -> xsonar.access.v1.JsonResponse
-	0,  // 23: xsonar.access.v1.AccessService.ListTenants:output_type -> xsonar.access.v1.JsonResponse
-	0,  // 24: xsonar.access.v1.AccessService.CreateTenantApp:output_type -> xsonar.access.v1.JsonResponse
-	0,  // 25: xsonar.access.v1.AccessService.ListTenantApps:output_type -> xsonar.access.v1.JsonResponse
-	0,  // 26: xsonar.access.v1.AccessService.RotateAppSecret:output_type -> xsonar.access.v1.JsonResponse
-	0,  // 27: xsonar.access.v1.AccessService.UpdateTenantAppStatus:output_type -> xsonar.access.v1.JsonResponse
-	0,  // 28: xsonar.access.v1.AccessService.UpdateAppQuota:output_type -> xsonar.access.v1.JsonResponse
-	0,  // 29: xsonar.access.v1.AccessService.CheckIpBan:output_type -> xsonar.access.v1.JsonResponse
-	15, // [15:30] is the sub-list for method output_type
-	0,  // [0:15] is the sub-list for method input_type
+	12, // 11: xsonar.access.v1.AccessService.UpdateTenantAppStatus:input_type -> xsonar.access.v1.UpdateTenantAppStatusRequest
+	13, // 12: xsonar.access.v1.AccessService.UpdateAppQuota:input_type -> xsonar.access.v1.UpdateAppQuotaRequest
+	14, // 13: xsonar.access.v1.AccessService.CheckIpBan:input_type -> xsonar.access.v1.CheckIpBanRequest
+	0,  // 14: xsonar.access.v1.AccessService.GetAppAuthContextByID:output_type -> xsonar.access.v1.JsonResponse
+	0,  // 15: xsonar.access.v1.AccessService.CheckReplay:output_type -> xsonar.access.v1.JsonResponse
+	0,  // 16: xsonar.access.v1.AccessService.CheckAndReserveQuota:output_type -> xsonar.access.v1.JsonResponse
+	0,  // 17: xsonar.access.v1.AccessService.ReleaseQuotaOnFailure:output_type -> xsonar.access.v1.JsonResponse
+	0,  // 18: xsonar.access.v1.AccessService.RecordUsageStat:output_type -> xsonar.access.v1.JsonResponse
+	0,  // 19: xsonar.access.v1.AccessService.QueryUsageStats:output_type -> xsonar.access.v1.JsonResponse
+	0,  // 20: xsonar.access.v1.AccessService.AuthenticateConsoleUser:output_type -> xsonar.access.v1.JsonResponse
+	0,  // 21: xsonar.access.v1.AccessService.CreateTenant:output_type -> xsonar.access.v1.JsonResponse
+	0,  // 22: xsonar.access.v1.AccessService.ListTenants:output_type -> xsonar.access.v1.JsonResponse
+	0,  // 23: xsonar.access.v1.AccessService.CreateTenantApp:output_type -> xsonar.access.v1.JsonResponse
+	0,  // 24: xsonar.access.v1.AccessService.ListTenantApps:output_type -> xsonar.access.v1.JsonResponse
+	0,  // 25: xsonar.access.v1.AccessService.UpdateTenantAppStatus:output_type -> xsonar.access.v1.JsonResponse
+	0,  // 26: xsonar.access.v1.AccessService.UpdateAppQuota:output_type -> xsonar.access.v1.JsonResponse
+	0,  // 27: xsonar.access.v1.AccessService.CheckIpBan:output_type -> xsonar.access.v1.JsonResponse
+	14, // [14:28] is the sub-list for method output_type
+	0,  // [0:14] is the sub-list for method input_type
 	0,  // [0:0] is the sub-list for extension type_name
 	0,  // [0:0] is the sub-list for extension extendee
 	0,  // [0:0] is the sub-list for field type_name
@@ -1097,7 +1048,7 @@ func file_apps_access_rpc_access_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_apps_access_rpc_access_proto_rawDesc), len(file_apps_access_rpc_access_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   16,
+			NumMessages:   15,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

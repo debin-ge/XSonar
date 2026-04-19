@@ -41,10 +41,6 @@ type GetTenantDetailReq {
 	Id string `path:"id"`
 }
 
-type RotateAppSecretReq {
-	Id string `path:"id"`
-}
-
 type PublishPolicyConfigReq {
 	PolicyKey            string            `json:"policy_key"`
 	DisplayName          string            `json:"display_name"`
@@ -68,6 +64,12 @@ type Envelope {
 	Message   string      `json:"message"`
 	Data      interface{} `json:"data,optional"`
 	RequestID string      `json:"request_id,optional"`
+}
+
+type IssueGatewayTokenReq {
+	TenantID string `json:"tenant_id"`
+	AppID    string `json:"app_id"`
+	TTL      int64  `json:"ttl"`
 }
 
 @server (
@@ -113,12 +115,6 @@ service console-api {
 	post /admin/v1/tenants/:id/apps (CreateTenantAppReq) returns (Envelope)
 
 	@doc (
-		summary: "Rotate an application secret."
-	)
-	@handler RotateAppSecret
-	post /admin/v1/apps/:id/secret:rotate (RotateAppSecretReq) returns (Envelope)
-
-	@doc (
 		summary: "Update application status."
 	)
 	@handler UpdateAppStatus
@@ -153,6 +149,12 @@ service console-api {
 	)
 	@handler UsageReport
 	get /admin/v1/reports/usage returns (Envelope)
+
+	@doc (
+		summary: "Issue a gateway bearer token for an application."
+	)
+	@handler IssueGatewayToken
+	post /admin/v1/gateway/token (IssueGatewayTokenReq) returns (Envelope)
 
 	@doc (
 		summary: "Check downstream service health."

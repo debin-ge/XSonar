@@ -7,7 +7,6 @@ import (
 	consoleinternal "xsonar/apps/console-api/internal"
 	"xsonar/apps/console-api/internal/config"
 	"xsonar/pkg/clients"
-	"xsonar/pkg/shared"
 	"xsonar/pkg/xlog"
 )
 
@@ -24,7 +23,7 @@ func NewServiceContext(c config.Config) *ServiceContext {
 		Config: c,
 		Logger: logger,
 		Bridge: consoleinternal.NewBridge(
-			consoleSharedConfig(c),
+			c.ToConsoleConfig(),
 			logger,
 			clients.NewAccessRPC(c.AccessRPC),
 			clients.NewPolicyRPC(c.PolicyRPC),
@@ -38,13 +37,4 @@ func (s *ServiceContext) Close() error {
 		return nil
 	}
 	return s.Logger.Close()
-}
-
-func consoleSharedConfig(c config.Config) shared.Config {
-	return shared.Config{
-		ServiceName:   c.Name,
-		JWTSecret:     c.JWTSecret,
-		JWTIssuer:     c.JWTIssuer,
-		JWTTTLMinutes: c.JWTTTLMinutes,
-	}
 }

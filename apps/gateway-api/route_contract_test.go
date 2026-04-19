@@ -9,6 +9,7 @@ import (
 	"reflect"
 	"regexp"
 	"slices"
+	"strings"
 	"testing"
 
 	"github.com/zeromicro/go-zero/rest"
@@ -18,44 +19,41 @@ func TestGatewaySwaggerDeclaresExactQueryContractForAllPublicRoutes(t *testing.T
 	paths := loadGatewaySwaggerPaths(t, "dev")
 
 	expected := map[string]map[string]bool{
-		"/v1/communities":              {"screenName": true},
-		"/v1/lists":                    {"screenName": false, "userId": false},
-		"/v1/search/box":               {"searchType": false, "words": true},
-		"/v1/search/entertainment":     {},
-		"/v1/search/explore":           {},
-		"/v1/search/news":              {},
-		"/v1/search/sports":            {},
-		"/v1/search/trending":          {},
-		"/v1/search/trends":            {"id": true},
-		"/v1/search/tweets":            {"any": false, "count": false, "cursor": false, "from": false, "likes": false, "mentioning": false, "none": false, "phrase": false, "product": false, "replies": false, "retweets": false, "since": false, "tag": false, "to": false, "until": false, "words": true},
-		"/v1/tweets/brief":             {"cursor": false, "tweetId": true},
-		"/v1/tweets/by-ids":            {"tweetIds": true},
-		"/v1/tweets/detail":            {"cursor": false, "tweetId": true},
-		"/v1/tweets/favoriters":        {"authToken": false, "cursor": false, "tweetId": true},
-		"/v1/tweets/quotes":            {"authToken": false, "cursor": false, "tweetId": true},
-		"/v1/tweets/replies":           {"cursor": false, "userId": true},
-		"/v1/tweets/retweeters":        {"authToken": false, "cursor": false, "tweetId": true},
-		"/v1/tweets/timeline":          {"cursor": false, "userId": true},
-		"/v1/users/account-analytics":  {"authToken": true, "csrfToken": false, "restId": true},
-		"/v1/users/articles-tweets":    {"authToken": false, "cursor": false, "userId": true},
-		"/v1/users/by-id":              {"cursor": false, "userId": true},
-		"/v1/users/by-ids":             {"userIds": true},
-		"/v1/users/by-username":        {"screenName": true},
-		"/v1/users/followers":          {"cursor": false, "userId": true},
-		"/v1/users/followings":         {"cursor": false, "userId": true},
-		"/v1/users/highlights":         {"authToken": false, "cursor": false, "userId": true},
-		"/v1/users/likes":              {"authToken": false, "cursor": false, "userId": true},
-		"/v1/users/mentions-timeline":  {"authToken": true, "csrfToken": false, "includeEntities": false, "maxId": false, "sinceId": false, "trimUser": false},
-		"/v1/users/username-changes":   {"screenName": true},
-	}
-
-	if len(paths) != len(expected) {
-		t.Fatalf("expected %d swagger paths, got %d", len(expected), len(paths))
+		"/v1/communities":             {"screenName": true},
+		"/v1/lists":                   {"screenName": false, "userId": false},
+		"/v1/search/box":              {"searchType": false, "words": true},
+		"/v1/search/entertainment":    {},
+		"/v1/search/explore":          {},
+		"/v1/search/news":             {},
+		"/v1/search/sports":           {},
+		"/v1/search/trending":         {},
+		"/v1/search/trends":           {"id": true},
+		"/v1/search/tweets":           {"any": false, "count": false, "cursor": false, "from": false, "likes": false, "mentioning": false, "none": false, "phrase": false, "product": false, "replies": false, "retweets": false, "since": false, "tag": false, "to": false, "until": false, "words": true},
+		"/v1/tweets/brief":            {"cursor": false, "tweetId": true},
+		"/v1/tweets/by-ids":           {"tweetIds": true},
+		"/v1/tweets/detail":           {"cursor": false, "tweetId": true},
+		"/v1/tweets/favoriters":       {"authToken": false, "cursor": false, "tweetId": true},
+		"/v1/tweets/quotes":           {"authToken": false, "cursor": false, "tweetId": true},
+		"/v1/tweets/replies":          {"cursor": false, "userId": true},
+		"/v1/tweets/retweeters":       {"authToken": false, "cursor": false, "tweetId": true},
+		"/v1/tweets/timeline":         {"cursor": false, "userId": true},
+		"/v1/users/account-analytics": {"authToken": true, "csrfToken": false, "restId": true},
+		"/v1/users/articles-tweets":   {"authToken": false, "cursor": false, "userId": true},
+		"/v1/users/by-id":             {"cursor": false, "userId": true},
+		"/v1/users/by-ids":            {"userIds": true},
+		"/v1/users/by-username":       {"screenName": true},
+		"/v1/users/followers":         {"cursor": false, "userId": true},
+		"/v1/users/followings":        {"cursor": false, "userId": true},
+		"/v1/users/highlights":        {"authToken": false, "cursor": false, "userId": true},
+		"/v1/users/likes":             {"authToken": false, "cursor": false, "userId": true},
+		"/v1/users/mentions-timeline": {"authToken": true, "csrfToken": false, "includeEntities": false, "maxId": false, "sinceId": false, "trimUser": false},
+		"/v1/users/username-changes":  {"screenName": true},
 	}
 
 	for path, expectedQuery := range expected {
 		operation := assertOperation(t, paths, path, http.MethodGet)
-		assertExactQueryParams(t, assertParameters(t, operation), expectedQuery)
+		parameters, _ := operation["parameters"].([]any)
+		assertExactQueryParams(t, parameters, expectedQuery)
 	}
 }
 
@@ -68,10 +66,35 @@ func TestGeneratedRoutesMatchSwaggerPaths(t *testing.T) {
 	}
 	slices.Sort(expected)
 
-	actual := extractRoutePathsFromSource(t, filepath.Join("internal", "handler", "routes.go"), regexp.MustCompile(`Path:\s+"([^"]+)"`))
+	actual := extractRoutePathsFromSource(t, filepath.Join("internal", "handler", "routes.go"), regexp.MustCompile(`Path:\s+"(/v1/[^"]+)"`))
+	for i := range actual {
+		actual[i] = normalizeRoutePath(actual[i])
+	}
+	slices.Sort(actual)
 
 	if !reflect.DeepEqual(actual, expected) {
 		t.Fatalf("generated routes do not match swagger paths:\nactual=%#v\nexpected=%#v", actual, expected)
+	}
+}
+
+func normalizeRoutePath(path string) string {
+	replacer := strings.NewReplacer(":id", "{id}")
+	return replacer.Replace(path)
+}
+
+func TestCollectorRoutesExistInGeneratedContract(t *testing.T) {
+	actual := extractRoutePathsFromSource(t, filepath.Join("internal", "handler", "routes.go"), regexp.MustCompile(`Method:\s+http\.Method(?:Get|Post),[\s\S]*?Path:\s+"(/v1/collector/tasks[^"]*)"`))
+	expected := []string{
+		"/v1/collector/tasks/:id",
+		"/v1/collector/tasks/:id/runs",
+		"/v1/collector/tasks/:id/stop",
+		"/v1/collector/tasks/periodic",
+		"/v1/collector/tasks/range",
+	}
+
+	slices.Sort(expected)
+	if !reflect.DeepEqual(actual, expected) {
+		t.Fatalf("collector routes mismatch:\nactual=%#v\nexpected=%#v", actual, expected)
 	}
 }
 

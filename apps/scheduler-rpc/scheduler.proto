@@ -1,0 +1,44 @@
+syntax = "proto3";
+
+package xsonar.scheduler.v1;
+
+option go_package = "xsonar/pkg/proto/schedulerpb";
+
+service SchedulerService {
+  rpc CreateTask(CreateTaskRequest) returns (JsonResponse);
+  rpc GetTask(GetTaskRequest) returns (JsonResponse);
+  rpc ListTaskRuns(ListTaskRunsRequest) returns (JsonResponse);
+  rpc StopTask(StopTaskRequest) returns (JsonResponse);
+}
+
+message JsonResponse {
+  int32 code = 1;
+  string message = 2;
+  string data_json = 3;
+}
+
+message CreateTaskRequest {
+  string task_id = 1;
+  string task_type = 2;
+  string keyword = 3;
+  int32 priority = 4;
+  optional int32 frequency_seconds = 5;
+  // Provider-native boundary values stay caller-owned; these are intentionally strings.
+  string since = 6;
+  string until = 7;
+  optional int64 required_count = 8;
+  string created_by = 9;
+  optional int64 per_run_count = 10;
+}
+
+message GetTaskRequest {
+  string task_id = 1;
+}
+
+message ListTaskRunsRequest {
+  string task_id = 1;
+}
+
+message StopTaskRequest {
+  string task_id = 1;
+}

@@ -2,202 +2,305 @@ syntax = "v1"
 
 info (
 	title:       "XSonar Gateway API"
-	description: "Public gateway API for read-only user, tweet, search, list, and community endpoints."
+	description: "XSonar Gateway API for accessing Twitter/X data through a unified proxy layer. Supports user profiles, tweets, search, lists, communities, and collector tasks. All endpoints require a valid gateway bearer token in the Authorization header."
 	version:     "v1"
 	consumes:    "application/json"
 	produces:    "application/json"
 	schemes:     "http"
+	securityDefinitionsFromJson: `{"gatewayBearer":{"type":"apiKey","name":"Authorization","in":"header","description":"Bearer access token for gateway APIs."}}`
 )
 
-type GatewayAuthReq {
-	AppKey    string `header:"AppKey,optional"`
-	AppSecret string `header:"AppSecret,optional"`
-	Timestamp string `header:"Timestamp,optional"`
-	Nonce     string `header:"Nonce,optional"`
-	Signature string `header:"Signature,optional"`
-}
-
+// 批量获取用户请求
 type UsersByIDsReq {
-	GatewayAuthReq
+	// 用户ID列表，多个ID用逗号分隔
 	UserIDs string `form:"userIds"`
 }
 
+// 获取单个用户请求
 type UserByIDReq {
-	GatewayAuthReq
+	// 用户ID
 	UserID string `form:"userId"`
+	// 分页游标，用于翻页
 	Cursor string `form:"cursor,optional"`
 }
 
+// 通过用户名获取用户请求
 type UserByUsernameReq {
-	GatewayAuthReq
+	// 用户屏幕名称（用户名）
 	ScreenName string `form:"screenName"`
 }
 
+// 批量获取推文请求
 type TweetsByIDsReq {
-	GatewayAuthReq
+	// 推文ID列表，多个ID用逗号分隔
 	TweetIDs string `form:"tweetIds"`
 }
 
+// 获取用户时间线请求
 type TweetsTimelineReq {
-	GatewayAuthReq
+	// 用户ID
 	UserID string `form:"userId"`
+	// 分页游标
 	Cursor string `form:"cursor,optional"`
 }
 
+// 获取推文回复请求
 type TweetsRepliesReq {
-	GatewayAuthReq
+	// 用户ID
 	UserID string `form:"userId"`
+	// 分页游标
 	Cursor string `form:"cursor,optional"`
 }
 
+// 获取推文详情请求
 type TweetsDetailReq {
-	GatewayAuthReq
+	// 推文ID
 	TweetID string `form:"tweetId"`
-	Cursor  string `form:"cursor,optional"`
+	// 分页游标
+	Cursor string `form:"cursor,optional"`
 }
 
+// 获取推文摘要请求
 type TweetsBriefReq {
-	GatewayAuthReq
+	// 推文ID
 	TweetID string `form:"tweetId"`
-	Cursor  string `form:"cursor,optional"`
+	// 分页游标
+	Cursor string `form:"cursor,optional"`
 }
 
+// 获取转推引用请求
 type TweetsQuotesReq {
-	GatewayAuthReq
-	TweetID   string `form:"tweetId"`
-	Cursor    string `form:"cursor,optional"`
+	// 推文ID
+	TweetID string `form:"tweetId"`
+	// 分页游标
+	Cursor string `form:"cursor,optional"`
+	// 授权令牌
 	AuthToken string `form:"authToken,optional"`
 }
 
+// 获取转推用户列表请求
 type TweetsRetweetersReq {
-	GatewayAuthReq
-	TweetID   string `form:"tweetId"`
-	Cursor    string `form:"cursor,optional"`
+	// 推文ID
+	TweetID string `form:"tweetId"`
+	// 分页游标
+	Cursor string `form:"cursor,optional"`
+	// 授权令牌
 	AuthToken string `form:"authToken,optional"`
 }
 
+// 获取推文点赞用户列表请求
 type TweetsFavoritersReq {
-	GatewayAuthReq
-	TweetID   string `form:"tweetId"`
-	Cursor    string `form:"cursor,optional"`
+	// 推文ID
+	TweetID string `form:"tweetId"`
+	// 分页游标
+	Cursor string `form:"cursor,optional"`
+	// 授权令牌
 	AuthToken string `form:"authToken,optional"`
 }
 
+// 获取用户@提及时间线请求
 type UsersMentionsTimelineReq {
-	GatewayAuthReq
-	AuthToken       string `form:"authToken"`
-	CsrfToken       string `form:"csrfToken,optional"`
-	SinceID         string `form:"sinceId,optional"`
-	MaxID           string `form:"maxId,optional"`
+	// 授权令牌
+	AuthToken string `form:"authToken"`
+	// CSRF令牌
+	CsrfToken string `form:"csrfToken,optional"`
+	// 返回比sinceId更大的推文ID
+	SinceID string `form:"sinceId,optional"`
+	// 返回小于等于maxId的推文ID
+	MaxID string `form:"maxId,optional"`
+	// 是否包含实体（用户、话题、链接）
 	IncludeEntities string `form:"includeEntities,optional"`
-	TrimUser        string `form:"trimUser,optional"`
+	// 是否简化用户信息
+	TrimUser string `form:"trimUser,optional"`
 }
 
+// 搜索推文请求
 type SearchTweetsReq {
-	GatewayAuthReq
-	Words      string `form:"words"`
-	Cursor     string `form:"cursor,optional"`
-	Phrase     string `form:"phrase,optional"`
-	Any        string `form:"any,optional"`
-	None       string `form:"none,optional"`
-	Tag        string `form:"tag,optional"`
-	From       string `form:"from,optional"`
-	To         string `form:"to,optional"`
+	// 搜索关键词
+	Words string `form:"words"`
+	// 分页游标
+	Cursor string `form:"cursor,optional"`
+	// 精确短语匹配
+	Phrase string `form:"phrase,optional"`
+	// 任意关键词匹配（OR条件）
+	Any string `form:"any,optional"`
+	// 排除的关键词
+	None string `form:"none,optional"`
+	// 话题标签（不带#号）
+	Tag string `form:"tag,optional"`
+	// 发送者用户名
+	From string `form:"from,optional"`
+	// 被@提及的用户名
+	To string `form:"to,optional"`
+	// 被@提及的用户名
 	Mentioning string `form:"mentioning,optional"`
-	Replies    string `form:"replies,optional"`
-	Likes      string `form:"likes,optional"`
-	Retweets   string `form:"retweets,optional"`
-	Since      string `form:"since,optional"`
-	Until      string `form:"until,optional"`
-	Product    string `form:"product,optional"`
-	Count      int64  `form:"count,optional"`
+	// 最少回复数
+	Replies string `form:"replies,optional"`
+	// 最少点赞数
+	Likes string `form:"likes,optional"`
+	// 最少转推数
+	Retweets string `form:"retweets,optional"`
+	// 开始时间（ISO 8601格式）
+	Since string `form:"since,optional"`
+	// 结束时间（ISO 8601格式）
+	Until string `form:"until,optional"`
+	// 产品类型
+	Product string `form:"product,optional"`
+	// 返回结果数量
+	Count int64 `form:"count,optional"`
 }
 
+// 获取热门搜索请求
 type SearchTrendingReq {
-	GatewayAuthReq
+	// 空的请求体
 }
 
+// 获取搜索趋势请求
 type SearchTrendsReq {
-	GatewayAuthReq
+	// 趋势ID
 	ID string `form:"id"`
 }
 
+// 搜索盒子请求
 type SearchBoxReq {
-	GatewayAuthReq
-	Words      string `form:"words"`
+	// 搜索关键词
+	Words string `form:"words"`
+	// 搜索类型
 	SearchType string `form:"searchType,optional"`
 }
 
+// 探索搜索请求
 type SearchExploreReq {
-	GatewayAuthReq
+	// 空的请求体
 }
 
+// 新闻搜索请求
 type SearchNewsReq {
-	GatewayAuthReq
+	// 空的请求体
 }
 
+// 体育搜索请求
 type SearchSportsReq {
-	GatewayAuthReq
+	// 空的请求体
 }
 
+// 娱乐搜索请求
 type SearchEntertainmentReq {
-	GatewayAuthReq
+	// 空的请求体
 }
 
+// 获取用户名变更记录请求
 type UsersUsernameChangesReq {
-	GatewayAuthReq
+	// 用户屏幕名称（用户名）
 	ScreenName string `form:"screenName"`
 }
 
+// 获取用户点赞列表请求
 type UsersLikesReq {
-	GatewayAuthReq
-	UserID    string `form:"userId"`
-	Cursor    string `form:"cursor,optional"`
+	// 用户ID
+	UserID string `form:"userId"`
+	// 分页游标
+	Cursor string `form:"cursor,optional"`
+	// 用户的授权令牌（访问自己的点赞需要）
 	AuthToken string `form:"authToken,optional"`
 }
 
+// 获取用户高亮推文请求
 type UsersHighlightsReq {
-	GatewayAuthReq
-	UserID    string `form:"userId"`
-	Cursor    string `form:"cursor,optional"`
+	// 用户ID
+	UserID string `form:"userId"`
+	// 分页游标
+	Cursor string `form:"cursor,optional"`
+	// 用户的授权令牌
 	AuthToken string `form:"authToken,optional"`
 }
 
+// 获取用户文章推文请求
 type UsersArticlesTweetsReq {
-	GatewayAuthReq
-	UserID    string `form:"userId"`
-	Cursor    string `form:"cursor,optional"`
+	// 用户ID
+	UserID string `form:"userId"`
+	// 分页游标
+	Cursor string `form:"cursor,optional"`
+	// 用户的授权令牌
 	AuthToken string `form:"authToken,optional"`
 }
 
+// 获取用户账户分析请求
 type UsersAccountAnalyticsReq {
-	GatewayAuthReq
-	RestID    string `form:"restId"`
+	// 用户REST ID
+	RestID string `form:"restId"`
+	// 用户的授权令牌
 	AuthToken string `form:"authToken"`
+	// CSRF令牌
 	CsrfToken string `form:"csrfToken,optional"`
 }
 
+// 获取用户粉丝列表请求
 type UsersFollowersReq {
-	GatewayAuthReq
+	// 用户ID
 	UserID string `form:"userId"`
+	// 分页游标
 	Cursor string `form:"cursor,optional"`
 }
 
+// 获取用户关注列表请求
 type UsersFollowingsReq {
-	GatewayAuthReq
+	// 用户ID
 	UserID string `form:"userId"`
+	// 分页游标
 	Cursor string `form:"cursor,optional"`
 }
 
+// 获取列表请求
 type ListsReq {
-	GatewayAuthReq
-	UserID     string `form:"userId,optional"`
+	// 用户ID（与screenName二选一）
+	UserID string `form:"userId,optional"`
+	// 用户屏幕名称（与userId二选一）
 	ScreenName string `form:"screenName,optional"`
 }
 
+// 获取社区请求
 type CommunitiesReq {
-	GatewayAuthReq
+	// 社区名称
 	ScreenName string `form:"screenName"`
+}
+
+// 创建周期采集任务请求
+type CreatePeriodicCollectorTaskReq {
+	// 任务唯一标识符
+	TaskID string `json:"task_id,example=task_001"`
+	// 采集关键词
+	Keyword string `json:"keyword,example=XSonar"`
+	// 任务优先级（数值越大优先级越高）
+	Priority int32 `json:"priority,optional,example=1"`
+	// 采集频率（秒），例如3600表示每小时执行一次
+	FrequencySeconds *int32 `json:"frequency_seconds,optional,example=3600"`
+	// 单次执行的目标新增采集数量上限
+	PerRunCount *int64 `json:"per_run_count,optional,example=100"`
+	// 需要的采集数量上限
+	RequiredCount *int64 `json:"required_count,optional,example=1000"`
+}
+
+// 创建范围采集任务请求
+type CreateRangeCollectorTaskReq {
+	// 任务唯一标识符
+	TaskID string `json:"task_id,example=task_002"`
+	// 采集关键词
+	Keyword string `json:"keyword,example=XSonar"`
+	// 任务优先级
+	Priority int32 `json:"priority,optional,example=1"`
+	// 采集开始时间（ISO 8601格式）
+	Since string `json:"since,optional,example=2024-01-01T00:00:00Z"`
+	// 采集结束时间（ISO 8601格式）
+	Until string `json:"until,optional,example=2024-12-31T23:59:59Z"`
+	// 需要的采集数量上限
+	RequiredCount *int64 `json:"required_count,optional,example=500"`
+}
+
+// 采集任务路径参数
+type CollectorTaskPathReq {
+	// 任务ID
+	ID string `path:"id"`
 }
 
 type Envelope {
@@ -208,181 +311,246 @@ type Envelope {
 }
 
 @server (
-	tags:    "Gateway API"
+	tags:     "Gateway API"
 	summary: "Public gateway APIs"
+	authType: gatewayBearer
 )
 service gateway-api {
 	@doc (
-		summary: "Get users by IDs."
+		summary: "批量获取用户信息"
+		description: "通过用户ID列表批量获取用户基本信息。适用于需要一次性获取多个用户资料的场景，例如展示用户卡片列表。"
 	)
 	@handler UsersByIDs
 	get /v1/users/by-ids (UsersByIDsReq) returns (Envelope)
 
 	@doc (
-		summary: "Get a user by ID."
+		summary: "获取单个用户信息"
+		description: "通过用户ID获取单个用户的详细信息。支持分页游标用于翻页查询用户的附加信息。"
 	)
 	@handler UserByID
 	get /v1/users/by-id (UserByIDReq) returns (Envelope)
 
 	@doc (
-		summary: "Get a user by username."
+		summary: "通过用户名获取用户信息"
+		description: "通过用户的屏幕名称（screenName）获取用户信息。适用于已知用户名但不知道用户ID的场景。"
 	)
 	@handler UserByUsername
 	get /v1/users/by-username (UserByUsernameReq) returns (Envelope)
 
 	@doc (
-		summary: "Get tweets by IDs."
+		summary: "批量获取推文"
+		description: "通过推文ID列表批量获取推文信息。适用于需要一次性展示多条推文内容的场景。"
 	)
 	@handler TweetsByIDs
 	get /v1/tweets/by-ids (TweetsByIDsReq) returns (Envelope)
 
 	@doc (
-		summary: "Get the tweets timeline."
+		summary: "获取用户时间线"
+		description: "获取指定用户发布的推文时间线。按时间倒序返回，支持分页翻页。"
 	)
 	@handler TweetsTimeline
 	get /v1/tweets/timeline (TweetsTimelineReq) returns (Envelope)
 
 	@doc (
-		summary: "Get tweet replies."
+		summary: "获取推文回复"
+		description: "获取指定用户发布的推文的回复列表。按时间倒序返回。"
 	)
 	@handler TweetsReplies
 	get /v1/tweets/replies (TweetsRepliesReq) returns (Envelope)
 
 	@doc (
-		summary: "Get tweet details."
+		summary: "获取推文详情"
+		description: "获取单条推文的详细信息，包括正文、媒体、互动统计等。"
 	)
 	@handler TweetsDetail
 	get /v1/tweets/detail (TweetsDetailReq) returns (Envelope)
 
 	@doc (
-		summary: "Get tweet brief."
+		summary: "获取推文摘要"
+		description: "获取推文的简短摘要信息，适用于列表展示场景。"
 	)
 	@handler TweetsBrief
 	get /v1/tweets/brief (TweetsBriefReq) returns (Envelope)
 
 	@doc (
-		summary: "Get tweet quotes."
+		summary: "获取转推引用列表"
+		description: "获取引用转推（Quote Tweets）该推文的列表。包含原始推文和引用者的评论。"
 	)
 	@handler TweetsQuotes
 	get /v1/tweets/quotes (TweetsQuotesReq) returns (Envelope)
 
 	@doc (
-		summary: "Get tweet retweeters."
+		summary: "获取转推用户列表"
+		description: "获取转发了该推文的用户列表。"
 	)
 	@handler TweetsRetweeters
 	get /v1/tweets/retweeters (TweetsRetweetersReq) returns (Envelope)
 
 	@doc (
-		summary: "Get tweet favoriters."
+		summary: "获取点赞用户列表"
+		description: "获取点赞了该推文的用户列表。"
 	)
 	@handler TweetsFavoriters
 	get /v1/tweets/favoriters (TweetsFavoritersReq) returns (Envelope)
 
 	@doc (
-		summary: "Get user mentions timeline."
+		summary: "获取用户@提及时间线"
+		description: "获取当前用户被@提及的所有推文时间线。按时间倒序返回，支持sinceId、maxId进行范围过滤。"
 	)
 	@handler UsersMentionsTimeline
 	get /v1/users/mentions-timeline (UsersMentionsTimelineReq) returns (Envelope)
 
 	@doc (
-		summary: "Search tweets."
+		summary: "搜索推文"
+		description: "功能强大的推文搜索接口，支持关键词、短语匹配、时间范围、互动数过滤等多种搜索条件组合。"
 	)
 	@handler SearchTweets
 	get /v1/search/tweets (SearchTweetsReq) returns (Envelope)
 
 	@doc (
-		summary: "Get trending search terms."
+		summary: "获取热门搜索词"
+		description: "获取当前热门搜索话题列表，反映当下的流行趋势和热点事件。"
 	)
 	@handler SearchTrending
 	get /v1/search/trending (SearchTrendingReq) returns (Envelope)
 
 	@doc (
-		summary: "List search trends."
+		summary: "获取搜索趋势详情"
+		description: "根据趋势ID获取特定搜索趋势的详细信息。"
 	)
 	@handler SearchTrends
 	get /v1/search/trends (SearchTrendsReq) returns (Envelope)
 
 	@doc (
-		summary: "Search the box."
+		summary: "搜索盒子"
+		description: "综合搜索接口，支持多种搜索类型，返回聚合的搜索结果。"
 	)
 	@handler SearchBox
 	get /v1/search/box (SearchBoxReq) returns (Envelope)
 
 	@doc (
-		summary: "Get explore search."
+		summary: "探索搜索"
+		description: "发现页探索搜索，返回推荐内容和热门话题相关的推文。"
 	)
 	@handler SearchExplore
 	get /v1/search/explore (SearchExploreReq) returns (Envelope)
 
 	@doc (
-		summary: "Get news search."
+		summary: "新闻搜索"
+		description: "搜索新闻相关的推文，优先返回包含新闻内容的结果。"
 	)
 	@handler SearchNews
 	get /v1/search/news (SearchNewsReq) returns (Envelope)
 
 	@doc (
-		summary: "Get sports search."
+		summary: "体育搜索"
+		description: "搜索体育相关的推文，涵盖各类体育赛事、运动员相关的内容。"
 	)
 	@handler SearchSports
 	get /v1/search/sports (SearchSportsReq) returns (Envelope)
 
 	@doc (
-		summary: "Get entertainment search."
+		summary: "娱乐搜索"
+		description: "搜索娱乐相关的推文，包括影视、音乐、明星、八卦等内容。"
 	)
 	@handler SearchEntertainment
 	get /v1/search/entertainment (SearchEntertainmentReq) returns (Envelope)
 
 	@doc (
-		summary: "Get username changes."
+		summary: "获取用户名变更记录"
+		description: "查询特定用户名在历史上发生过的变更记录。适用于审计或追溯用户身份变化的场景。"
 	)
 	@handler UsersUsernameChanges
 	get /v1/users/username-changes (UsersUsernameChangesReq) returns (Envelope)
 
 	@doc (
-		summary: "Get user likes."
+		summary: "获取用户点赞列表"
+		description: "获取指定用户点赞过的推文列表。需要提供授权令牌来访问私有账户的点赞列表。"
 	)
 	@handler UsersLikes
 	get /v1/users/likes (UsersLikesReq) returns (Envelope)
 
 	@doc (
-		summary: "Get user highlights."
+		summary: "获取用户高亮推文"
+		description: "获取用户标记为高亮的推文列表。高亮推文是用户在个人资料中置顶展示的推文。"
 	)
 	@handler UsersHighlights
 	get /v1/users/highlights (UsersHighlightsReq) returns (Envelope)
 
 	@doc (
-		summary: "Get user articles tweets."
+		summary: "获取用户文章推文"
+		description: "获取用户发布的包含文章链接的推文列表。适用于分析用户内容创作习惯。"
 	)
 	@handler UsersArticlesTweets
 	get /v1/users/articles-tweets (UsersArticlesTweetsReq) returns (Envelope)
 
 	@doc (
-		summary: "Get user account analytics."
+		summary: "获取用户账户分析数据"
+		description: "获取指定用户的账户分析统计数据，包括关注者增长、互动率等指标。"
 	)
 	@handler UsersAccountAnalytics
 	get /v1/users/account-analytics (UsersAccountAnalyticsReq) returns (Envelope)
 
 	@doc (
-		summary: "Get user followers."
+		summary: "获取用户粉丝列表"
+		description: "获取指定用户的关注者（粉丝）列表。支持分页翻页查询。"
 	)
 	@handler UsersFollowers
 	get /v1/users/followers (UsersFollowersReq) returns (Envelope)
 
 	@doc (
-		summary: "Get user followings."
+		summary: "获取用户关注列表"
+		description: "获取指定用户关注的账号列表（关注的人）。支持分页翻页查询。"
 	)
 	@handler UsersFollowings
 	get /v1/users/followings (UsersFollowingsReq) returns (Envelope)
 
 	@doc (
-		summary: "Get lists."
+		summary: "获取列表"
+		description: "获取用户创建的推文列表（List）。可以按用户ID或用户名查询该用户拥有或订阅的列表。"
 	)
 	@handler Lists
 	get /v1/lists (ListsReq) returns (Envelope)
 
 	@doc (
-		summary: "Get communities."
+		summary: "获取社区"
+		description: "获取社区（Community）的详细信息。社区是一组围绕特定话题或兴趣聚集的用户群体。"
 	)
 	@handler Communities
 	get /v1/communities (CommunitiesReq) returns (Envelope)
+
+	@doc (
+		summary: "创建周期采集任务"
+		description: "创建一个周期性执行的采集任务，按指定频率持续采集符合关键词的推文。适用于长期监控特定话题的场景。"
+	)
+	@handler CreatePeriodicCollectorTask
+	post /v1/collector/tasks/periodic (CreatePeriodicCollectorTaskReq) returns (Envelope)
+
+	@doc (
+		summary: "创建范围采集任务"
+		description: "创建一个在指定时间范围内执行一次性的采集任务。适用于回溯历史数据或限时监控场景。"
+	)
+	@handler CreateRangeCollectorTask
+	post /v1/collector/tasks/range (CreateRangeCollectorTaskReq) returns (Envelope)
+
+	@doc (
+		summary: "获取采集任务"
+		description: "根据任务ID获取采集任务的详细信息和当前状态。"
+	)
+	@handler GetCollectorTask
+	get /v1/collector/tasks/:id (CollectorTaskPathReq) returns (Envelope)
+
+	@doc (
+		summary: "获取采集任务执行记录"
+		description: "获取采集任务的历次执行记录，包括每次执行的采集数量、状态、时间等信息。"
+	)
+	@handler ListCollectorTaskRuns
+	get /v1/collector/tasks/:id/runs (CollectorTaskPathReq) returns (Envelope)
+
+	@doc (
+		summary: "停止采集任务"
+		description: "停止指定采集任务，阻止后续调度；若当前存在执行中的 run，会在本次 run 安全结束后停止。"
+	)
+	@handler StopCollectorTask
+	post /v1/collector/tasks/:id/stop (CollectorTaskPathReq) returns (Envelope)
 }

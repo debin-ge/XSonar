@@ -26,6 +26,12 @@ type Envelope struct {
 	RequestID string      `json:"request_id,optional"`
 }
 
+type IssueGatewayTokenReq struct {
+	TenantID string `json:"tenant_id"`
+	AppID    string `json:"app_id"`
+	TTL      int64  `json:"ttl"`
+}
+
 type GetTenantDetailReq struct {
 	Id string `path:"id"`
 }
@@ -46,10 +52,6 @@ type PublishPolicyConfigReq struct {
 	DeniedParams         []string          `json:"denied_params,optional"`
 	DefaultParams        map[string]string `json:"default_params,optional"`
 	ProviderCredentialID string            `json:"provider_credential_id"`
-}
-
-type RotateAppSecretReq struct {
-	Id string `path:"id"`
 }
 
 type UpdateAppQuotaReq struct {

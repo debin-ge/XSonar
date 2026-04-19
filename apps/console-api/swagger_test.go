@@ -93,6 +93,26 @@ func TestAddSwaggerRoutesServesEmbeddedConsoleSpec(t *testing.T) {
 		t.Fatalf("expected login operation to remain public, got %#v", loginOperation["security"])
 	}
 
+	gatewayTokenPath, ok := paths["/admin/v1/gateway/token"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected /admin/v1/gateway/token path in swagger doc, got %#v", paths["/admin/v1/gateway/token"])
+	}
+	gatewayTokenOperation, ok := gatewayTokenPath["post"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected POST /admin/v1/gateway/token operation, got %#v", gatewayTokenPath["post"])
+	}
+	operationSecurity, ok = gatewayTokenOperation["security"].([]any)
+	if !ok || len(operationSecurity) == 0 {
+		t.Fatalf("expected POST /admin/v1/gateway/token security requirement, got %#v", gatewayTokenOperation["security"])
+	}
+	adminBearerSecurity, ok = operationSecurity[0].(map[string]any)
+	if !ok {
+		t.Fatalf("expected security requirement object, got %#v", operationSecurity[0])
+	}
+	if _, ok := adminBearerSecurity["adminBearer"]; !ok {
+		t.Fatalf("expected adminBearer security requirement, got %#v", adminBearerSecurity)
+	}
+
 	req = httptest.NewRequest(http.MethodGet, "/swagger/index.html", nil)
 	rec = httptest.NewRecorder()
 

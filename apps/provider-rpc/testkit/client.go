@@ -10,36 +10,37 @@ import (
 	providersvc "xsonar/apps/provider-rpc/internal/svc"
 	"xsonar/pkg/clients"
 	"xsonar/pkg/proto/providerpb"
-	"xsonar/pkg/shared"
 	"xsonar/pkg/xlog"
 
 	"github.com/zeromicro/go-zero/zrpc"
 	"google.golang.org/grpc"
 )
 
+type ProviderConfig = providerconfig.ProviderConfig
+
 func NewClient(logger *xlog.Logger) (clients.ProviderRPC, func(), error) {
-	return NewClientWithConfigAndHTTPClient(logger, providerinternal.ProviderDefaults(), nil)
+	return NewClientWithConfigAndHTTPClient(logger, providerconfig.ProviderConfig{}, nil)
 }
 
-func NewClientWithConfig(logger *xlog.Logger, config shared.Config) (clients.ProviderRPC, func(), error) {
-	return NewClientWithConfigAndHTTPClient(logger, config, nil)
+func NewClientWithConfig(logger *xlog.Logger, cfg ProviderConfig) (clients.ProviderRPC, func(), error) {
+	return NewClientWithConfigAndHTTPClient(logger, cfg, nil)
 }
 
-func NewClientWithConfigAndHTTPClient(logger *xlog.Logger, config shared.Config, client *http.Client) (clients.ProviderRPC, func(), error) {
+func NewClientWithConfigAndHTTPClient(logger *xlog.Logger, cfg ProviderConfig, client *http.Client) (clients.ProviderRPC, func(), error) {
 	if logger == nil {
 		logger = xlog.NewStdout("provider-rpc-test")
 	}
 
 	svcCtx := &providersvc.ServiceContext{
 		Config: providerconfig.Config{
-			ProviderBaseURL:      config.ProviderBaseURL,
-			ProviderHealthPath:   config.ProviderHealthPath,
-			ProviderAPIKeyHeader: config.ProviderAPIKeyHeader,
-			ProviderTimeoutMS:    config.ProviderTimeoutMS,
-			ProviderRetryCount:   config.ProviderRetryCount,
+			ProviderBaseURL:      cfg.BaseURL,
+			ProviderHealthPath:   cfg.HealthPath,
+			ProviderAPIKeyHeader: cfg.APIKeyHeader,
+			ProviderTimeoutMS:    cfg.TimeoutMS,
+			ProviderRetryCount:   cfg.RetryCount,
 		},
 		Logger: logger,
-		Bridge: providerinternal.NewBridge(config, client, logger),
+		Bridge: providerinternal.NewBridge(cfg, client, logger),
 	}
 
 	listener, err := net.Listen("tcp", "127.0.0.1:0")

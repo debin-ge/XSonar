@@ -1,0 +1,21 @@
+Name: collector-worker-rpc
+ListenOn: 0.0.0.0:9005
+Mode: dev
+Timeout: 5000
+PolicyRPC:
+  Endpoints:
+    - policy-rpc:9002
+  Timeout: 5000
+ProviderRPC:
+  Endpoints:
+    - provider-rpc:9003
+  Timeout: 10000
+QueueStream: collector:runs
+QueueGroup: collector-workers
+QueueBlockMS: 2000
+RunLeaseTTLMS: 120000
+LeaseRenewIntervalMS: 30000
+PeriodicRunMaxPages: 20
+NDJSONFlushEveryRecords: 100
+NDJSONFsyncOnClose: true
+OutputRootDir: runtime/collector

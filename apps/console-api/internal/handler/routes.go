@@ -25,11 +25,6 @@ func RegisterHandlers(server *rest.Server, serverCtx *svc.ServiceContext) {
 				Handler: serverCtx.Bridge.HandleUpdateAppQuota,
 			},
 			{
-				Method:  http.MethodPost,
-				Path:    "/admin/v1/apps/:id/secret:rotate",
-				Handler: serverCtx.Bridge.HandleRotateAppSecret,
-			},
-			{
 				Method:  http.MethodPut,
 				Path:    "/admin/v1/apps/:id/status",
 				Handler: serverCtx.Bridge.HandleUpdateAppStatus,
@@ -38,6 +33,11 @@ func RegisterHandlers(server *rest.Server, serverCtx *svc.ServiceContext) {
 				Method:  http.MethodPost,
 				Path:    "/admin/v1/auth/login",
 				Handler: serverCtx.Bridge.HandleLogin,
+			},
+			{
+				Method:  http.MethodPost,
+				Path:    "/admin/v1/gateway/token",
+				Handler: serverCtx.Bridge.HandleIssueGatewayToken,
 			},
 			{
 				Method:  http.MethodGet,

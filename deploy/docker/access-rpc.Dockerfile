@@ -1,6 +1,9 @@
 # syntax=docker/dockerfile:1.7
 
-FROM golang:1.25 AS build
+FROM --platform=$BUILDPLATFORM golang:1.25 AS build
+
+ARG TARGETOS=linux
+ARG TARGETARCH
 
 WORKDIR /src
 
@@ -11,7 +14,7 @@ RUN go mod download
 COPY apps ./apps
 COPY pkg ./pkg
 
-RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o /out/access-rpc ./apps/access-rpc
+RUN CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH go build -o /out/access-rpc ./apps/access-rpc
 
 FROM alpine:3.20
 

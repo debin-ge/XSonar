@@ -10,9 +10,12 @@ import (
 
 type Config struct {
 	rest.RestConf
-	AccessRPC   zrpc.RpcClientConf
-	PolicyRPC   zrpc.RpcClientConf
-	ProviderRPC zrpc.RpcClientConf
+	AccessRPC    zrpc.RpcClientConf
+	PolicyRPC    zrpc.RpcClientConf
+	ProviderRPC  zrpc.RpcClientConf
+	SchedulerRPC zrpc.RpcClientConf
+	JWTSecret    string `json:",default=xsonar-gateway-dev-secret"`
+	JWTIssuer    string `json:",default=xsonar-gateway"`
 
 	UsageStatQueueSize int `json:",default=1024"`
 	UsageStatWorkers   int `json:",default=2"`

@@ -20,19 +20,18 @@ type (
 	CheckReplayRequest             = accesspb.CheckReplayRequest
 	CreateTenantAppRequest         = accesspb.CreateTenantAppRequest
 	CreateTenantRequest            = accesspb.CreateTenantRequest
-	GetAppAuthContextRequest       = accesspb.GetAppAuthContextRequest
+	GetAppAuthContextByIDRequest   = accesspb.GetAppAuthContextByIDRequest
 	JsonResponse                   = accesspb.JsonResponse
 	ListTenantAppsRequest          = accesspb.ListTenantAppsRequest
 	ListTenantsRequest             = accesspb.ListTenantsRequest
 	QueryUsageStatsRequest         = accesspb.QueryUsageStatsRequest
 	RecordUsageStatRequest         = accesspb.RecordUsageStatRequest
 	ReleaseQuotaOnFailureRequest   = accesspb.ReleaseQuotaOnFailureRequest
-	RotateAppSecretRequest         = accesspb.RotateAppSecretRequest
 	UpdateAppQuotaRequest          = accesspb.UpdateAppQuotaRequest
 	UpdateTenantAppStatusRequest   = accesspb.UpdateTenantAppStatusRequest
 
 	AccessService interface {
-		GetAppAuthContext(ctx context.Context, in *GetAppAuthContextRequest, opts ...grpc.CallOption) (*JsonResponse, error)
+		GetAppAuthContextByID(ctx context.Context, in *GetAppAuthContextByIDRequest, opts ...grpc.CallOption) (*JsonResponse, error)
 		CheckReplay(ctx context.Context, in *CheckReplayRequest, opts ...grpc.CallOption) (*JsonResponse, error)
 		CheckAndReserveQuota(ctx context.Context, in *CheckAndReserveQuotaRequest, opts ...grpc.CallOption) (*JsonResponse, error)
 		ReleaseQuotaOnFailure(ctx context.Context, in *ReleaseQuotaOnFailureRequest, opts ...grpc.CallOption) (*JsonResponse, error)
@@ -43,7 +42,6 @@ type (
 		ListTenants(ctx context.Context, in *ListTenantsRequest, opts ...grpc.CallOption) (*JsonResponse, error)
 		CreateTenantApp(ctx context.Context, in *CreateTenantAppRequest, opts ...grpc.CallOption) (*JsonResponse, error)
 		ListTenantApps(ctx context.Context, in *ListTenantAppsRequest, opts ...grpc.CallOption) (*JsonResponse, error)
-		RotateAppSecret(ctx context.Context, in *RotateAppSecretRequest, opts ...grpc.CallOption) (*JsonResponse, error)
 		UpdateTenantAppStatus(ctx context.Context, in *UpdateTenantAppStatusRequest, opts ...grpc.CallOption) (*JsonResponse, error)
 		UpdateAppQuota(ctx context.Context, in *UpdateAppQuotaRequest, opts ...grpc.CallOption) (*JsonResponse, error)
 		CheckIpBan(ctx context.Context, in *CheckIpBanRequest, opts ...grpc.CallOption) (*JsonResponse, error)
@@ -60,9 +58,9 @@ func NewAccessService(cli zrpc.Client) AccessService {
 	}
 }
 
-func (m *defaultAccessService) GetAppAuthContext(ctx context.Context, in *GetAppAuthContextRequest, opts ...grpc.CallOption) (*JsonResponse, error) {
+func (m *defaultAccessService) GetAppAuthContextByID(ctx context.Context, in *GetAppAuthContextByIDRequest, opts ...grpc.CallOption) (*JsonResponse, error) {
 	client := accesspb.NewAccessServiceClient(m.cli.Conn())
-	return client.GetAppAuthContext(ctx, in, opts...)
+	return client.GetAppAuthContextByID(ctx, in, opts...)
 }
 
 func (m *defaultAccessService) CheckReplay(ctx context.Context, in *CheckReplayRequest, opts ...grpc.CallOption) (*JsonResponse, error) {
@@ -113,11 +111,6 @@ func (m *defaultAccessService) CreateTenantApp(ctx context.Context, in *CreateTe
 func (m *defaultAccessService) ListTenantApps(ctx context.Context, in *ListTenantAppsRequest, opts ...grpc.CallOption) (*JsonResponse, error) {
 	client := accesspb.NewAccessServiceClient(m.cli.Conn())
 	return client.ListTenantApps(ctx, in, opts...)
-}
-
-func (m *defaultAccessService) RotateAppSecret(ctx context.Context, in *RotateAppSecretRequest, opts ...grpc.CallOption) (*JsonResponse, error) {
-	client := accesspb.NewAccessServiceClient(m.cli.Conn())
-	return client.RotateAppSecret(ctx, in, opts...)
 }
 
 func (m *defaultAccessService) UpdateTenantAppStatus(ctx context.Context, in *UpdateTenantAppStatusRequest, opts ...grpc.CallOption) (*JsonResponse, error) {

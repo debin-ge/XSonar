@@ -13,22 +13,33 @@ x-common-app-env: &common-app-env
   COMMON_REDIS_PASSWORD: "${COMMON_REDIS_PASSWORD:-}"
   COMMON_REDIS_DB: "${COMMON_REDIS_DB:-0}"
 
+x-multiarch-platforms: &multiarch-platforms
+  - linux/amd64
+  - linux/arm64
+
 services:
   gateway-api:
+    image: "${XSONAR_IMAGE_PREFIX:-xsonar}/gateway-api:${XSONAR_IMAGE_TAG:-latest}"
     build:
       context: ../..
       dockerfile: deploy/docker/gateway-api.Dockerfile
+      x-bake:
+        platforms: *multiarch-platforms
     env_file:
       - ${ENV_FILE:-.env}
     environment:
       <<: *common-app-env
       CONFIG: /app/config/gateway-api.yaml
+      GATEWAY_API_JWT_SECRET: "${GATEWAY_API_JWT_SECRET:-change-me-gateway-jwt-secret}"
+      GATEWAY_API_JWT_ISSUER: "${GATEWAY_API_JWT_ISSUER:-xsonar-gateway}"
     depends_on:
       access-rpc:
         condition: service_healthy
       policy-rpc:
         condition: service_healthy
       provider-rpc:
+        condition: service_healthy
+      scheduler-rpc:
         condition: service_healthy
       redis:
         condition: service_healthy
@@ -45,14 +56,19 @@ services:
       - xsonar-net
 
   console-api:
+    image: "${XSONAR_IMAGE_PREFIX:-xsonar}/console-api:${XSONAR_IMAGE_TAG:-latest}"
     build:
       context: ../..
       dockerfile: deploy/docker/console-api.Dockerfile
+      x-bake:
+        platforms: *multiarch-platforms
     env_file:
       - ${ENV_FILE:-.env}
     environment:
       <<: *common-app-env
       CONFIG: /app/config/console-api.yaml
+      CONSOLE_API_GATEWAY_JWT_SECRET: "${CONSOLE_API_GATEWAY_JWT_SECRET:-${GATEWAY_API_JWT_SECRET:-change-me-gateway-jwt-secret}}"
+      CONSOLE_API_GATEWAY_JWT_ISSUER: "${CONSOLE_API_GATEWAY_JWT_ISSUER:-${GATEWAY_API_JWT_ISSUER:-xsonar-gateway}}"
     depends_on:
       access-rpc:
         condition: service_healthy
@@ -73,9 +89,12 @@ services:
       - xsonar-net
 
   access-rpc:
+    image: "${XSONAR_IMAGE_PREFIX:-xsonar}/access-rpc:${XSONAR_IMAGE_TAG:-latest}"
     build:
       context: ../..
       dockerfile: deploy/docker/access-rpc.Dockerfile
+      x-bake:
+        platforms: *multiarch-platforms
     env_file:
       - ${ENV_FILE:-.env}
     environment:
@@ -99,9 +118,12 @@ services:
       - xsonar-net
 
   policy-rpc:
+    image: "${XSONAR_IMAGE_PREFIX:-xsonar}/policy-rpc:${XSONAR_IMAGE_TAG:-latest}"
     build:
       context: ../..
       dockerfile: deploy/docker/policy-rpc.Dockerfile
+      x-bake:
+        platforms: *multiarch-platforms
     env_file:
       - ${ENV_FILE:-.env}
     environment:
@@ -123,9 +145,12 @@ services:
       - xsonar-net
 
   provider-rpc:
+    image: "${XSONAR_IMAGE_PREFIX:-xsonar}/provider-rpc:${XSONAR_IMAGE_TAG:-latest}"
     build:
       context: ../..
       dockerfile: deploy/docker/provider-rpc.Dockerfile
+      x-bake:
+        platforms: *multiarch-platforms
     env_file:
       - ${ENV_FILE:-.env}
     environment:
@@ -135,6 +160,68 @@ services:
       - ../../runtime/logs/provider-rpc:/app/runtime/logs/provider-rpc
     healthcheck:
       test: ["CMD-SHELL", "nc -z 127.0.0.1 $${PROVIDER_RPC_LISTEN_ON##*:} || exit 1"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    networks:
+      - xsonar-net
+
+  scheduler-rpc:
+    image: "${XSONAR_IMAGE_PREFIX:-xsonar}/scheduler-rpc:${XSONAR_IMAGE_TAG:-latest}"
+    build:
+      context: ../..
+      dockerfile: deploy/docker/scheduler-rpc.Dockerfile
+      x-bake:
+        platforms: *multiarch-platforms
+    env_file:
+      - ${ENV_FILE:-.env}
+    environment:
+      <<: *common-app-env
+      CONFIG: /app/config/scheduler-rpc.yaml
+      SCHEDULER_RPC_LISTEN_ON: "${SCHEDULER_RPC_LISTEN_ON:-0.0.0.0:9004}"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - ../../runtime/logs/scheduler-rpc:/app/runtime/logs/scheduler-rpc
+    healthcheck:
+      test: ["CMD-SHELL", "nc -z 127.0.0.1 $${SCHEDULER_RPC_LISTEN_ON##*:} || exit 1"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    networks:
+      - xsonar-net
+
+  collector-worker-rpc:
+    image: "${XSONAR_IMAGE_PREFIX:-xsonar}/collector-worker-rpc:${XSONAR_IMAGE_TAG:-latest}"
+    build:
+      context: ../..
+      dockerfile: deploy/docker/collector-worker-rpc.Dockerfile
+      x-bake:
+        platforms: *multiarch-platforms
+    env_file:
+      - ${ENV_FILE:-.env}
+    environment:
+      <<: *common-app-env
+      CONFIG: /app/config/collector-worker-rpc.yaml
+      COLLECTOR_WORKER_RPC_LISTEN_ON: "${COLLECTOR_WORKER_RPC_LISTEN_ON:-0.0.0.0:9005}"
+      COLLECTOR_WORKER_RPC_PROVIDER_RPC_TIMEOUT: "${COLLECTOR_WORKER_RPC_PROVIDER_RPC_TIMEOUT:-10000}"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      policy-rpc:
+        condition: service_healthy
+      provider-rpc:
+        condition: service_healthy
+    volumes:
+      - ../../runtime/collector:/app/runtime/collector
+      - ../../runtime/logs/collector-worker-rpc:/app/runtime/logs/collector-worker-rpc
+    healthcheck:
+      test: ["CMD-SHELL", "nc -z 127.0.0.1 $${COLLECTOR_WORKER_RPC_LISTEN_ON##*:} || exit 1"]
       interval: 10s
       timeout: 3s
       retries: 5

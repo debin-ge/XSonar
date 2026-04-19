@@ -17,6 +17,7 @@ import (
 	"xsonar/apps/access-rpc/accessservice"
 	"xsonar/apps/policy-rpc/policyservice"
 	"xsonar/apps/provider-rpc/providerservice"
+	"xsonar/apps/scheduler-rpc/schedulerservice"
 	"xsonar/pkg/clients"
 	"xsonar/pkg/model"
 	"xsonar/pkg/shared"
@@ -38,12 +39,12 @@ func (s stubJSONClient) CheckIpBan(ctx context.Context, req *accessservice.Check
 	return s.call(ctx, "/rpc/CheckIpBan", req)
 }
 
-func (s stubJSONClient) GetAppAuthContext(ctx context.Context, req *accessservice.GetAppAuthContextRequest) (*clients.EnvelopeResponse, error) {
-	return s.call(ctx, "/rpc/GetAppAuthContext", req)
-}
-
-func (s stubJSONClient) CheckReplay(ctx context.Context, req *accessservice.CheckReplayRequest) (*clients.EnvelopeResponse, error) {
-	return s.call(ctx, "/rpc/CheckReplay", req)
+func (s stubJSONClient) GetAppAuthContextByID(ctx context.Context, req *accessservice.GetAppAuthContextByIDRequest) (*clients.EnvelopeResponse, error) {
+	resp, err := s.call(ctx, "/rpc/GetAppAuthContextByID", req)
+	if err == nil || !strings.Contains(err.Error(), "unexpected") {
+		return resp, err
+	}
+	return s.call(ctx, "/rpc/GetAppAuthContext", map[string]any{"app_id": req.AppId})
 }
 
 func (s stubJSONClient) CheckAndReserveQuota(ctx context.Context, req *accessservice.CheckAndReserveQuotaRequest) (*clients.EnvelopeResponse, error) {
@@ -70,16 +71,32 @@ func (s stubJSONClient) ExecutePolicy(ctx context.Context, req *providerservice.
 	return s.call(ctx, "/rpc/ExecutePolicy", req)
 }
 
+func (s stubJSONClient) CreateTask(ctx context.Context, req *schedulerservice.CreateTaskRequest) (*clients.EnvelopeResponse, error) {
+	return s.call(ctx, "/rpc/CreateTask", req)
+}
+
+func (s stubJSONClient) GetTask(ctx context.Context, req *schedulerservice.GetTaskRequest) (*clients.EnvelopeResponse, error) {
+	return s.call(ctx, "/rpc/GetTask", req)
+}
+
+func (s stubJSONClient) ListTaskRuns(ctx context.Context, req *schedulerservice.ListTaskRunsRequest) (*clients.EnvelopeResponse, error) {
+	return s.call(ctx, "/rpc/ListTaskRuns", req)
+}
+
+func (s stubJSONClient) StopTask(ctx context.Context, req *schedulerservice.StopTaskRequest) (*clients.EnvelopeResponse, error) {
+	return s.call(ctx, "/rpc/StopTask", req)
+}
+
 func setProductionAuthHeaders(req *http.Request, appKey, timestamp, nonce, signature string) {
-	req.Header.Set("AppKey", appKey)
-	req.Header.Set("Timestamp", timestamp)
-	req.Header.Set("Nonce", nonce)
-	req.Header.Set("Signature", signature)
+	req.Header.Set("Authorization", "Bearer "+mustSignGatewayAppJWTForTests(appKey))
+	_ = timestamp
+	_ = nonce
+	_ = signature
 }
 
 func setDevelopmentAuthHeaders(req *http.Request, appKey, appSecret string) {
-	req.Header.Set("AppKey", appKey)
-	req.Header.Set("AppSecret", appSecret)
+	req.Header.Set("Authorization", "Bearer "+mustSignGatewayAppJWTForTests(appKey))
+	_ = appSecret
 }
 
 func TestGatewayProxySuccess(t *testing.T) {
@@ -148,8 +165,11 @@ func TestGatewayProxySuccess(t *testing.T) {
 			if query["userIds"] != "1,2" {
 				t.Fatalf("expected userIds to be passed through, got %#v", query["userIds"])
 			}
-			if len(query) != 1 {
-				t.Fatalf("expected only caller query params to be forwarded, got %#v", query)
+			if len(query) != 2 {
+				t.Fatalf("expected only caller query params plus resFormat to be forwarded, got %#v", query)
+			}
+			if query["resFormat"] != "json" {
+				t.Fatalf("expected resFormat=json default, got %#v", query["resFormat"])
 			}
 			return okEnvelope(map[string]any{
 				"status_code":          200,
@@ -197,38 +217,250 @@ func TestGatewayProxySuccess(t *testing.T) {
 	}
 }
 
+func TestGatewayCreateCollectorTaskRejectsMissingBearerJWT(t *testing.T) {
+	svc := newGatewayServiceWithAdmin(
+		xlog.NewStdout("gateway-test"),
+		stubJSONClient{},
+		"test-secret",
+		"test-issuer",
+	)
+
+	req := httptest.NewRequest(http.MethodPost, "/admin/v1/collector/tasks", strings.NewReader(`{"task_id":"task-1","task_type":"periodic","keyword":"openai"}`))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+
+	svc.handleCreateCollectorTask(rec, req)
+
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("expected 401, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestGatewayCreateCollectorTaskUsesAdminJWTSubjectAsCreatedBy(t *testing.T) {
+	var recorded *schedulerservice.CreateTaskRequest
+	schedulerClient := stubJSONClient{
+		postFunc: func(_ context.Context, path string, payload any) (*clients.EnvelopeResponse, error) {
+			if path != "/rpc/CreateTask" {
+				return nil, errors.New("unexpected scheduler path: " + path)
+			}
+			recorded = payload.(*schedulerservice.CreateTaskRequest)
+			return okEnvelope(map[string]any{"task_id": "task-1"}), nil
+		},
+	}
+	svc := newGatewayServiceWithAdmin(
+		xlog.NewStdout("gateway-test"),
+		schedulerClient,
+		"test-secret",
+		"test-issuer",
+	)
+	token := mustSignAdminJWT(t, "test-secret", "test-issuer", "admin-user-1")
+
+	req := httptest.NewRequest(http.MethodPost, "/admin/v1/collector/tasks", strings.NewReader(`{"task_id":"task-1","task_type":"periodic","keyword":"openai","priority":5,"frequency_seconds":60}`))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+token)
+	rec := httptest.NewRecorder()
+
+	svc.handleCreateCollectorTask(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	if recorded == nil {
+		t.Fatal("expected scheduler request to be recorded")
+	}
+	if recorded.CreatedBy != "admin-user-1" {
+		t.Fatalf("expected created_by admin-user-1, got %q", recorded.CreatedBy)
+	}
+}
+
+func TestGatewayCreatePeriodicCollectorTaskForwardsPerRunCount(t *testing.T) {
+	var recorded *schedulerservice.CreateTaskRequest
+	schedulerClient := stubJSONClient{
+		postFunc: func(_ context.Context, path string, payload any) (*clients.EnvelopeResponse, error) {
+			if path != "/rpc/CreateTask" {
+				return nil, errors.New("unexpected scheduler path: " + path)
+			}
+			recorded = payload.(*schedulerservice.CreateTaskRequest)
+			return okEnvelope(map[string]any{"task_id": "task-1"}), nil
+		},
+	}
+	svc := newGatewayServiceWithAdmin(
+		xlog.NewStdout("gateway-test"),
+		schedulerClient,
+		"test-secret",
+		"test-issuer",
+	)
+	token := mustSignAdminJWT(t, "test-secret", "test-issuer", "admin-user-1")
+
+	req := httptest.NewRequest(http.MethodPost, "/admin/v1/collector/tasks", strings.NewReader(`{"task_id":"task-1","task_type":"periodic","keyword":"openai","frequency_seconds":60,"per_run_count":25,"required_count":100}`))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+token)
+	rec := httptest.NewRecorder()
+
+	svc.handleCreateCollectorTask(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	if recorded == nil || recorded.PerRunCount == nil {
+		t.Fatalf("expected per_run_count to be forwarded, got %#v", recorded)
+	}
+	if *recorded.PerRunCount != 25 {
+		t.Fatalf("expected per_run_count 25, got %d", *recorded.PerRunCount)
+	}
+}
+
+func TestGatewayCreateCollectorTaskMapsSchedulerConflictTo409(t *testing.T) {
+	schedulerClient := stubJSONClient{
+		postFunc: func(_ context.Context, path string, payload any) (*clients.EnvelopeResponse, error) {
+			if path != "/rpc/CreateTask" {
+				return nil, errors.New("unexpected scheduler path: " + path)
+			}
+			return &clients.EnvelopeResponse{
+				Code:    model.CodeConflict,
+				Message: "task already exists",
+				Data:    json.RawMessage(`{"task_id":"task-1"}`),
+			}, errors.New("scheduler conflict")
+		},
+	}
+	svc := newGatewayServiceWithAdmin(
+		xlog.NewStdout("gateway-test"),
+		schedulerClient,
+		"test-secret",
+		"test-issuer",
+	)
+	token := mustSignAdminJWT(t, "test-secret", "test-issuer", "admin-user-1")
+
+	req := httptest.NewRequest(http.MethodPost, "/admin/v1/collector/tasks", strings.NewReader(`{"task_id":"task-1","task_type":"periodic","keyword":"openai"}`))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+token)
+	rec := httptest.NewRecorder()
+
+	svc.handleCreateCollectorTask(rec, req)
+
+	if rec.Code != http.StatusConflict {
+		t.Fatalf("expected 409, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestGatewayCreateCollectorTaskRejectsOversizedBody(t *testing.T) {
+	schedulerClient := stubJSONClient{
+		postFunc: func(_ context.Context, path string, payload any) (*clients.EnvelopeResponse, error) {
+			t.Fatalf("scheduler should not be called for oversized body: %s", path)
+			return nil, nil
+		},
+	}
+	svc := newGatewayServiceWithAdmin(
+		xlog.NewStdout("gateway-test"),
+		schedulerClient,
+		"test-secret",
+		"test-issuer",
+	)
+	token := mustSignAdminJWT(t, "test-secret", "test-issuer", "admin-user-1")
+	oversizedKeyword := strings.Repeat("x", 1<<20)
+	body := `{"task_id":"task-1","task_type":"periodic","keyword":"` + oversizedKeyword + `"}`
+
+	req := httptest.NewRequest(http.MethodPost, "/admin/v1/collector/tasks", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+token)
+	rec := httptest.NewRecorder()
+
+	svc.handleCreateCollectorTask(rec, req)
+
+	if rec.Code != http.StatusRequestEntityTooLarge {
+		t.Fatalf("expected 413, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestGatewayCollectorAdminGetRoutesForwardToScheduler(t *testing.T) {
+	tests := []struct {
+		name         string
+		url          string
+		handler      func(*gatewayService, http.ResponseWriter, *http.Request)
+		expectedPath string
+		expectedTask string
+	}{
+		{
+			name:         "get task detail",
+			url:          "/admin/v1/collector/tasks/task-1",
+			handler:      (*gatewayService).handleGetCollectorTask,
+			expectedPath: "/rpc/GetTask",
+			expectedTask: "task-1",
+		},
+		{
+			name:         "get task runs",
+			url:          "/admin/v1/collector/tasks/task-1/runs",
+			handler:      (*gatewayService).handleListCollectorTaskRuns,
+			expectedPath: "/rpc/ListTaskRuns",
+			expectedTask: "task-1",
+		},
+		{
+			name:         "stop task",
+			url:          "/admin/v1/collector/tasks/task-1/stop",
+			handler:      (*gatewayService).handleStopCollectorTask,
+			expectedPath: "/rpc/StopTask",
+			expectedTask: "task-1",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var calledPath string
+			var calledTaskID string
+			schedulerClient := stubJSONClient{
+				postFunc: func(_ context.Context, path string, payload any) (*clients.EnvelopeResponse, error) {
+					calledPath = path
+					switch req := payload.(type) {
+					case *schedulerservice.GetTaskRequest:
+						calledTaskID = req.TaskId
+					case *schedulerservice.ListTaskRunsRequest:
+						calledTaskID = req.TaskId
+					case *schedulerservice.StopTaskRequest:
+						calledTaskID = req.TaskId
+					default:
+						t.Fatalf("unexpected scheduler payload type %T", payload)
+					}
+					return okEnvelope(map[string]any{"task_id": calledTaskID}), nil
+				},
+			}
+			svc := newGatewayServiceWithAdmin(
+				xlog.NewStdout("gateway-test"),
+				schedulerClient,
+				"test-secret",
+				"test-issuer",
+			)
+			token := mustSignAdminJWT(t, "test-secret", "test-issuer", "admin-user-1")
+
+			req := httptest.NewRequest(http.MethodGet, tt.url, nil)
+			req.SetPathValue("id", tt.expectedTask)
+			req.Header.Set("Authorization", "Bearer "+token)
+			rec := httptest.NewRecorder()
+
+			tt.handler(svc, rec, req)
+
+			if rec.Code != http.StatusOK {
+				t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+			}
+			if calledPath != tt.expectedPath {
+				t.Fatalf("expected path %s, got %s", tt.expectedPath, calledPath)
+			}
+			if calledTaskID != tt.expectedTask {
+				t.Fatalf("expected task id %s, got %s", tt.expectedTask, calledTaskID)
+			}
+		})
+	}
+}
+
 func TestGatewayRejectsInvalidSignature(t *testing.T) {
 	svc := newGatewayServiceWithClients(
 		xlog.NewStdout("gateway-test"),
-		stubJSONClient{
-			postFunc: func(_ context.Context, path string, payload any) (*clients.EnvelopeResponse, error) {
-				if path == "/rpc/GetAppAuthContext" {
-					return okEnvelope(map[string]any{
-						"tenant_id":  "tenant_1",
-						"app_id":     "app_1",
-						"app_key":    "app_key_1",
-						"app_secret": "secret_1",
-						"status":     "active",
-					}), nil
-				}
-				if path == "/rpc/CheckIpBan" {
-					return okEnvelope(map[string]any{"blocked": false}), nil
-				}
-				return nil, errors.New("unexpected access path")
-			},
-		},
+		stubJSONClient{},
 		stubJSONClient{},
 		stubJSONClient{},
 	)
 
-	query := url.Values{}
-	query.Set("userIds", "1,2")
-	query.Set("timestamp", strconv.FormatInt(time.Now().UTC().Unix(), 10))
-	timestamp := query.Get("timestamp")
-	query.Del("timestamp")
-
-	req := httptest.NewRequest(http.MethodGet, "/v1/users/by-ids?"+query.Encode(), nil)
-	setProductionAuthHeaders(req, "app_key_1", timestamp, "nonce-1", "wrong-signature")
+	req := httptest.NewRequest(http.MethodGet, "/v1/users/by-ids?userIds=1,2", nil)
+	req.Header.Set("Authorization", "Bearer invalid-token")
 	rec := httptest.NewRecorder()
 	svc.handleProxy(rec, req)
 
@@ -397,10 +629,11 @@ func TestGatewayPreservesTweetDetailQueryParams(t *testing.T) {
 				t.Fatalf("decode query json: %v", err)
 			}
 			expected := map[string]any{
-				"tweetId": "1971453180132327700",
+				"tweetId":   "1971453180132327700",
+				"resFormat": "json",
 			}
 			if !reflect.DeepEqual(query, expected) {
-				t.Fatalf("expected gateway to forward caller query unchanged, got %#v", query)
+				t.Fatalf("expected gateway to forward caller query unchanged plus resFormat, got %#v", query)
 			}
 			return okEnvelope(map[string]any{
 				"status_code":          200,
@@ -675,6 +908,7 @@ func TestGatewayPreservesAccountAnalyticsQueryParams(t *testing.T) {
 				"restId":    "rest-1",
 				"authToken": "auth-1",
 				"csrfToken": "csrf-1",
+				"resFormat": "json",
 			}
 			if !reflect.DeepEqual(query, expected) {
 				t.Fatalf("unexpected provider query: %#v", query)
@@ -1066,31 +1300,14 @@ func TestGatewayDevModeRejectsQueryAuthParameters(t *testing.T) {
 func TestGatewayDevModeRejectsInvalidAppSecret(t *testing.T) {
 	svc := newGatewayServiceWithMode(
 		xlog.NewStdout("gateway-test"),
-		stubJSONClient{
-			postFunc: func(_ context.Context, path string, payload any) (*clients.EnvelopeResponse, error) {
-				switch path {
-				case "/rpc/CheckIpBan":
-					return okEnvelope(map[string]any{"blocked": false}), nil
-				case "/rpc/GetAppAuthContext":
-					return okEnvelope(map[string]any{
-						"tenant_id":  "tenant_1",
-						"app_id":     "app_1",
-						"app_key":    "app_key_1",
-						"app_secret": "secret_1",
-						"status":     "active",
-					}), nil
-				default:
-					return nil, errors.New("unexpected access path: " + path)
-				}
-			},
-		},
+		stubJSONClient{},
 		stubJSONClient{},
 		stubJSONClient{},
 		"dev",
 	)
 
 	req := httptest.NewRequest(http.MethodGet, "/v1/users/by-ids", nil)
-	setDevelopmentAuthHeaders(req, "app_key_1", "wrong-secret")
+	req.Header.Set("Authorization", "Bearer invalid-token")
 	rec := httptest.NewRecorder()
 
 	svc.handleProxy(rec, req)
@@ -1448,26 +1665,33 @@ func TestNormalizeProviderQueryLeavesSearchTweetsWithoutCountUnchanged(t *testin
 
 	got := normalizeProviderQuery("search_tweets_v1", "/base/apitools/search", query)
 
-	expected := map[string]any{"words": "ai"}
+	expected := map[string]any{
+		"words":     "ai",
+		"product":   "Top",
+		"resFormat": "json",
+	}
 	if !reflect.DeepEqual(got, expected) {
-		t.Fatalf("expected search tweets query to be unchanged, got %#v", got)
+		t.Fatalf("expected search tweets query to default product=Top and resFormat=json, got %#v", got)
 	}
 }
 
 func TestNormalizeProviderQueryLeavesExplicitSearchTweetsCountUnchanged(t *testing.T) {
 	query := map[string]any{
-		"words": "ai",
-		"count": "100",
+		"words":   "ai",
+		"count":   "100",
+		"product": "Latest",
 	}
 
 	got := normalizeProviderQuery("search_tweets_v1", "/base/apitools/search", query)
 
 	expected := map[string]any{
-		"words": "ai",
-		"count": "100",
+		"words":     "ai",
+		"count":     "100",
+		"product":   "Latest",
+		"resFormat": "json",
 	}
 	if !reflect.DeepEqual(got, expected) {
-		t.Fatalf("expected explicit count to be preserved, got %#v", got)
+		t.Fatalf("expected explicit search tweets params to be preserved, got %#v", got)
 	}
 }
 
@@ -1480,11 +1704,51 @@ func TestNormalizeProviderQueryLeavesInvalidSearchTweetsCountUnchanged(t *testin
 	got := normalizeProviderQuery("search_tweets_v1", "/base/apitools/search", query)
 
 	expected := map[string]any{
-		"words": "ai",
-		"count": "abc",
+		"words":     "ai",
+		"count":     "abc",
+		"product":   "Top",
+		"resFormat": "json",
 	}
 	if !reflect.DeepEqual(got, expected) {
 		t.Fatalf("expected invalid count to be preserved for provider passthrough, got %#v", got)
+	}
+}
+
+func TestFormatGatewaySuccessDataDecodesJSONWhenResFormatIsEmpty(t *testing.T) {
+	got := formatGatewaySuccessData("", json.RawMessage(`{"items":[{"id":"1"}]}`))
+
+	data, ok := got.(map[string]any)
+	if !ok {
+		t.Fatalf("expected structured object, got %#v", got)
+	}
+	items, ok := data["items"].([]any)
+	if !ok || len(items) != 1 {
+		t.Fatalf("expected decoded items payload, got %#v", got)
+	}
+}
+
+func TestFormatGatewaySuccessDataDecodesJSONWhenResFormatIsJSON(t *testing.T) {
+	got := formatGatewaySuccessData("json", json.RawMessage(`[{"id":"1"}]`))
+
+	items, ok := got.([]any)
+	if !ok || len(items) != 1 {
+		t.Fatalf("expected decoded array payload, got %#v", got)
+	}
+}
+
+func TestFormatGatewaySuccessDataReturnsRawStringWhenResFormatIsNotJSON(t *testing.T) {
+	got := formatGatewaySuccessData("xml", json.RawMessage(`"<items><id>1</id></items>"`))
+
+	if got != `<items><id>1</id></items>` {
+		t.Fatalf("expected raw string payload, got %#v", got)
+	}
+}
+
+func TestFormatGatewaySuccessDataFallsBackToRawStringForInvalidJSON(t *testing.T) {
+	got := formatGatewaySuccessData("json", json.RawMessage(`not-json`))
+
+	if got != `not-json` {
+		t.Fatalf("expected raw string fallback, got %#v", got)
 	}
 }
 
@@ -1505,8 +1769,9 @@ func TestNormalizeProviderQueryLeavesReadonlyAliasParamsUnchanged(t *testing.T) 
 				"cursor":  "cursor-1",
 			},
 			expected: map[string]any{
-				"tweetId": "tweet-1",
-				"cursor":  "cursor-1",
+				"tweetId":   "tweet-1",
+				"cursor":    "cursor-1",
+				"resFormat": "json",
 			},
 		},
 		{
@@ -1526,6 +1791,7 @@ func TestNormalizeProviderQueryLeavesReadonlyAliasParamsUnchanged(t *testing.T) 
 				"includeEntities": "true",
 				"trimUser":        "false",
 				"cursor":          "cursor-1",
+				"resFormat":       "json",
 			},
 		},
 		{
@@ -1541,6 +1807,7 @@ func TestNormalizeProviderQueryLeavesReadonlyAliasParamsUnchanged(t *testing.T) 
 				"restId":    "rest-1",
 				"authToken": "auth-1",
 				"csrfToken": "csrf-1",
+				"resFormat": "json",
 			},
 		},
 	}
@@ -1636,8 +1903,10 @@ func TestGatewaySearchTweetsPreservesExplicitCount(t *testing.T) {
 				t.Fatalf("decode query json: %v", err)
 			}
 			expected := map[string]any{
-				"words": "ai gateway optimization",
-				"count": "100",
+				"words":     "ai gateway optimization",
+				"count":     "100",
+				"product":   "Top",
+				"resFormat": "json",
 			}
 			if !reflect.DeepEqual(query, expected) {
 				t.Fatalf("expected search tweets params to be forwarded unchanged, got %#v", query)
@@ -1654,8 +1923,7 @@ func TestGatewaySearchTweetsPreservesExplicitCount(t *testing.T) {
 	svc := newGatewayServiceWithMode(xlog.NewStdout("gateway-test"), accessClient, policyClient, providerClient, "dev")
 
 	req := httptest.NewRequest(http.MethodGet, "/v1/search/tweets?words=ai+gateway+optimization&count=100", nil)
-	req.Header.Set("AppKey", "app_key_search")
-	req.Header.Set("AppSecret", "secret_search")
+	req.Header.Set("Authorization", "Bearer "+mustSignGatewayAppJWTForTests("app_key_search"))
 	rec := httptest.NewRecorder()
 
 	svc.handleProxy(rec, req)
@@ -1728,7 +1996,9 @@ func TestGatewaySearchTweetsDoesNotInjectDefaultCount(t *testing.T) {
 				t.Fatalf("decode query json: %v", err)
 			}
 			expected := map[string]any{
-				"words": "ai gateway optimization",
+				"words":     "ai gateway optimization",
+				"product":   "Top",
+				"resFormat": "json",
 			}
 			if !reflect.DeepEqual(query, expected) {
 				t.Fatalf("expected search tweets query to omit default params, got %#v", query)
@@ -1745,14 +2015,189 @@ func TestGatewaySearchTweetsDoesNotInjectDefaultCount(t *testing.T) {
 	svc := newGatewayServiceWithMode(xlog.NewStdout("gateway-test"), accessClient, policyClient, providerClient, "dev")
 
 	req := httptest.NewRequest(http.MethodGet, "/v1/search/tweets?words=ai+gateway+optimization", nil)
-	req.Header.Set("AppKey", "app_key_search")
-	req.Header.Set("AppSecret", "secret_search")
+	req.Header.Set("Authorization", "Bearer "+mustSignGatewayAppJWTForTests("app_key_search"))
 	rec := httptest.NewRecorder()
 
 	svc.handleProxy(rec, req)
 
 	if rec.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestGatewayProxyReturnsRawStringDataWhenResFormatIsNotJSON(t *testing.T) {
+	accessClient := stubJSONClient{
+		postFunc: func(_ context.Context, path string, payload any) (*clients.EnvelopeResponse, error) {
+			switch path {
+			case "/rpc/CheckIpBan":
+				return okEnvelope(map[string]any{"blocked": false}), nil
+			case "/rpc/GetAppAuthContextByID":
+				return okEnvelope(map[string]any{
+					"tenant_id":   "tenant-1",
+					"app_id":      "app-1",
+					"status":      "active",
+					"daily_quota": 100,
+					"qps_limit":   10,
+				}), nil
+			case "/rpc/CheckAndReserveQuota":
+				return okEnvelope(map[string]any{"allowed": true}), nil
+			case "/rpc/RecordUsageStat":
+				return okEnvelope(map[string]any{"recorded": true}), nil
+			case "/rpc/ReleaseQuotaOnFailure":
+				return okEnvelope(map[string]any{"released": true}), nil
+			default:
+				return nil, errors.New("unexpected access path: " + path)
+			}
+		},
+	}
+
+	policyClient := stubJSONClient{
+		postFunc: func(_ context.Context, path string, payload any) (*clients.EnvelopeResponse, error) {
+			switch path {
+			case "/rpc/ResolvePolicy":
+				return okEnvelope(map[string]any{
+					"policy_key":       "users_by_ids_v1",
+					"upstream_method":  "GET",
+					"upstream_path":    "/base/apitools/usersByIdRestIds",
+					"allowed_params":   []string{"userIds", "resFormat"},
+					"denied_params":    []string{"proxyUrl", "auth_token"},
+					"default_params":   map[string]any{},
+					"provider_name":    "fapi.uk",
+					"provider_api_key": "provider-key-1",
+				}), nil
+			case "/rpc/CheckAppPolicyAccess":
+				return okEnvelope(map[string]any{"allowed": true}), nil
+			default:
+				return nil, errors.New("unexpected policy path: " + path)
+			}
+		},
+	}
+
+	providerClient := stubJSONClient{
+		postFunc: func(_ context.Context, path string, payload any) (*clients.EnvelopeResponse, error) {
+			if path != "/rpc/ExecutePolicy" {
+				return nil, errors.New("unexpected provider path: " + path)
+			}
+			return okEnvelope(map[string]any{
+				"status_code":          200,
+				"result_code":          "UPSTREAM_OK",
+				"body":                 "<items><id>1</id></items>",
+				"upstream_duration_ms": 12,
+			}), nil
+		},
+	}
+
+	svc := newGatewayServiceWithClients(xlog.NewStdout("gateway-test"), accessClient, policyClient, providerClient)
+	token := mustSignGatewayJWT(t, "gateway-secret", "gateway-issuer", "app-1")
+	svc.jwtSecret = "gateway-secret"
+	svc.jwtIssuer = "gateway-issuer"
+
+	req := httptest.NewRequest(http.MethodGet, "/v1/users/by-ids?userIds=1,2&resFormat=xml", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	rec := httptest.NewRecorder()
+
+	svc.handleProxy(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	var response struct {
+		Data any `json:"data"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &response); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if response.Data != "<items><id>1</id></items>" {
+		t.Fatalf("expected raw string data, got %#v", response.Data)
+	}
+}
+
+func TestGatewayProxyFallsBackToRawStringDataForInvalidJSONSuccessPayload(t *testing.T) {
+	accessClient := stubJSONClient{
+		postFunc: func(_ context.Context, path string, payload any) (*clients.EnvelopeResponse, error) {
+			switch path {
+			case "/rpc/CheckIpBan":
+				return okEnvelope(map[string]any{"blocked": false}), nil
+			case "/rpc/GetAppAuthContextByID":
+				return okEnvelope(map[string]any{
+					"tenant_id":   "tenant-1",
+					"app_id":      "app-1",
+					"status":      "active",
+					"daily_quota": 100,
+					"qps_limit":   10,
+				}), nil
+			case "/rpc/CheckAndReserveQuota":
+				return okEnvelope(map[string]any{"allowed": true}), nil
+			case "/rpc/RecordUsageStat":
+				return okEnvelope(map[string]any{"recorded": true}), nil
+			case "/rpc/ReleaseQuotaOnFailure":
+				return okEnvelope(map[string]any{"released": true}), nil
+			default:
+				return nil, errors.New("unexpected access path: " + path)
+			}
+		},
+	}
+
+	policyClient := stubJSONClient{
+		postFunc: func(_ context.Context, path string, payload any) (*clients.EnvelopeResponse, error) {
+			switch path {
+			case "/rpc/ResolvePolicy":
+				return okEnvelope(map[string]any{
+					"policy_key":       "users_by_ids_v1",
+					"upstream_method":  "GET",
+					"upstream_path":    "/base/apitools/usersByIdRestIds",
+					"allowed_params":   []string{"userIds", "resFormat"},
+					"denied_params":    []string{"proxyUrl", "auth_token"},
+					"default_params":   map[string]any{},
+					"provider_name":    "fapi.uk",
+					"provider_api_key": "provider-key-1",
+				}), nil
+			case "/rpc/CheckAppPolicyAccess":
+				return okEnvelope(map[string]any{"allowed": true}), nil
+			default:
+				return nil, errors.New("unexpected policy path: " + path)
+			}
+		},
+	}
+
+	providerClient := stubJSONClient{
+		postFunc: func(_ context.Context, path string, payload any) (*clients.EnvelopeResponse, error) {
+			if path != "/rpc/ExecutePolicy" {
+				return nil, errors.New("unexpected provider path: " + path)
+			}
+			return okEnvelope(map[string]any{
+				"status_code":          200,
+				"result_code":          "UPSTREAM_OK",
+				"body":                 "not-json",
+				"upstream_duration_ms": 12,
+			}), nil
+		},
+	}
+
+	svc := newGatewayServiceWithClients(xlog.NewStdout("gateway-test"), accessClient, policyClient, providerClient)
+	token := mustSignGatewayJWT(t, "gateway-secret", "gateway-issuer", "app-1")
+	svc.jwtSecret = "gateway-secret"
+	svc.jwtIssuer = "gateway-issuer"
+
+	req := httptest.NewRequest(http.MethodGet, "/v1/users/by-ids?userIds=1,2&resFormat=json", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	rec := httptest.NewRecorder()
+
+	svc.handleProxy(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	var response struct {
+		Data any `json:"data"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &response); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if response.Data != "not-json" {
+		t.Fatalf("expected raw string fallback data, got %#v", response.Data)
 	}
 }
 
@@ -1828,11 +2273,10 @@ func TestGatewayDoesNotBlockOnUsageStatRecording(t *testing.T) {
 	defer recorder.Close()
 	defer close(releaseRecordUsage)
 
-	svc := newGatewayServiceWithModeAndUsageStats(xlog.NewStdout("gateway-test"), accessClient, policyClient, providerClient, recorder, "dev")
+	svc := newGatewayServiceWithModeAndUsageStats(xlog.NewStdout("gateway-test"), accessClient, policyClient, providerClient, nil, "", "", recorder, "dev")
 
 	req := httptest.NewRequest(http.MethodGet, "/v1/search/tweets?words=ai+async+recording", nil)
-	req.Header.Set("AppKey", "app_key_async")
-	req.Header.Set("AppSecret", "secret_async")
+	req.Header.Set("Authorization", "Bearer "+mustSignGatewayAppJWTForTests("app_key_async"))
 	rec := httptest.NewRecorder()
 
 	start := time.Now()
@@ -1931,8 +2375,7 @@ func TestGatewayOverlapsIPBanAndPolicyResolution(t *testing.T) {
 	svc := newGatewayServiceWithMode(xlog.NewStdout("gateway-test"), accessClient, policyClient, providerClient, "dev")
 
 	req := httptest.NewRequest(http.MethodGet, "/v1/search/tweets?words=ai+overlap+ipban+policy", nil)
-	req.Header.Set("AppKey", "app_key_overlap_a")
-	req.Header.Set("AppSecret", "secret_overlap_a")
+	req.Header.Set("Authorization", "Bearer "+mustSignGatewayAppJWTForTests("app_key_overlap_a"))
 	rec := httptest.NewRecorder()
 
 	start := time.Now()
@@ -2025,8 +2468,7 @@ func TestGatewayOverlapsQuotaReservationAndPolicyAccess(t *testing.T) {
 	svc := newGatewayServiceWithMode(xlog.NewStdout("gateway-test"), accessClient, policyClient, providerClient, "dev")
 
 	req := httptest.NewRequest(http.MethodGet, "/v1/search/tweets?words=ai+overlap+quota+access", nil)
-	req.Header.Set("AppKey", "app_key_overlap_b")
-	req.Header.Set("AppSecret", "secret_overlap_b")
+	req.Header.Set("Authorization", "Bearer "+mustSignGatewayAppJWTForTests("app_key_overlap_b"))
 	rec := httptest.NewRecorder()
 
 	start := time.Now()
@@ -2048,6 +2490,23 @@ func okEnvelope(data any) *clients.EnvelopeResponse {
 		Message: "ok",
 		Data:    payload,
 	}
+}
+
+func mustSignAdminJWT(t *testing.T, secret, issuer, subject string) string {
+	t.Helper()
+	token, err := shared.SignJWT(secret, issuer, subject, "gateway_app", time.Hour, time.Now())
+	if err != nil {
+		t.Fatalf("sign jwt: %v", err)
+	}
+	return token
+}
+
+func mustSignGatewayAppJWTForTests(subject string) string {
+	token, err := shared.SignJWT(defaultGatewayJWTSecret, defaultGatewayJWTIssuer, subject, "gateway_app", time.Hour, time.Now())
+	if err != nil {
+		panic(err)
+	}
+	return token
 }
 
 func decodeSingleLogLine(t *testing.T, payload []byte) map[string]any {

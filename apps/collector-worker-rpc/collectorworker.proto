@@ -1,0 +1,19 @@
+syntax = "proto3";
+
+package xsonar.collectorworker.v1;
+
+option go_package = "xsonar/pkg/proto/collectorworkerpb";
+
+service CollectorWorkerService {
+  rpc GetWorkerState(GetWorkerStateRequest) returns (JsonResponse);
+}
+
+message JsonResponse {
+  int32 code = 1;
+  string message = 2;
+  string data_json = 3;
+}
+
+message GetWorkerStateRequest {
+  string worker_id = 1;
+}

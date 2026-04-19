@@ -8,6 +8,7 @@ import (
 	"github.com/zeromicro/go-zero/rest/httpx"
 	"github.com/zeromicro/go-zero/rest/pathvar"
 	"xsonar/apps/access-rpc/accessservice"
+	"xsonar/apps/console-api/internal/config"
 	"xsonar/apps/console-api/internal/types"
 	"xsonar/apps/policy-rpc/policyservice"
 	"xsonar/pkg/clients"
@@ -20,9 +21,9 @@ type Bridge struct {
 	svc *consoleService
 }
 
-func NewBridge(config shared.Config, logger *xlog.Logger, accessClient clients.AccessRPC, policyClient clients.PolicyRPC, providerClient clients.ProviderRPC) *Bridge {
+func NewBridge(cfg config.ConsoleConfig, logger *xlog.Logger, accessClient clients.AccessRPC, policyClient clients.PolicyRPC, providerClient clients.ProviderRPC) *Bridge {
 	return &Bridge{
-		svc: newConsoleServiceWithConfigAndAllClients(config, logger, accessClient, policyClient, providerClient),
+		svc: newConsoleServiceWithConfigAndAllClients(cfg, logger, accessClient, policyClient, providerClient),
 	}
 }
 
@@ -39,6 +40,10 @@ func (b *Bridge) HandleLogin(w http.ResponseWriter, r *http.Request) {
 
 func (b *Bridge) HandleListTenants(w http.ResponseWriter, r *http.Request) {
 	b.svc.handleListTenants(w, r)
+}
+
+func (b *Bridge) HandleIssueGatewayToken(w http.ResponseWriter, r *http.Request) {
+	b.svc.handleIssueGatewayToken(w, r)
 }
 
 func (b *Bridge) HandleCreateTenant(w http.ResponseWriter, r *http.Request) {
@@ -78,10 +83,6 @@ func (b *Bridge) HandleCreateTenantApp(w http.ResponseWriter, r *http.Request) {
 		DailyQuota: req.DailyQuota,
 		QpsLimit:   int32(req.QpsLimit),
 	})
-}
-
-func (b *Bridge) HandleRotateAppSecret(w http.ResponseWriter, r *http.Request) {
-	b.svc.handleRotateAppSecret(w, r)
 }
 
 func (b *Bridge) HandleUpdateAppStatus(w http.ResponseWriter, r *http.Request) {

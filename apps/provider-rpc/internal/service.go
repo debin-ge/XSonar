@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"xsonar/apps/provider-rpc/internal/config"
 	"xsonar/pkg/model"
 	"xsonar/pkg/shared"
 	"xsonar/pkg/xlog"
@@ -24,12 +25,11 @@ type providerServiceError struct {
 
 type providerService struct {
 	logger *xlog.Logger
-	config shared.Config
+	config config.ProviderConfig
 	client *http.Client
 }
 
 const maxUpstreamResponseBytes = 10 << 20
-const maxUpstreamLogPreviewChars = 256
 
 type executePolicyRequest struct {
 	RequestID      string         `json:"request_id"`
@@ -52,34 +52,24 @@ type providerExecutionResult struct {
 	UpstreamDurationMS int64           `json:"upstream_duration_ms"`
 }
 
-func ProviderDefaults() shared.Config {
-	cfg := shared.DefaultConfig("provider-rpc", 9003)
-	cfg.ProviderHealthPath = "/"
-	cfg.ProviderAPIKeyHeader = "apiKey"
-	cfg.ProviderTimeoutMS = 8000
-	cfg.ProviderRetryCount = 1
-	return cfg
-}
-
 func newProviderService(logger *xlog.Logger) *providerService {
-	return newProviderServiceWithConfigAndClient(ProviderDefaults(), nil, logger)
+	return newProviderServiceWithConfigAndClient(config.ProviderConfig{}, nil, logger)
 }
 
-func newProviderServiceWithConfig(config shared.Config, logger *xlog.Logger) *providerService {
-	return newProviderServiceWithConfigAndClient(config, nil, logger)
+func newProviderServiceWithConfig(cfg config.ProviderConfig, logger *xlog.Logger) *providerService {
+	return newProviderServiceWithConfigAndClient(cfg, nil, logger)
 }
 
-func newProviderServiceWithConfigAndClient(config shared.Config, client *http.Client, logger *xlog.Logger) *providerService {
-	config = normalizeProviderConfig(config)
+func newProviderServiceWithConfigAndClient(cfg config.ProviderConfig, client *http.Client, logger *xlog.Logger) *providerService {
 	if client == nil {
 		client = &http.Client{
-			Timeout: time.Duration(config.ProviderTimeoutMS) * time.Millisecond,
+			Timeout: time.Duration(cfg.TimeoutMS) * time.Millisecond,
 		}
 	}
 
 	return &providerService{
 		logger: logger,
-		config: config,
+		config: cfg,
 		client: client,
 	}
 }
@@ -112,10 +102,10 @@ func (s *providerService) executePolicy(ctx context.Context, req executePolicyRe
 	if strings.TrimSpace(req.PolicyKey) == "" || strings.TrimSpace(req.UpstreamPath) == "" {
 		return nil, providerInvalidRequest("policy_key and upstream_path are required")
 	}
-	if strings.TrimSpace(s.config.ProviderBaseURL) == "" {
+	if strings.TrimSpace(s.config.BaseURL) == "" {
 		return nil, providerInternalError("provider_base_url is not configured")
 	}
-	providerBaseURL, err := normalizeProviderBaseURL(s.config.ProviderBaseURL)
+	providerBaseURL, err := normalizeProviderBaseURL(s.config.BaseURL)
 	if err != nil {
 		return nil, providerInternalError("invalid provider_base_url")
 	}
@@ -128,23 +118,28 @@ func (s *providerService) executePolicy(ctx context.Context, req executePolicyRe
 
 	attempts := 1
 	if method == http.MethodGet {
-		attempts += s.config.ProviderRetryCount
+		attempts += s.config.RetryCount
 	}
 
 	start := time.Now()
 	var lastResultCode string
+
+	// Build base request once outside retry loop to ensure headers remain consistent
+	baseReq, buildErr := http.NewRequestWithContext(ctx, method, targetURL, nil)
+	if buildErr != nil {
+		return nil, providerInternalError("build upstream request failed")
+	}
+	baseReq.Header.Set("Accept", "application/json")
+	if req.RequestID != "" {
+		baseReq.Header.Set("X-Request-ID", req.RequestID)
+	}
+	if headerName := strings.TrimSpace(s.config.APIKeyHeader); headerName != "" && strings.TrimSpace(req.ProviderAPIKey) != "" {
+		baseReq.Header.Set(headerName, req.ProviderAPIKey)
+	}
+
 	for attempt := 1; attempt <= attempts; attempt++ {
-		httpReq, buildErr := http.NewRequestWithContext(ctx, method, targetURL, nil)
-		if buildErr != nil {
-			return nil, providerInternalError("build upstream request failed")
-		}
-		httpReq.Header.Set("Accept", "application/json")
-		if req.RequestID != "" {
-			httpReq.Header.Set("X-Request-ID", req.RequestID)
-		}
-		if headerName := strings.TrimSpace(s.config.ProviderAPIKeyHeader); headerName != "" && strings.TrimSpace(req.ProviderAPIKey) != "" {
-			httpReq.Header.Set(headerName, req.ProviderAPIKey)
-		}
+		// Clone base request for each attempt to keep headers consistent
+		httpReq := baseReq.Clone(ctx)
 
 		resp, doErr := s.client.Do(httpReq)
 		if doErr != nil {
@@ -176,6 +171,13 @@ func (s *providerService) executePolicy(ctx context.Context, req executePolicyRe
 		}
 
 		lastResultCode = upstreamResultCode(resp.StatusCode)
+
+		if req.UpstreamPath == "/base/apitools/search" && isEmptySearchResponse(bodyBytes) && attempt < attempts {
+			s.logger.Info(fmt.Sprintf("search endpoint returned empty data, retrying (attempt %d/%d)", attempt, attempts), nil)
+			time.Sleep(time.Duration(s.config.RetryIntervalMS) * time.Millisecond)
+			continue
+		}
+
 		if attempt < attempts && shouldRetry(method, resp.StatusCode, nil) {
 			continue
 		}
@@ -184,7 +186,8 @@ func (s *providerService) executePolicy(ctx context.Context, req executePolicyRe
 		lastResultCode = normalizedResultCode
 		logFields := providerLogFields(req, method, targetURL, attempt, normalizedStatusCode, lastResultCode, "")
 		logFields["upstream_status_code"] = resp.StatusCode
-		for key, value := range providerLogResponseFields(bodyBytes, resp.Header.Get("Content-Type"), normalizedStatusCode >= http.StatusBadRequest) {
+		includeBody := shouldLogFullUpstreamResponse(resp.StatusCode, normalizedStatusCode, lastResultCode)
+		for key, value := range providerLogResponseFields(bodyBytes, resp.Header.Get("Content-Type"), includeBody) {
 			logFields[key] = value
 		}
 		if normalizedStatusCode >= http.StatusBadRequest {
@@ -201,6 +204,100 @@ func (s *providerService) executePolicy(ctx context.Context, req executePolicyRe
 		}, nil
 	}
 
+	if req.UpstreamPath == "/base/apitools/search" {
+		fallbackURL := strings.Replace(targetURL, "/base/apitools/search", "/base/apitools/searchUp", 1)
+		s.logger.Info("search endpoint exhausted retries, trying fallback to searchUp", nil)
+
+		fallbackAttempts := 1 + s.config.EmptyDataRetry
+		fallbackBaseReq, fallbackBuildErr := http.NewRequestWithContext(ctx, method, fallbackURL, nil)
+		if fallbackBuildErr != nil {
+			return nil, providerInternalError("build fallback upstream request failed")
+		}
+		fallbackBaseReq.Header.Set("Accept", "application/json")
+		if req.RequestID != "" {
+			fallbackBaseReq.Header.Set("X-Request-ID", req.RequestID)
+		}
+		if headerName := strings.TrimSpace(s.config.APIKeyHeader); headerName != "" && strings.TrimSpace(req.ProviderAPIKey) != "" {
+			fallbackBaseReq.Header.Set(headerName, req.ProviderAPIKey)
+		}
+
+		for attempt := 1; attempt <= fallbackAttempts; attempt++ {
+			httpReq := fallbackBaseReq.Clone(ctx)
+
+			resp, doErr := s.client.Do(httpReq)
+			if doErr != nil {
+				if attempt < fallbackAttempts {
+					time.Sleep(time.Duration(s.config.RetryIntervalMS) * time.Millisecond)
+					continue
+				}
+				s.logProviderRequestError("fallback upstream transport failed", start, req, method, fallbackURL, attempt, transportStatusCode(doErr), lastResultCode, doErr.Error())
+				return providerExecutionResult{
+					StatusCode:         transportStatusCode(doErr),
+					ResultCode:         lastResultCode,
+					Body:               mustMarshalProviderBody(map[string]any{"error": doErr.Error()}),
+					UpstreamDurationMS: time.Since(start).Milliseconds(),
+				}, nil
+			}
+
+			bodyBytes, readErr := shared.ReadAllWithLimit(resp.Body, maxUpstreamResponseBytes)
+			_ = resp.Body.Close()
+			if readErr != nil {
+				if attempt < fallbackAttempts {
+					time.Sleep(time.Duration(s.config.RetryIntervalMS) * time.Millisecond)
+					continue
+				}
+				s.logProviderRequestError("fallback upstream read failed", start, req, method, fallbackURL, attempt, http.StatusBadGateway, "UPSTREAM_READ_ERROR", readErr.Error())
+				return providerExecutionResult{
+					StatusCode:         http.StatusBadGateway,
+					ResultCode:         "UPSTREAM_READ_ERROR",
+					Body:               mustMarshalProviderBody(map[string]any{"error": readErr.Error()}),
+					UpstreamDurationMS: time.Since(start).Milliseconds(),
+				}, nil
+			}
+
+			lastResultCode = upstreamResultCode(resp.StatusCode)
+
+			if isEmptySearchResponse(bodyBytes) && attempt < fallbackAttempts {
+				s.logger.Info(fmt.Sprintf("fallback searchUp returned empty data, retrying (attempt %d/%d)", attempt, fallbackAttempts), nil)
+				time.Sleep(time.Duration(s.config.RetryIntervalMS) * time.Millisecond)
+				continue
+			}
+
+			if attempt < fallbackAttempts && shouldRetry(method, resp.StatusCode, nil) {
+				continue
+			}
+
+			normalizedStatusCode, normalizedResultCode, normalizedBody := normalizeUpstreamPayloadRaw(resp.StatusCode, bodyBytes, resp.Header.Get("Content-Type"))
+			lastResultCode = normalizedResultCode
+			logFields := providerLogFields(req, method, fallbackURL, attempt, normalizedStatusCode, lastResultCode, "")
+			logFields["upstream_status_code"] = resp.StatusCode
+			logFields["fallback"] = true
+			includeBody := shouldLogFullUpstreamResponse(resp.StatusCode, normalizedStatusCode, lastResultCode)
+			for key, value := range providerLogResponseFields(bodyBytes, resp.Header.Get("Content-Type"), includeBody) {
+				logFields[key] = value
+			}
+			if normalizedStatusCode >= http.StatusBadRequest {
+				shared.LogRequestError(s.logger, "fallback request executed", req.RequestID, start, logFields)
+			} else {
+				shared.LogRequestInfo(s.logger, "fallback request executed", req.RequestID, start, logFields)
+			}
+
+			return providerExecutionResult{
+				StatusCode:         normalizedStatusCode,
+				ResultCode:         lastResultCode,
+				Body:               normalizedBody,
+				UpstreamDurationMS: time.Since(start).Milliseconds(),
+			}, nil
+		}
+
+		return providerExecutionResult{
+			StatusCode:         http.StatusBadGateway,
+			ResultCode:         firstNonEmpty(lastResultCode, "UPSTREAM_EXECUTION_FAILED"),
+			Body:               mustMarshalProviderBody(map[string]any{"error": "provider fallback exhausted retries"}),
+			UpstreamDurationMS: time.Since(start).Milliseconds(),
+		}, nil
+	}
+
 	return providerExecutionResult{
 		StatusCode:         http.StatusBadGateway,
 		ResultCode:         firstNonEmpty(lastResultCode, "UPSTREAM_EXECUTION_FAILED"),
@@ -210,15 +307,15 @@ func (s *providerService) executePolicy(ctx context.Context, req executePolicyRe
 }
 
 func (s *providerService) healthCheckProvider(ctx context.Context, req healthCheckProviderRequest) (any, *providerServiceError) {
-	if strings.TrimSpace(s.config.ProviderBaseURL) == "" {
+	if strings.TrimSpace(s.config.BaseURL) == "" {
 		return nil, providerInternalError("provider_base_url is not configured")
 	}
-	providerBaseURL, err := normalizeProviderBaseURL(s.config.ProviderBaseURL)
+	providerBaseURL, err := normalizeProviderBaseURL(s.config.BaseURL)
 	if err != nil {
 		return nil, providerInternalError("invalid provider_base_url")
 	}
 
-	targetURL, err := buildUpstreamURL(providerBaseURL, firstNonEmpty(s.config.ProviderHealthPath, "/"), nil)
+	targetURL, err := buildUpstreamURL(providerBaseURL, firstNonEmpty(s.config.HealthPath, "/"), nil)
 	if err != nil {
 		return nil, providerInternalError("invalid provider health target")
 	}
@@ -241,15 +338,15 @@ func (s *providerService) healthCheckProvider(ctx context.Context, req healthChe
 			"result_code":           transportResultCode(err),
 			"upstream_duration_ms":  time.Since(start).Milliseconds(),
 			"provider_base_url":     providerBaseURL,
-			"provider_health_path":  firstNonEmpty(s.config.ProviderHealthPath, "/"),
-			"provider_api_key_name": s.config.ProviderAPIKeyHeader,
+			"provider_health_path":  firstNonEmpty(s.config.HealthPath, "/"),
+			"provider_api_key_name": s.config.APIKeyHeader,
 		}
 		shared.LogRequestError(s.logger, "provider health check completed", "", start, map[string]any{
 			"provider_name":   healthData["provider_name"],
 			"status_code":     healthData["status_code"],
 			"result_code":     healthData["result_code"],
 			"health_state":    healthData["health_state"],
-			"upstream_path":   firstNonEmpty(s.config.ProviderHealthPath, "/"),
+			"upstream_path":   firstNonEmpty(s.config.HealthPath, "/"),
 			"upstream_method": http.MethodGet,
 			"upstream_url":    targetURL,
 			"error_summary":   err.Error(),
@@ -268,15 +365,15 @@ func (s *providerService) healthCheckProvider(ctx context.Context, req healthChe
 		"result_code":           upstreamResultCode(resp.StatusCode),
 		"upstream_duration_ms":  time.Since(start).Milliseconds(),
 		"provider_base_url":     providerBaseURL,
-		"provider_health_path":  firstNonEmpty(s.config.ProviderHealthPath, "/"),
-		"provider_api_key_name": s.config.ProviderAPIKeyHeader,
+		"provider_health_path":  firstNonEmpty(s.config.HealthPath, "/"),
+		"provider_api_key_name": s.config.APIKeyHeader,
 	}
 	logFields := map[string]any{
 		"provider_name":   healthData["provider_name"],
 		"status_code":     healthData["status_code"],
 		"result_code":     healthData["result_code"],
 		"health_state":    healthData["health_state"],
-		"upstream_path":   firstNonEmpty(s.config.ProviderHealthPath, "/"),
+		"upstream_path":   firstNonEmpty(s.config.HealthPath, "/"),
 		"upstream_method": http.MethodGet,
 		"upstream_url":    targetURL,
 	}
@@ -303,56 +400,6 @@ func providerInvalidRequest(message string) *providerServiceError {
 
 func providerInternalError(message string) *providerServiceError {
 	return &providerServiceError{statusCode: http.StatusInternalServerError, code: model.CodeInternalError, message: message}
-}
-
-func normalizeProviderConfig(config shared.Config) shared.Config {
-	defaults := ProviderDefaults()
-	if config.ServiceName == "" {
-		config.ServiceName = defaults.ServiceName
-	}
-	if config.HTTPHost == "" {
-		config.HTTPHost = defaults.HTTPHost
-	}
-	if config.HTTPPort == 0 {
-		config.HTTPPort = defaults.HTTPPort
-	}
-	if config.LogDir == "" {
-		config.LogDir = defaults.LogDir
-	}
-	if config.MetricsPath == "" {
-		config.MetricsPath = defaults.MetricsPath
-	}
-	if config.HealthPath == "" {
-		config.HealthPath = defaults.HealthPath
-	}
-	if config.InfoPath == "" {
-		config.InfoPath = defaults.InfoPath
-	}
-	if config.ReadTimeoutMS <= 0 {
-		config.ReadTimeoutMS = defaults.ReadTimeoutMS
-	}
-	if config.WriteTimeoutMS <= 0 {
-		config.WriteTimeoutMS = defaults.WriteTimeoutMS
-	}
-	if config.ShutdownTimeoutMS <= 0 {
-		config.ShutdownTimeoutMS = defaults.ShutdownTimeoutMS
-	}
-	if config.ProviderBaseURL == "" {
-		config.ProviderBaseURL = defaults.ProviderBaseURL
-	}
-	if config.ProviderHealthPath == "" {
-		config.ProviderHealthPath = defaults.ProviderHealthPath
-	}
-	if config.ProviderAPIKeyHeader == "" {
-		config.ProviderAPIKeyHeader = defaults.ProviderAPIKeyHeader
-	}
-	if config.ProviderTimeoutMS <= 0 {
-		config.ProviderTimeoutMS = defaults.ProviderTimeoutMS
-	}
-	if config.ProviderRetryCount < 0 {
-		config.ProviderRetryCount = defaults.ProviderRetryCount
-	}
-	return config
 }
 
 func normalizeProviderBaseURL(baseURL string) (string, error) {
@@ -467,7 +514,7 @@ func decodeUpstreamBody(body []byte, contentType string) any {
 	return string(body)
 }
 
-func providerLogResponseFields(body []byte, contentType string, includePreview bool) map[string]any {
+func providerLogResponseFields(body []byte, contentType string, includeBody bool) map[string]any {
 	fields := map[string]any{
 		"upstream_response_bytes": len(body),
 	}
@@ -476,35 +523,36 @@ func providerLogResponseFields(body []byte, contentType string, includePreview b
 		fields["upstream_content_type"] = trimmedContentType
 	}
 
-	if includePreview {
-		if preview := providerLogResponsePreview(body, contentType); preview != "" {
-			fields["upstream_response_preview"] = preview
+	if includeBody {
+		if responseBody := providerLogResponseBody(body, contentType); responseBody != "" {
+			fields["upstream_response"] = responseBody
 		}
 	}
 
 	return fields
 }
 
-func providerLogResponsePreview(body []byte, contentType string) string {
+func providerLogResponseBody(body []byte, contentType string) string {
 	trimmedBody := bytes.TrimSpace(body)
 	if len(trimmedBody) == 0 {
 		return ""
 	}
 
-	previewBody := trimmedBody
+	logBody := trimmedBody
 	if strings.Contains(strings.ToLower(contentType), "json") || json.Valid(trimmedBody) {
 		var compact bytes.Buffer
 		if err := json.Compact(&compact, trimmedBody); err == nil {
-			previewBody = compact.Bytes()
+			logBody = compact.Bytes()
 		}
 	}
 
-	preview := string(previewBody)
-	if len([]rune(preview)) <= maxUpstreamLogPreviewChars {
-		return preview
-	}
+	return string(logBody)
+}
 
-	return string([]rune(preview)[:maxUpstreamLogPreviewChars]) + "..."
+func shouldLogFullUpstreamResponse(upstreamStatusCode, normalizedStatusCode int, normalizedResultCode string) bool {
+	return upstreamStatusCode >= http.StatusInternalServerError ||
+		normalizedStatusCode >= http.StatusInternalServerError ||
+		normalizedResultCode == "UPSTREAM_APPLICATION_ERROR"
 }
 
 func normalizeUpstreamPayloadRaw(statusCode int, body []byte, contentType string) (int, string, json.RawMessage) {
@@ -742,6 +790,45 @@ func isEmptyObject(value any) bool {
 	}
 	object, ok := value.(map[string]any)
 	return ok && len(object) == 0
+}
+
+func isEmptySearchResponse(body []byte) bool {
+	if len(body) == 0 {
+		return true
+	}
+
+	var resp struct {
+		Data struct {
+			SearchByRawQuery struct {
+				SearchTimeline struct {
+					Timeline struct {
+						Entries []struct {
+							Content struct {
+								Typename string `json:"__typename"`
+							} `json:"content"`
+						} `json:"entries"`
+					} `json:"timeline"`
+				} `json:"search_timeline"`
+			} `json:"search_by_raw_query"`
+		} `json:"data"`
+	}
+
+	if err := json.Unmarshal(body, &resp); err != nil {
+		return true
+	}
+
+	entries := resp.Data.SearchByRawQuery.SearchTimeline.Timeline.Entries
+	if len(entries) == 0 {
+		return true
+	}
+
+	for _, entry := range entries {
+		if entry.Content.Typename == "TimelineTimelineItem" {
+			return false
+		}
+	}
+
+	return true
 }
 
 func shouldRetry(method string, statusCode int, err error) bool {

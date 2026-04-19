@@ -45,16 +45,6 @@ type pgRedisStore struct {
 	flusherDone             chan struct{}
 }
 
-type appAuthContextCacheValue struct {
-	TenantID   string
-	AppID      string
-	AppKey     string
-	AppSecret  string
-	Status     string
-	DailyQuota int64
-	QPSLimit   int
-}
-
 const (
 	usageStatsBucketSize           = 5 * time.Minute
 	usageStatsRedisTTL             = 48 * time.Hour
@@ -64,9 +54,7 @@ const (
 	defaultUsageStatsFlushInterval = time.Minute
 	defaultAppMetadataCacheTTL     = time.Minute
 	defaultAppMetadataCachePrefix  = ""
-	appAuthContextCachePrefix      = "app_auth_ctx:"
 	appSnapshotCachePrefix         = "app_snapshot:"
-	appKeyIndexCachePrefix         = "app_key_by_id:"
 )
 
 var releaseUsageStatsFlushLockScript = redis.NewScript(`
@@ -394,17 +382,6 @@ func (s *pgRedisStore) createTenantApp(ctx context.Context, req createTenantAppR
 	if err := s.cacheTenantApp(ctx, *app); err != nil {
 		s.logger.Error("cache tenant app snapshot failed", map[string]any{"error": err.Error(), "app_id": app.ID})
 	}
-	if err := s.cacheAppAuthContext(ctx, appAuthContextCacheValue{
-		TenantID:   app.TenantID,
-		AppID:      app.ID,
-		AppKey:     app.AppKey,
-		AppSecret:  app.AppSecret,
-		Status:     app.Status,
-		DailyQuota: app.DailyQuota,
-		QPSLimit:   app.QPSLimit,
-	}); err != nil {
-		s.logger.Error("cache app auth context failed", map[string]any{"error": err.Error(), "app_id": app.ID})
-	}
 
 	return app, nil
 }
@@ -438,36 +415,6 @@ func (s *pgRedisStore) listTenantApps(ctx context.Context, tenantID string) (any
 	}
 
 	return map[string]any{"items": items}, nil
-}
-
-func (s *pgRedisStore) rotateAppSecret(ctx context.Context, req rotateAppSecretRequest) (any, *serviceError) {
-	if strings.TrimSpace(req.AppID) == "" {
-		return nil, invalidRequest("app_id is required")
-	}
-
-	appSecret := shared.NewSecret("secret")
-	encryptedSecret := mustEncryptAccessSecret(s.secretMasterKey, appSecret)
-	tag, err := s.pg.Exec(ctx, `
-		UPDATE access.secret_materials
-		SET secret_ciphertext = $2, updated_at = NOW()
-		WHERE app_id = $1
-	`, req.AppID, encryptedSecret)
-	if err != nil {
-		return nil, internalError("rotate app secret failed")
-	}
-	if tag.RowsAffected() == 0 {
-		return nil, notFound("app not found")
-	}
-
-	if err := s.invalidateTenantAppCache(ctx, req.AppID); err != nil {
-		s.logger.Error("invalidate tenant app cache failed", map[string]any{"error": err.Error(), "app_id": req.AppID})
-	}
-
-	return map[string]any{
-		"app_id":     req.AppID,
-		"app_secret": appSecret,
-		"updated_at": time.Now().UTC(),
-	}, nil
 }
 
 func (s *pgRedisStore) updateTenantAppStatus(ctx context.Context, req updateTenantAppStatusRequest) (any, *serviceError) {
@@ -526,64 +473,23 @@ func (s *pgRedisStore) updateAppQuota(ctx context.Context, req updateAppQuotaReq
 	return s.getTenantAppSnapshot(ctx, req.AppID)
 }
 
-func (s *pgRedisStore) getAppAuthContext(ctx context.Context, req getAppAuthContextRequest) (any, *serviceError) {
-	if strings.TrimSpace(req.AppKey) == "" {
-		return nil, invalidRequest("app_key is required")
+func (s *pgRedisStore) getAppAuthContextByID(ctx context.Context, req getAppAuthContextByIDRequest) (any, *serviceError) {
+	if strings.TrimSpace(req.AppID) == "" {
+		return nil, invalidRequest("app_id is required")
 	}
 
-	if cached, ok := s.loadCachedAppAuthContext(ctx, req.AppKey); ok {
-		return cached.toMap(), nil
+	item, svcErr := s.getTenantAppByID(ctx, req.AppID)
+	if svcErr != nil {
+		return nil, svcErr
 	}
 
-	var item tenantApp
-	err := s.pg.QueryRow(ctx, `
-		SELECT a.id, a.tenant_id, a.name, a.app_key, a.status, a.daily_quota, a.qps_limit, a.created_at, a.updated_at, sm.secret_ciphertext
-		FROM access.tenant_apps a
-		JOIN access.secret_materials sm ON sm.id = a.secret_material_id
-		WHERE a.app_key = $1
-	`, req.AppKey).Scan(&item.ID, &item.TenantID, &item.Name, &item.AppKey, &item.Status, &item.DailyQuota, &item.QPSLimit, &item.CreatedAt, &item.UpdatedAt, &item.AppSecret)
-	if errors.Is(err, pgx.ErrNoRows) {
-		return nil, notFound("app_key not found")
-	}
-	if err != nil {
-		return nil, internalError("query app auth context failed")
-	}
-	if err := s.cacheTenantApp(ctx, tenantApp{
-		ID:         item.ID,
-		TenantID:   item.TenantID,
-		Name:       item.Name,
-		AppKey:     item.AppKey,
-		Status:     item.Status,
-		DailyQuota: item.DailyQuota,
-		QPSLimit:   item.QPSLimit,
-		CreatedAt:  item.CreatedAt,
-		UpdatedAt:  item.UpdatedAt,
-	}); err != nil {
-		s.logger.Error("cache tenant app snapshot failed", map[string]any{"error": err.Error(), "app_id": item.ID})
-	}
-	item.AppSecret, err = shared.DecryptSecretValue(s.secretMasterKey, item.AppSecret)
-	if err != nil {
-		s.logger.Error("decode app secret failed", map[string]any{
-			"error":   err.Error(),
-			"app_key": req.AppKey,
-		})
-		return nil, internalError("decode app secret failed")
-	}
-
-	authContext := appAuthContextCacheValue{
-		TenantID:   item.TenantID,
-		AppID:      item.ID,
-		AppKey:     item.AppKey,
-		AppSecret:  item.AppSecret,
-		Status:     item.Status,
-		DailyQuota: item.DailyQuota,
-		QPSLimit:   item.QPSLimit,
-	}
-	if err := s.cacheAppAuthContext(ctx, authContext); err != nil {
-		s.logger.Error("cache app auth context failed", map[string]any{"error": err.Error(), "app_id": item.ID})
-	}
-
-	return authContext.toMap(), nil
+	return map[string]any{
+		"tenant_id":   item.TenantID,
+		"app_id":      item.ID,
+		"status":      item.Status,
+		"daily_quota": item.DailyQuota,
+		"qps_limit":   item.QPSLimit,
+	}, nil
 }
 
 func (s *pgRedisStore) checkReplay(ctx context.Context, req checkReplayRequest) (any, *serviceError) {
@@ -622,9 +528,6 @@ func (s *pgRedisStore) checkAndReserveQuota(ctx context.Context, req checkAndRes
 	item, svcErr := s.getTenantAppByID(ctx, req.AppID)
 	if svcErr != nil {
 		return nil, svcErr
-	}
-	if item.Status != "active" {
-		return nil, forbidden("app is not active")
 	}
 
 	dateKey := time.Now().UTC().Format("2006-01-02")
@@ -885,58 +788,6 @@ func (s *pgRedisStore) getTenantAppByID(ctx context.Context, appID string) (*ten
 	return &item, nil
 }
 
-func (v appAuthContextCacheValue) toMap() map[string]any {
-	return map[string]any{
-		"tenant_id":   v.TenantID,
-		"app_id":      v.AppID,
-		"app_key":     v.AppKey,
-		"app_secret":  v.AppSecret,
-		"status":      v.Status,
-		"daily_quota": v.DailyQuota,
-		"qps_limit":   v.QPSLimit,
-	}
-}
-
-func (s *pgRedisStore) loadCachedAppAuthContext(ctx context.Context, appKey string) (appAuthContextCacheValue, bool) {
-	if s.redis == nil {
-		return appAuthContextCacheValue{}, false
-	}
-
-	payload, err := s.redis.Get(ctx, s.appAuthContextCacheKey(appKey)).Bytes()
-	if err != nil || len(payload) == 0 {
-		return appAuthContextCacheValue{}, false
-	}
-
-	var value appAuthContextCacheValue
-	if err := json.Unmarshal(payload, &value); err != nil {
-		_ = s.redis.Del(ctx, s.appAuthContextCacheKey(appKey)).Err()
-		return appAuthContextCacheValue{}, false
-	}
-
-	return value, true
-}
-
-func (s *pgRedisStore) cacheAppAuthContext(ctx context.Context, value appAuthContextCacheValue) error {
-	if s.redis == nil {
-		return nil
-	}
-	if strings.TrimSpace(value.AppKey) == "" || strings.TrimSpace(value.AppID) == "" {
-		return nil
-	}
-
-	payload, err := json.Marshal(value)
-	if err != nil {
-		return err
-	}
-
-	pipe := s.redis.TxPipeline()
-	ttl := s.appMetadataCacheTTLOrDefault()
-	pipe.Set(ctx, s.appAuthContextCacheKey(value.AppKey), payload, ttl)
-	pipe.Set(ctx, s.appKeyIndexCacheKey(value.AppID), value.AppKey, ttl)
-	_, err = pipe.Exec(ctx)
-	return err
-}
-
 func (s *pgRedisStore) loadCachedTenantApp(ctx context.Context, appID string) (tenantApp, bool) {
 	if s.redis == nil {
 		return tenantApp{}, false
@@ -960,7 +811,7 @@ func (s *pgRedisStore) cacheTenantApp(ctx context.Context, item tenantApp) error
 	if s.redis == nil {
 		return nil
 	}
-	if strings.TrimSpace(item.ID) == "" || strings.TrimSpace(item.AppKey) == "" {
+	if strings.TrimSpace(item.ID) == "" {
 		return nil
 	}
 
@@ -972,7 +823,6 @@ func (s *pgRedisStore) cacheTenantApp(ctx context.Context, item tenantApp) error
 	pipe := s.redis.TxPipeline()
 	ttl := s.appMetadataCacheTTLOrDefault()
 	pipe.Set(ctx, s.appSnapshotCacheKey(item.ID), payload, ttl)
-	pipe.Set(ctx, s.appKeyIndexCacheKey(item.ID), item.AppKey, ttl)
 	_, err = pipe.Exec(ctx)
 	return err
 }
@@ -988,17 +838,7 @@ func (s *pgRedisStore) invalidateTenantAppCache(ctx context.Context, appID strin
 
 	keys := []string{
 		s.appSnapshotCacheKey(appID),
-		s.appKeyIndexCacheKey(appID),
 	}
-
-	appKey, err := s.redis.Get(ctx, s.appKeyIndexCacheKey(appID)).Result()
-	if err != nil && err != redis.Nil {
-		return err
-	}
-	if strings.TrimSpace(appKey) != "" {
-		keys = append(keys, s.appAuthContextCacheKey(appKey))
-	}
-
 	return s.redis.Del(ctx, keys...).Err()
 }
 
@@ -1010,16 +850,8 @@ func (s *pgRedisStore) getTenantAppSnapshot(ctx context.Context, appID string) (
 	return item, nil
 }
 
-func appAuthContextCacheKey(appKey string) string {
-	return buildAppAuthContextCacheKey(defaultAppMetadataCachePrefix, appKey)
-}
-
 func appSnapshotCacheKey(appID string) string {
 	return buildAppSnapshotCacheKey(defaultAppMetadataCachePrefix, appID)
-}
-
-func appKeyIndexCacheKey(appID string) string {
-	return buildAppKeyIndexCacheKey(defaultAppMetadataCachePrefix, appID)
 }
 
 func (s *pgRedisStore) appMetadataCacheTTLOrDefault() time.Duration {
@@ -1029,28 +861,12 @@ func (s *pgRedisStore) appMetadataCacheTTLOrDefault() time.Duration {
 	return defaultAppMetadataCacheTTL
 }
 
-func (s *pgRedisStore) appAuthContextCacheKey(appKey string) string {
-	return buildAppAuthContextCacheKey(s.appMetadataCachePrefix, appKey)
-}
-
 func (s *pgRedisStore) appSnapshotCacheKey(appID string) string {
 	return buildAppSnapshotCacheKey(s.appMetadataCachePrefix, appID)
 }
 
-func (s *pgRedisStore) appKeyIndexCacheKey(appID string) string {
-	return buildAppKeyIndexCacheKey(s.appMetadataCachePrefix, appID)
-}
-
-func buildAppAuthContextCacheKey(prefix, appKey string) string {
-	return strings.TrimSpace(prefix) + appAuthContextCachePrefix + strings.TrimSpace(appKey)
-}
-
 func buildAppSnapshotCacheKey(prefix, appID string) string {
 	return strings.TrimSpace(prefix) + appSnapshotCachePrefix + strings.TrimSpace(appID)
-}
-
-func buildAppKeyIndexCacheKey(prefix, appID string) string {
-	return strings.TrimSpace(prefix) + appKeyIndexCachePrefix + strings.TrimSpace(appID)
 }
 
 func (s *pgRedisStore) currentDailyUsage(ctx context.Context, appID, dateKey string) int64 {

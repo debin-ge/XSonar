@@ -5,9 +5,9 @@ import (
 	"encoding/json"
 	"net/http"
 
+	providerconfig "xsonar/apps/provider-rpc/internal/config"
 	"xsonar/pkg/model"
 	"xsonar/pkg/proto/providerpb"
-	"xsonar/pkg/shared"
 	"xsonar/pkg/xlog"
 )
 
@@ -15,9 +15,9 @@ type Bridge struct {
 	svc *providerService
 }
 
-func NewBridge(config shared.Config, client *http.Client, logger *xlog.Logger) *Bridge {
+func NewBridge(cfg providerconfig.ProviderConfig, client *http.Client, logger *xlog.Logger) *Bridge {
 	return &Bridge{
-		svc: newProviderServiceWithConfigAndClient(config, client, logger),
+		svc: newProviderServiceWithConfigAndClient(cfg, client, logger),
 	}
 }
 

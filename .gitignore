@@ -13,10 +13,12 @@ Thumbs.db
 # Local environment and shell tooling
 .env
 .env.local
+.env*
 .env.*.local
 .envrc
 .direnv/
 deploy/xsonar/.env
+deploy/xsonar/docker-compose.local.yml
 !deploy/xsonar/.env.example
 
 # Go build and test artifacts
@@ -38,6 +40,7 @@ runtime/
 tests/
 .worktrees/
 docs/
+.sisyphus/
 
 # Temporary files
 tmp/
