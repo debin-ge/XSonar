@@ -14,6 +14,7 @@ import (
 	"xsonar/apps/scheduler-rpc/internal/config"
 	"xsonar/pkg/model"
 	"xsonar/pkg/proto/schedulerpb"
+	"xsonar/pkg/shared"
 	"xsonar/pkg/xlog"
 )
 
@@ -90,19 +91,22 @@ type createTaskRequest struct {
 type CreateTaskRequest = createTaskRequest
 
 type getTaskRequest struct {
-	TaskID string
+	TaskID    string
+	CreatedBy string
 }
 
 type GetTaskRequest = getTaskRequest
 
 type listTaskRunsRequest struct {
-	TaskID string
+	TaskID    string
+	CreatedBy string
 }
 
 type ListTaskRunsRequest = listTaskRunsRequest
 
 type stopTaskRequest struct {
-	TaskID string
+	TaskID    string
+	CreatedBy string
 }
 
 type StopTaskRequest = stopTaskRequest
@@ -273,8 +277,12 @@ func (s *schedulerService) getTask(ctx context.Context, req getTaskRequest) (any
 	if taskID == "" {
 		return nil, schedulerInvalidRequest("task_id is required")
 	}
+	createdBy := strings.TrimSpace(req.CreatedBy)
+	if createdBy == "" {
+		return nil, schedulerInvalidRequest("created_by is required")
+	}
 
-	item, svcErr := s.store.GetTask(ctx, taskID)
+	item, svcErr := s.store.GetTask(ctx, taskID, createdBy)
 	if svcErr != nil {
 		return nil, svcErr
 	}
@@ -290,8 +298,12 @@ func (s *schedulerService) listTaskRuns(ctx context.Context, req listTaskRunsReq
 	if taskID == "" {
 		return nil, schedulerInvalidRequest("task_id is required")
 	}
+	createdBy := strings.TrimSpace(req.CreatedBy)
+	if createdBy == "" {
+		return nil, schedulerInvalidRequest("created_by is required")
+	}
 
-	items, svcErr := s.store.ListTaskRuns(ctx, taskID, s.cfg.ListTaskRunsDefaultLimit)
+	items, svcErr := s.store.ListTaskRuns(ctx, taskID, createdBy, s.cfg.ListTaskRunsDefaultLimit)
 	if svcErr != nil {
 		return nil, svcErr
 	}
@@ -307,8 +319,12 @@ func (s *schedulerService) stopTask(ctx context.Context, req stopTaskRequest) (a
 	if taskID == "" {
 		return nil, schedulerInvalidRequest("task_id is required")
 	}
+	createdBy := strings.TrimSpace(req.CreatedBy)
+	if createdBy == "" {
+		return nil, schedulerInvalidRequest("created_by is required")
+	}
 
-	item, svcErr := s.store.GetTask(ctx, taskID)
+	item, svcErr := s.store.GetTask(ctx, taskID, createdBy)
 	if svcErr != nil {
 		return nil, svcErr
 	}
@@ -320,7 +336,7 @@ func (s *schedulerService) stopTask(ctx context.Context, req stopTaskRequest) (a
 		return nil, schedulerConflict("task is already completed")
 	}
 
-	return s.store.StopTask(ctx, taskID)
+	return s.store.StopTask(ctx, taskID, createdBy)
 }
 
 func (s *schedulerService) StopTask(ctx context.Context, req StopTaskRequest) (any, *serviceError) {
@@ -329,8 +345,12 @@ func (s *schedulerService) StopTask(ctx context.Context, req StopTaskRequest) (a
 
 func encodeSchedulerResponse(data any, svcErr *serviceError) *schedulerpb.JsonResponse {
 	if svcErr != nil {
+		code, err := shared.Int32FromInt(svcErr.code)
+		if err != nil {
+			code = model.CodeInternalError
+		}
 		return &schedulerpb.JsonResponse{
-			Code:    int32(svcErr.code),
+			Code:    code,
 			Message: svcErr.message,
 		}
 	}
@@ -393,16 +413,4 @@ func schedulerNotFound(message string) *serviceError {
 
 func internalSchedulerError(message string) *serviceError {
 	return &serviceError{statusCode: http.StatusInternalServerError, code: model.CodeInternalError, message: message}
-}
-
-func invalidSchedulerRequest(message string) *serviceError {
-	return schedulerInvalidRequest(message)
-}
-
-func conflictSchedulerError(message string) *serviceError {
-	return schedulerConflict(message)
-}
-
-func notFoundSchedulerError(message string) *serviceError {
-	return schedulerNotFound(message)
 }

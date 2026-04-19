@@ -10,6 +10,7 @@ import (
 )
 
 func NewHandlerWithClients(logger *xlog.Logger, accessClient clients.AccessRPC, policyClient clients.PolicyRPC, providerClient clients.ProviderRPC) http.Handler {
+	// #nosec G101 -- testkit uses fixed local development secrets only.
 	return NewHandlerWithConfigAndAllClients(logger, consoleconfig.ConsoleConfig{
 		JWTSecret:        "xsonar-console-dev-secret",
 		JWTIssuer:        "xsonar-console",

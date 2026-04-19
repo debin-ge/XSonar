@@ -3,6 +3,7 @@ package internal
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -73,6 +74,45 @@ func TestRunnerStopsPeriodicRunAtPageLimit(t *testing.T) {
 	}
 	if len(strings.Split(strings.TrimSpace(string(data)), "\n")) != 2 {
 		t.Fatalf("expected 2 NDJSON lines, got %q", string(data))
+	}
+}
+
+func TestRunnerResolvePolicyAlwaysUsesLatestPolicyRPCResponse(t *testing.T) {
+	root := t.TempDir()
+	calls := 0
+	firstPayload := testedPolicyPayload()
+	secondPayload := testedPolicyPayload()
+	secondPayload["upstream_path"] = "/base/apitools/search-v2"
+	secondPayload["provider_api_key"] = "provider-key-rotated"
+	resolver := fakePolicyResolver{
+		calls: &calls,
+		responses: []*clients.EnvelopeResponse{
+			envelopeResponse(firstPayload),
+			envelopeResponse(secondPayload),
+		},
+	}
+	runner := newRunner(testRunnerConfig(root, 20), xlog.NewStdout("collector-worker-rpc-test"), nil, resolver, nil, "worker-1")
+
+	first, err := runner.resolvePolicy(context.Background())
+	if err != nil {
+		t.Fatalf("first resolvePolicy returned error: %v", err)
+	}
+	if calls != 1 {
+		t.Fatalf("expected first policy resolve to hit RPC once, got %d", calls)
+	}
+	if first.UpstreamPath != "/base/apitools/search" || first.ProviderAPIKey != "provider-key-1" {
+		t.Fatalf("expected first policy payload to match initial publish, got path=%q key=%q", first.UpstreamPath, first.ProviderAPIKey)
+	}
+
+	second, err := runner.resolvePolicy(context.Background())
+	if err != nil {
+		t.Fatalf("second resolvePolicy returned error: %v", err)
+	}
+	if calls != 2 {
+		t.Fatalf("expected second policy resolve to hit RPC again, got %d calls", calls)
+	}
+	if second.UpstreamPath != "/base/apitools/search-v2" || second.ProviderAPIKey != "provider-key-rotated" {
+		t.Fatalf("expected second policy payload to reflect latest publish, got path=%q key=%q", second.UpstreamPath, second.ProviderAPIKey)
 	}
 }
 
@@ -485,6 +525,63 @@ func TestRunnerPeriodicRunWritesOnlyFirstSeenPosts(t *testing.T) {
 	}
 }
 
+func TestRunnerDoesNotRecordSeenOrUsageWhenPageFlushFails(t *testing.T) {
+	root := t.TempDir()
+	store := &orderingWorkerStore{memoryWorkerStore: newMemoryWorkerStore()}
+	store.seedRunTask(runTaskView{
+		Task: workerTask{
+			TaskID:   "task_range_flush_fail_1",
+			TaskType: TaskTypeRange,
+			Keyword:  "openai",
+			Status:   TaskStatusPending,
+		},
+		Run: workerRun{
+			RunID:       "run_range_flush_fail_1",
+			TaskID:      "task_range_flush_fail_1",
+			RunNo:       1,
+			Status:      RunStatusQueued,
+			ScheduledAt: time.Date(2026, 4, 13, 10, 0, 0, 0, time.UTC),
+		},
+	})
+
+	flushErr := errors.New("flush failed")
+	var writer *stubRunnerWriter
+	runner := newRunner(testRunnerConfig(root, 20), xlog.NewStdout("collector-worker-rpc-test"), store, fakePolicyResolver{}, &fakeProviderExecutor{
+		responses: []providerPage{
+			{
+				Body: map[string]any{
+					"tweets": []map[string]any{{"id": "post_1", "text": "one"}},
+				},
+			},
+		},
+	}, "worker-1")
+	runner.newWriter = func(finalPath string, flushEvery int, fsyncOnClose bool) (runnerRecordWriter, error) {
+		writer = &stubRunnerWriter{
+			flushErr:              flushErr,
+			autoFlushEvery:        1,
+			failFlushAfterAppends: 1,
+		}
+		return writer, nil
+	}
+
+	err := runner.run(context.Background(), "run_range_flush_fail_1")
+	if !errors.Is(err, flushErr) {
+		t.Fatalf("expected flush error %v, got %v", flushErr, err)
+	}
+	if writer == nil {
+		t.Fatalf("expected stub writer to be created")
+	}
+	if writer.flushDuringAppend != 0 {
+		t.Fatalf("expected append-time auto-flush to be suppressed, got %d", writer.flushDuringAppend)
+	}
+	if store.usageCalls != 0 {
+		t.Fatalf("expected usageCalls 0, got %d", store.usageCalls)
+	}
+	if store.seenCalls != 0 {
+		t.Fatalf("expected seenCalls 0, got %d", store.seenCalls)
+	}
+}
+
 func TestRunnerRangeRunPublishesSingleFinalFile(t *testing.T) {
 	root := t.TempDir()
 	store := newMemoryWorkerStore()
@@ -601,6 +698,85 @@ func TestRunnerStopsRangeRunWhenRequiredCountReached(t *testing.T) {
 	}
 	if len(strings.Split(strings.TrimSpace(string(data)), "\n")) != 2 {
 		t.Fatalf("expected 2 NDJSON lines, got %q", string(data))
+	}
+}
+
+func TestRunnerStopsRangeRunAtRequiredCountAfterFilteringDuplicates(t *testing.T) {
+	root := t.TempDir()
+	requiredCount := int64(2)
+	store := newMemoryWorkerStore()
+	store.seedRunTask(runTaskView{
+		Task: workerTask{
+			TaskID:         "task_range_required_dedup_1",
+			TaskType:       TaskTypeRange,
+			Keyword:        "openai",
+			RequiredCount:  &requiredCount,
+			CompletedCount: 0,
+			Status:         TaskStatusPending,
+		},
+		Run: workerRun{
+			RunID:       "run_range_required_dedup_1",
+			TaskID:      "task_range_required_dedup_1",
+			RunNo:       1,
+			Status:      RunStatusQueued,
+			ScheduledAt: time.Date(2026, 4, 13, 10, 0, 0, 0, time.UTC),
+		},
+	})
+	if _, err := store.RecordTaskSeenPost(context.Background(), "task_range_required_dedup_1", "post_1", "old_run", time.Now().UTC()); err != nil {
+		t.Fatalf("RecordTaskSeenPost returned error: %v", err)
+	}
+
+	provider := &fakeProviderExecutor{
+		responses: []providerPage{
+			{
+				Body: map[string]any{
+					"tweets": []map[string]any{
+						{"id": "post_1", "text": "historical duplicate"},
+						{"id": "post_2", "text": "first unique"},
+						{"id": "post_2", "text": "same page duplicate"},
+						{"id": "post_3", "text": "second unique"},
+						{"id": "post_4", "text": "should remain unread"},
+					},
+				},
+			},
+		},
+	}
+	runner := newRunner(testRunnerConfig(root, 20), xlog.NewStdout("collector-worker-rpc-test"), store, fakePolicyResolver{}, provider, "worker-1")
+
+	if err := runner.run(context.Background(), "run_range_required_dedup_1"); err != nil {
+		t.Fatalf("run returned error: %v", err)
+	}
+
+	view, err := store.LoadRunTask(context.Background(), "run_range_required_dedup_1")
+	if err != nil {
+		t.Fatalf("LoadRunTask returned error: %v", err)
+	}
+	if view.Run.NewCount != 2 {
+		t.Fatalf("expected new_count 2, got %d", view.Run.NewCount)
+	}
+	if view.Run.DuplicateCount != 2 {
+		t.Fatalf("expected duplicate_count 2, got %d", view.Run.DuplicateCount)
+	}
+
+	data, err := os.ReadFile(view.Run.OutputPath)
+	if err != nil {
+		t.Fatalf("ReadFile returned error: %v", err)
+	}
+	lines := strings.Split(strings.TrimSpace(string(data)), "\n")
+	if len(lines) != 2 {
+		t.Fatalf("expected 2 NDJSON lines, got %q", string(data))
+	}
+
+	var first collectorOutputRecord
+	if err := json.Unmarshal([]byte(lines[0]), &first); err != nil {
+		t.Fatalf("Unmarshal first line returned error: %v", err)
+	}
+	var second collectorOutputRecord
+	if err := json.Unmarshal([]byte(lines[1]), &second); err != nil {
+		t.Fatalf("Unmarshal second line returned error: %v", err)
+	}
+	if first.PostID != "post_2" || second.PostID != "post_3" {
+		t.Fatalf("expected output posts [post_2 post_3], got [%s %s]", first.PostID, second.PostID)
 	}
 }
 
@@ -763,16 +939,189 @@ func TestRunnerResumesExistingPartFileAfterLeaseTakeover(t *testing.T) {
 	}
 }
 
+func TestRunnerPreservesPublishedFinalFileWhenRetryStartsAfterCommit(t *testing.T) {
+	root := t.TempDir()
+	finalPath := filepath.Join(root, "task_range_retry_1", "task_range_retry_1.ndjson")
+	policyErr := errors.New("policy should not be resolved")
+
+	writer, err := newNDJSONWriter(finalPath, 100, true)
+	if err != nil {
+		t.Fatalf("newNDJSONWriter returned error: %v", err)
+	}
+	if err := writer.Append(map[string]any{"task_id": "task_range_retry_1", "post_id": "post_1"}); err != nil {
+		t.Fatalf("Append returned error: %v", err)
+	}
+	if err := writer.Commit(); err != nil {
+		t.Fatalf("Commit returned error: %v", err)
+	}
+
+	startedAt := time.Date(2026, 4, 13, 10, 0, 0, 0, time.UTC)
+	store := newMemoryWorkerStore()
+	store.seedRunTask(runTaskView{
+		Task: workerTask{
+			TaskID:   "task_range_retry_1",
+			TaskType: TaskTypeRange,
+			Keyword:  "openai",
+			Status:   TaskStatusRunning,
+		},
+		Run: workerRun{
+			RunID:        "run_range_retry_1",
+			TaskID:       "task_range_retry_1",
+			RunNo:        1,
+			Status:       RunStatusRunning,
+			ScheduledAt:  startedAt,
+			StartedAt:    &startedAt,
+			OutputPath:   finalPath,
+			PageCount:    1,
+			FetchedCount: 1,
+			NewCount:     1,
+		},
+	})
+
+	provider := &fakeProviderExecutor{
+		responses: []providerPage{
+			{
+				Body: map[string]any{
+					"tweets": []map[string]any{{"id": "post_2", "text": "should not be fetched again"}},
+				},
+			},
+		},
+	}
+	runner := newRunner(testRunnerConfig(root, 20), xlog.NewStdout("collector-worker-rpc-test"), store, fakePolicyResolver{err: policyErr}, provider, "worker-2")
+
+	if err := runner.run(context.Background(), "run_range_retry_1"); err != nil {
+		t.Fatalf("run returned error: %v", err)
+	}
+	if provider.calls != 0 {
+		t.Fatalf("expected committed-output recovery to skip provider fetch, got %d calls", provider.calls)
+	}
+
+	data, err := os.ReadFile(finalPath)
+	if err != nil {
+		t.Fatalf("ReadFile returned error: %v", err)
+	}
+	lines := strings.Split(strings.TrimSpace(string(data)), "\n")
+	if len(lines) != 1 || !strings.Contains(lines[0], `"post_id":"post_1"`) {
+		t.Fatalf("expected retry to preserve published final output, got %q", string(data))
+	}
+
+	view, err := store.LoadRunTask(context.Background(), "run_range_retry_1")
+	if err != nil {
+		t.Fatalf("LoadRunTask returned error: %v", err)
+	}
+	if view.Run.Status != RunStatusSucceeded {
+		t.Fatalf("expected recovered run status succeeded, got %q", view.Run.Status)
+	}
+	if view.Task.CompletedCount != 1 {
+		t.Fatalf("expected completed_count to remain 1, got %d", view.Task.CompletedCount)
+	}
+}
+
+func TestRunnerTreatsRedeliveredFinishedRunAsNoOp(t *testing.T) {
+	root := t.TempDir()
+	finalPath := filepath.Join(root, "task_range_finished_1", "task_range_finished_1.ndjson")
+	policyErr := errors.New("policy should not be resolved")
+
+	writer, err := newNDJSONWriter(finalPath, 100, true)
+	if err != nil {
+		t.Fatalf("newNDJSONWriter returned error: %v", err)
+	}
+	if err := writer.Append(map[string]any{"task_id": "task_range_finished_1", "post_id": "post_1"}); err != nil {
+		t.Fatalf("Append returned error: %v", err)
+	}
+	if err := writer.Commit(); err != nil {
+		t.Fatalf("Commit returned error: %v", err)
+	}
+
+	startedAt := time.Date(2026, 4, 13, 10, 0, 0, 0, time.UTC)
+	endedAt := startedAt.Add(time.Minute)
+	store := newMemoryWorkerStore()
+	store.seedRunTask(runTaskView{
+		Task: workerTask{
+			TaskID:         "task_range_finished_1",
+			TaskType:       TaskTypeRange,
+			Keyword:        "openai",
+			Status:         TaskStatusSucceeded,
+			CompletedCount: 1,
+		},
+		Run: workerRun{
+			RunID:        "run_range_finished_1",
+			TaskID:       "task_range_finished_1",
+			RunNo:        1,
+			Status:       RunStatusSucceeded,
+			ScheduledAt:  startedAt,
+			StartedAt:    &startedAt,
+			EndedAt:      &endedAt,
+			OutputPath:   finalPath,
+			PageCount:    1,
+			FetchedCount: 1,
+			NewCount:     1,
+		},
+	})
+
+	provider := &fakeProviderExecutor{
+		responses: []providerPage{
+			{
+				Body: map[string]any{
+					"tweets": []map[string]any{{"id": "post_2", "text": "should not be fetched again"}},
+				},
+			},
+		},
+	}
+	runner := newRunner(testRunnerConfig(root, 20), xlog.NewStdout("collector-worker-rpc-test"), store, fakePolicyResolver{err: policyErr}, provider, "worker-2")
+
+	if err := runner.run(context.Background(), "run_range_finished_1"); err != nil {
+		t.Fatalf("run returned error: %v", err)
+	}
+	if provider.calls != 0 {
+		t.Fatalf("expected finished redelivery to skip provider fetch, got %d calls", provider.calls)
+	}
+	if _, err := os.Stat(finalPath + ".part"); !os.IsNotExist(err) {
+		t.Fatalf("expected no new .part file for finished redelivery, got %v", err)
+	}
+
+	data, err := os.ReadFile(finalPath)
+	if err != nil {
+		t.Fatalf("ReadFile returned error: %v", err)
+	}
+	lines := strings.Split(strings.TrimSpace(string(data)), "\n")
+	if len(lines) != 1 || !strings.Contains(lines[0], `"post_id":"post_1"`) {
+		t.Fatalf("expected finished redelivery to preserve published final output, got %q", string(data))
+	}
+}
+
 type providerPage struct {
 	StatusCode int
 	Body       map[string]any
 }
 
-type fakePolicyResolver struct{}
+type fakePolicyResolver struct {
+	calls     *int
+	responses []*clients.EnvelopeResponse
+	response  *clients.EnvelopeResponse
+	err       error
+}
 
-func (fakePolicyResolver) ResolvePolicy(ctx context.Context, req *policyservice.ResolvePolicyRequest) (*clients.EnvelopeResponse, error) {
+func (f fakePolicyResolver) ResolvePolicy(ctx context.Context, req *policyservice.ResolvePolicyRequest) (*clients.EnvelopeResponse, error) {
 	_ = ctx
 	_ = req
+	callIndex := 0
+	if f.calls != nil {
+		callIndex = *f.calls
+		*f.calls = *f.calls + 1
+	}
+	if f.err != nil {
+		return nil, f.err
+	}
+	if len(f.responses) > 0 {
+		if callIndex >= len(f.responses) {
+			callIndex = len(f.responses) - 1
+		}
+		return f.responses[callIndex], nil
+	}
+	if f.response != nil {
+		return f.response, nil
+	}
 	return envelopeResponse(testedPolicyPayload()), nil
 }
 
@@ -790,6 +1139,65 @@ type capturingWorkerStore struct {
 func (s *capturingWorkerStore) RecordKeywordMonthlyUsage(ctx context.Context, keyword, usageMonth, postID, taskID string, seenAt time.Time) (bool, error) {
 	s.recordedUsageMonths = append(s.recordedUsageMonths, usageMonth)
 	return s.memoryWorkerStore.RecordKeywordMonthlyUsage(ctx, keyword, usageMonth, postID, taskID, seenAt)
+}
+
+type orderingWorkerStore struct {
+	*memoryWorkerStore
+	usageCalls int
+	seenCalls  int
+}
+
+func (s *orderingWorkerStore) RecordKeywordMonthlyUsage(ctx context.Context, keyword, usageMonth, postID, taskID string, seenAt time.Time) (bool, error) {
+	s.usageCalls++
+	return s.memoryWorkerStore.RecordKeywordMonthlyUsage(ctx, keyword, usageMonth, postID, taskID, seenAt)
+}
+
+func (s *orderingWorkerStore) RecordTaskSeenPost(ctx context.Context, taskID, postID, runID string, seenAt time.Time) (bool, error) {
+	s.seenCalls++
+	return s.memoryWorkerStore.RecordTaskSeenPost(ctx, taskID, postID, runID, seenAt)
+}
+
+type stubRunnerWriter struct {
+	appended              []any
+	flushErr              error
+	commitErr             error
+	closeErr              error
+	autoFlushEvery        int
+	failFlushAfterAppends int
+	flushDuringAppend     int
+	batchSuppressed       bool
+}
+
+func (w *stubRunnerWriter) Append(record any) error {
+	w.appended = append(w.appended, record)
+	if w.autoFlushEvery > 0 && !w.batchSuppressed && len(w.appended)%w.autoFlushEvery == 0 {
+		w.flushDuringAppend++
+		return w.Flush()
+	}
+	return nil
+}
+
+func (w *stubRunnerWriter) Flush() error {
+	if w.flushErr != nil && len(w.appended) >= w.failFlushAfterAppends {
+		return w.flushErr
+	}
+	return nil
+}
+
+func (w *stubRunnerWriter) Commit() error {
+	return w.commitErr
+}
+
+func (w *stubRunnerWriter) Close() error {
+	return w.closeErr
+}
+
+func (w *stubRunnerWriter) beginBatchAppend(batchSize int) func() {
+	_ = batchSize
+	w.batchSuppressed = true
+	return func() {
+		w.batchSuppressed = false
+	}
 }
 
 func (f *fakeProviderExecutor) ExecutePolicy(ctx context.Context, req *providerservice.ExecutePolicyRequest) (*clients.EnvelopeResponse, error) {

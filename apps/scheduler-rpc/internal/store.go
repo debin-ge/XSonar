@@ -13,9 +13,9 @@ import (
 type SchedulerStore interface {
 	Close(ctx context.Context) error
 	CreateTask(ctx context.Context, item *task) (*task, *serviceError)
-	GetTask(ctx context.Context, taskID string) (*task, *serviceError)
-	ListTaskRuns(ctx context.Context, taskID string, limit int) ([]taskRun, *serviceError)
-	StopTask(ctx context.Context, taskID string) (*task, *serviceError)
+	GetTask(ctx context.Context, taskID, createdBy string) (*task, *serviceError)
+	ListTaskRuns(ctx context.Context, taskID, createdBy string, limit int) ([]taskRun, *serviceError)
+	StopTask(ctx context.Context, taskID, createdBy string) (*task, *serviceError)
 	ListDueTasks(ctx context.Context, now time.Time, limit int) ([]task, *serviceError)
 	CreateRun(ctx context.Context, item *taskRun) (*taskRun, *serviceError)
 	NextRunNo(ctx context.Context, taskID string) (int64, *serviceError)
@@ -144,24 +144,24 @@ func (s *memorySchedulerStore) CreateTask(_ context.Context, item *task) (*task,
 	return cloneTask(clone), nil
 }
 
-func (s *memorySchedulerStore) GetTask(_ context.Context, taskID string) (*task, *serviceError) {
+func (s *memorySchedulerStore) GetTask(_ context.Context, taskID, createdBy string) (*task, *serviceError) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
 	item, exists := s.tasks[taskID]
-	if !exists {
+	if !exists || !taskOwnerMatches(item, createdBy) {
 		return nil, schedulerNotFound("task not found")
 	}
 	return cloneTask(item), nil
 }
 
-func (s *memorySchedulerStore) ListTaskRuns(_ context.Context, taskID string, limit int) ([]taskRun, *serviceError) {
+func (s *memorySchedulerStore) ListTaskRuns(_ context.Context, taskID, createdBy string, limit int) ([]taskRun, *serviceError) {
 	s.mu.RLock()
 	runs := s.taskRuns[taskID]
-	taskExists := s.tasks[taskID] != nil
+	item := s.tasks[taskID]
 	s.mu.RUnlock()
 
-	if !taskExists {
+	if item == nil || !taskOwnerMatches(item, createdBy) {
 		return nil, schedulerNotFound("task not found")
 	}
 
@@ -172,12 +172,12 @@ func (s *memorySchedulerStore) ListTaskRuns(_ context.Context, taskID string, li
 	return items, nil
 }
 
-func (s *memorySchedulerStore) StopTask(_ context.Context, taskID string) (*task, *serviceError) {
+func (s *memorySchedulerStore) StopTask(_ context.Context, taskID, createdBy string) (*task, *serviceError) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
 	item, exists := s.tasks[strings.TrimSpace(taskID)]
-	if !exists {
+	if !exists || !taskOwnerMatches(item, createdBy) {
 		return nil, schedulerNotFound("task not found")
 	}
 
@@ -413,7 +413,7 @@ func (s *FakeSchedulerStore) CreateTask(_ context.Context, item *task) (*task, *
 	return cloneTask(clone), nil
 }
 
-func (s *FakeSchedulerStore) GetTask(_ context.Context, taskID string) (*task, *serviceError) {
+func (s *FakeSchedulerStore) GetTask(_ context.Context, taskID, createdBy string) (*task, *serviceError) {
 	s.mu.RLock()
 	item, exists := s.tasks[taskID]
 	s.mu.RUnlock()
@@ -422,16 +422,16 @@ func (s *FakeSchedulerStore) GetTask(_ context.Context, taskID string) (*task, *
 	s.lastGetTaskID = taskID
 	s.mu.Unlock()
 
-	if !exists {
+	if !exists || !taskOwnerMatches(item, createdBy) {
 		return nil, schedulerNotFound("task not found")
 	}
 	return cloneTask(item), nil
 }
 
-func (s *FakeSchedulerStore) ListTaskRuns(_ context.Context, taskID string, limit int) ([]taskRun, *serviceError) {
+func (s *FakeSchedulerStore) ListTaskRuns(_ context.Context, taskID, createdBy string, limit int) ([]taskRun, *serviceError) {
 	s.mu.RLock()
 	runs := s.taskRuns[taskID]
-	taskExists := s.tasks[taskID] != nil
+	item := s.tasks[taskID]
 	s.mu.RUnlock()
 
 	s.mu.Lock()
@@ -439,7 +439,7 @@ func (s *FakeSchedulerStore) ListTaskRuns(_ context.Context, taskID string, limi
 	s.lastListTaskRunsLimit = limit
 	s.mu.Unlock()
 
-	if !taskExists {
+	if item == nil || !taskOwnerMatches(item, createdBy) {
 		return nil, schedulerNotFound("task not found")
 	}
 
@@ -450,12 +450,12 @@ func (s *FakeSchedulerStore) ListTaskRuns(_ context.Context, taskID string, limi
 	return items, nil
 }
 
-func (s *FakeSchedulerStore) StopTask(_ context.Context, taskID string) (*task, *serviceError) {
+func (s *FakeSchedulerStore) StopTask(_ context.Context, taskID, createdBy string) (*task, *serviceError) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
 	item, exists := s.tasks[strings.TrimSpace(taskID)]
-	if !exists {
+	if !exists || !taskOwnerMatches(item, createdBy) {
 		return nil, schedulerNotFound("task not found")
 	}
 
@@ -463,6 +463,17 @@ func (s *FakeSchedulerStore) StopTask(_ context.Context, taskID string) (*task, 
 	item.NextRunAt = nil
 	item.UpdatedAt = time.Now().UTC()
 	return cloneTask(item), nil
+}
+
+func taskOwnerMatches(item *task, createdBy string) bool {
+	if item == nil {
+		return false
+	}
+	normalizedOwner := strings.TrimSpace(createdBy)
+	if normalizedOwner == "" {
+		return true
+	}
+	return strings.TrimSpace(item.CreatedBy) == normalizedOwner
 }
 
 func (s *FakeSchedulerStore) ListDueTasks(_ context.Context, now time.Time, limit int) ([]task, *serviceError) {

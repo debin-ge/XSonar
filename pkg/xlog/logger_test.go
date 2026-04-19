@@ -86,3 +86,32 @@ func TestLoggerPrunesRotatedBackups(t *testing.T) {
 		t.Fatalf("expected current log file, got error: %v", err)
 	}
 }
+
+func TestLoggerCreatesRestrictedDirectoryAndFilePermissions(t *testing.T) {
+	rootDir := t.TempDir()
+	logDir := filepath.Join(rootDir, "logs")
+
+	logger, err := NewWithOptions("gateway-api", logDir, Options{
+		Stdout: &bytes.Buffer{},
+	})
+	if err != nil {
+		t.Fatalf("new logger: %v", err)
+	}
+	defer func() { _ = logger.Close() }()
+
+	dirInfo, err := os.Stat(logDir)
+	if err != nil {
+		t.Fatalf("stat log dir: %v", err)
+	}
+	if got := dirInfo.Mode().Perm(); got != 0o750 {
+		t.Fatalf("expected log dir mode 0750, got %04o", got)
+	}
+
+	fileInfo, err := os.Stat(filepath.Join(logDir, "gateway-api.log"))
+	if err != nil {
+		t.Fatalf("stat log file: %v", err)
+	}
+	if got := fileInfo.Mode().Perm(); got != 0o600 {
+		t.Fatalf("expected log file mode 0600, got %04o", got)
+	}
+}

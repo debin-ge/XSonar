@@ -8,6 +8,7 @@ import (
 	providerconfig "xsonar/apps/provider-rpc/internal/config"
 	"xsonar/pkg/model"
 	"xsonar/pkg/proto/providerpb"
+	"xsonar/pkg/shared"
 	"xsonar/pkg/xlog"
 )
 
@@ -48,8 +49,12 @@ func (b *Bridge) HealthCheckProvider(ctx context.Context, in *providerpb.HealthC
 
 func encodeProviderResponse(data any, svcErr *providerServiceError) *providerpb.JsonResponse {
 	if svcErr != nil {
+		code, err := shared.Int32FromInt(svcErr.code)
+		if err != nil {
+			code = model.CodeInternalError
+		}
 		return &providerpb.JsonResponse{
-			Code:    int32(svcErr.code),
+			Code:    code,
 			Message: svcErr.message,
 		}
 	}

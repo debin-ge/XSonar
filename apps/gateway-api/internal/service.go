@@ -3,8 +3,6 @@ package internal
 import (
 	"bytes"
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"io"
@@ -387,18 +385,18 @@ func (s *gatewayService) handleCreateCollectorTaskByType(w http.ResponseWriter, 
 		CreatedBy: subject,
 	}
 	switch taskType {
-		case "periodic":
-			var req types.CreatePeriodicCollectorTaskReq
-			if err := json.Unmarshal(body, &req); err != nil {
+	case "periodic":
+		var req types.CreatePeriodicCollectorTaskReq
+		if err := json.Unmarshal(body, &req); err != nil {
 			shared.WriteError(w, http.StatusBadRequest, model.CodeInvalidRequest, "invalid request body", requestID)
 			return
 		}
-			createReq.TaskId = req.TaskID
-			createReq.Keyword = req.Keyword
-			createReq.Priority = req.Priority
-			createReq.FrequencySeconds = req.FrequencySeconds
-			createReq.PerRunCount = req.PerRunCount
-			createReq.RequiredCount = req.RequiredCount
+		createReq.TaskId = req.TaskID
+		createReq.Keyword = req.Keyword
+		createReq.Priority = req.Priority
+		createReq.FrequencySeconds = req.FrequencySeconds
+		createReq.PerRunCount = req.PerRunCount
+		createReq.RequiredCount = req.RequiredCount
 	case "range":
 		var req types.CreateRangeCollectorTaskReq
 		if err := json.Unmarshal(body, &req); err != nil {
@@ -424,7 +422,8 @@ func (s *gatewayService) handleCreateCollectorTaskByType(w http.ResponseWriter, 
 }
 
 func (s *gatewayService) handleGetCollectorTask(w http.ResponseWriter, r *http.Request) {
-	if _, ok := s.requireGatewayAuthSubject(w, r); !ok {
+	subject, ok := s.requireGatewayAuthSubject(w, r)
+	if !ok {
 		return
 	}
 
@@ -442,12 +441,16 @@ func (s *gatewayService) handleGetCollectorTask(w http.ResponseWriter, r *http.R
 	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
 	defer cancel()
 
-	response, callErr := s.schedulerClient.GetTask(ctx, &schedulerservice.GetTaskRequest{TaskId: taskID})
+	response, callErr := s.schedulerClient.GetTask(ctx, &schedulerservice.GetTaskRequest{
+		TaskId:    taskID,
+		CreatedBy: subject,
+	})
 	writeAdminDownstreamResult(w, requestID, response, callErr)
 }
 
 func (s *gatewayService) handleListCollectorTaskRuns(w http.ResponseWriter, r *http.Request) {
-	if _, ok := s.requireGatewayAuthSubject(w, r); !ok {
+	subject, ok := s.requireGatewayAuthSubject(w, r)
+	if !ok {
 		return
 	}
 
@@ -465,12 +468,16 @@ func (s *gatewayService) handleListCollectorTaskRuns(w http.ResponseWriter, r *h
 	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
 	defer cancel()
 
-	response, callErr := s.schedulerClient.ListTaskRuns(ctx, &schedulerservice.ListTaskRunsRequest{TaskId: taskID})
+	response, callErr := s.schedulerClient.ListTaskRuns(ctx, &schedulerservice.ListTaskRunsRequest{
+		TaskId:    taskID,
+		CreatedBy: subject,
+	})
 	writeAdminDownstreamResult(w, requestID, response, callErr)
 }
 
 func (s *gatewayService) handleStopCollectorTask(w http.ResponseWriter, r *http.Request) {
-	if _, ok := s.requireGatewayAuthSubject(w, r); !ok {
+	subject, ok := s.requireGatewayAuthSubject(w, r)
+	if !ok {
 		return
 	}
 
@@ -488,7 +495,10 @@ func (s *gatewayService) handleStopCollectorTask(w http.ResponseWriter, r *http.
 	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
 	defer cancel()
 
-	response, callErr := s.schedulerClient.StopTask(ctx, &schedulerservice.StopTaskRequest{TaskId: taskID})
+	response, callErr := s.schedulerClient.StopTask(ctx, &schedulerservice.StopTaskRequest{
+		TaskId:    taskID,
+		CreatedBy: subject,
+	})
 	writeAdminDownstreamResult(w, requestID, response, callErr)
 }
 
@@ -736,23 +746,6 @@ func stringValue(value any) string {
 	default:
 		return ""
 	}
-}
-
-func intValue(value any, fallback int) int {
-	switch typed := value.(type) {
-	case float64:
-		return int(typed)
-	case int:
-		return typed
-	case int64:
-		return int(typed)
-	case json.Number:
-		number, err := typed.Int64()
-		if err == nil {
-			return int(number)
-		}
-	}
-	return fallback
 }
 
 func stringSlice(value any) []string {
@@ -1013,15 +1006,6 @@ func sharedIsAuthField(key string) bool {
 	default:
 		return false
 	}
-}
-
-func secretFingerprint(value string) string {
-	normalized := strings.TrimSpace(value)
-	if normalized == "" {
-		return ""
-	}
-	sum := sha256.Sum256([]byte(normalized))
-	return hex.EncodeToString(sum[:6])
 }
 
 func loggedQuery(query url.Values) string {

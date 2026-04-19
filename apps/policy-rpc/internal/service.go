@@ -148,60 +148,6 @@ func (s *policyService) seed(providerAPIKey string) {
 	})
 }
 
-func (s *policyService) handleResolvePolicy(w http.ResponseWriter, r *http.Request) {
-	requestID := shared.EnsureRequestID(w, r)
-	var req resolvePolicyRequest
-	if err := shared.DecodeJSONBody(r, &req); err != nil {
-		shared.WriteError(w, http.StatusBadRequest, model.CodeInvalidRequest, "invalid JSON body", requestID)
-		return
-	}
-
-	data, svcErr := s.resolvePolicy(r.Context(), req)
-	writePolicyResult(w, requestID, data, svcErr)
-}
-
-func (s *policyService) handleCheckAppPolicyAccess(w http.ResponseWriter, r *http.Request) {
-	requestID := shared.EnsureRequestID(w, r)
-	var req checkAppPolicyAccessRequest
-	if err := shared.DecodeJSONBody(r, &req); err != nil {
-		shared.WriteError(w, http.StatusBadRequest, model.CodeInvalidRequest, "invalid JSON body", requestID)
-		return
-	}
-
-	data, svcErr := s.checkAppPolicyAccess(r.Context(), req)
-	writePolicyResult(w, requestID, data, svcErr)
-}
-
-func (s *policyService) handleListPolicies(w http.ResponseWriter, r *http.Request) {
-	requestID := shared.EnsureRequestID(w, r)
-	data, svcErr := s.listPolicies(r.Context())
-	writePolicyResult(w, requestID, data, svcErr)
-}
-
-func (s *policyService) handlePublishPolicyConfig(w http.ResponseWriter, r *http.Request) {
-	requestID := shared.EnsureRequestID(w, r)
-	var req publishPolicyConfigRequest
-	if err := shared.DecodeJSONBody(r, &req); err != nil {
-		shared.WriteError(w, http.StatusBadRequest, model.CodeInvalidRequest, "invalid JSON body", requestID)
-		return
-	}
-
-	data, svcErr := s.publishPolicyConfig(r.Context(), req)
-	writePolicyResult(w, requestID, data, svcErr)
-}
-
-func (s *policyService) handleBindAppPolicies(w http.ResponseWriter, r *http.Request) {
-	requestID := shared.EnsureRequestID(w, r)
-	var req bindAppPoliciesRequest
-	if err := shared.DecodeJSONBody(r, &req); err != nil {
-		shared.WriteError(w, http.StatusBadRequest, model.CodeInvalidRequest, "invalid JSON body", requestID)
-		return
-	}
-
-	data, svcErr := s.bindAppPolicies(r.Context(), req)
-	writePolicyResult(w, requestID, data, svcErr)
-}
-
 func (s *policyService) resolvePolicy(ctx context.Context, req resolvePolicyRequest) (any, *policyServiceError) {
 	if s.pgStore != nil {
 		return s.pgStore.resolvePolicy(ctx, req)
@@ -360,15 +306,6 @@ func (s *policyService) bindAppPolicies(ctx context.Context, req bindAppPolicies
 		"app_id":      req.AppID,
 		"policy_keys": req.PolicyKeys,
 	}, nil
-}
-
-func writePolicyResult(w http.ResponseWriter, requestID string, data any, svcErr *policyServiceError) {
-	if svcErr != nil {
-		shared.WriteError(w, svcErr.statusCode, svcErr.code, svcErr.message, requestID)
-		return
-	}
-
-	shared.WriteOK(w, data, requestID)
 }
 
 func policyInvalidRequest(message string) *policyServiceError {

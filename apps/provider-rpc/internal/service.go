@@ -30,6 +30,7 @@ type providerService struct {
 }
 
 const maxUpstreamResponseBytes = 10 << 20
+const maxUpstreamResponsePreviewBytes = 512
 
 type executePolicyRequest struct {
 	RequestID      string         `json:"request_id"`
@@ -52,14 +53,6 @@ type providerExecutionResult struct {
 	UpstreamDurationMS int64           `json:"upstream_duration_ms"`
 }
 
-func newProviderService(logger *xlog.Logger) *providerService {
-	return newProviderServiceWithConfigAndClient(config.ProviderConfig{}, nil, logger)
-}
-
-func newProviderServiceWithConfig(cfg config.ProviderConfig, logger *xlog.Logger) *providerService {
-	return newProviderServiceWithConfigAndClient(cfg, nil, logger)
-}
-
 func newProviderServiceWithConfigAndClient(cfg config.ProviderConfig, client *http.Client, logger *xlog.Logger) *providerService {
 	if client == nil {
 		client = &http.Client{
@@ -72,30 +65,6 @@ func newProviderServiceWithConfigAndClient(cfg config.ProviderConfig, client *ht
 		config: cfg,
 		client: client,
 	}
-}
-
-func (s *providerService) handleExecutePolicy(w http.ResponseWriter, r *http.Request) {
-	requestID := shared.EnsureRequestID(w, r)
-	var req executePolicyRequest
-	if err := shared.DecodeJSONBody(r, &req); err != nil {
-		shared.WriteError(w, http.StatusBadRequest, model.CodeInvalidRequest, "invalid JSON body", requestID)
-		return
-	}
-
-	data, svcErr := s.executePolicy(r.Context(), req)
-	writeProviderResult(w, requestID, data, svcErr)
-}
-
-func (s *providerService) handleHealthCheckProvider(w http.ResponseWriter, r *http.Request) {
-	requestID := shared.EnsureRequestID(w, r)
-	var req healthCheckProviderRequest
-	_ = shared.DecodeJSONBody(r, &req)
-	if req.ProviderName == "" {
-		req.ProviderName = r.URL.Query().Get("provider_name")
-	}
-
-	data, svcErr := s.healthCheckProvider(r.Context(), req)
-	writeProviderResult(w, requestID, data, svcErr)
 }
 
 func (s *providerService) executePolicy(ctx context.Context, req executePolicyRequest) (any, *providerServiceError) {
@@ -186,8 +155,8 @@ func (s *providerService) executePolicy(ctx context.Context, req executePolicyRe
 		lastResultCode = normalizedResultCode
 		logFields := providerLogFields(req, method, targetURL, attempt, normalizedStatusCode, lastResultCode, "")
 		logFields["upstream_status_code"] = resp.StatusCode
-		includeBody := shouldLogFullUpstreamResponse(resp.StatusCode, normalizedStatusCode, lastResultCode)
-		for key, value := range providerLogResponseFields(bodyBytes, resp.Header.Get("Content-Type"), includeBody) {
+		includePreview := shouldLogUpstreamResponsePreview(resp.StatusCode, normalizedStatusCode, lastResultCode)
+		for key, value := range providerLogResponseFields(bodyBytes, resp.Header.Get("Content-Type"), includePreview) {
 			logFields[key] = value
 		}
 		if normalizedStatusCode >= http.StatusBadRequest {
@@ -272,8 +241,8 @@ func (s *providerService) executePolicy(ctx context.Context, req executePolicyRe
 			logFields := providerLogFields(req, method, fallbackURL, attempt, normalizedStatusCode, lastResultCode, "")
 			logFields["upstream_status_code"] = resp.StatusCode
 			logFields["fallback"] = true
-			includeBody := shouldLogFullUpstreamResponse(resp.StatusCode, normalizedStatusCode, lastResultCode)
-			for key, value := range providerLogResponseFields(bodyBytes, resp.Header.Get("Content-Type"), includeBody) {
+			includePreview := shouldLogUpstreamResponsePreview(resp.StatusCode, normalizedStatusCode, lastResultCode)
+			for key, value := range providerLogResponseFields(bodyBytes, resp.Header.Get("Content-Type"), includePreview) {
 				logFields[key] = value
 			}
 			if normalizedStatusCode >= http.StatusBadRequest {
@@ -385,15 +354,6 @@ func (s *providerService) healthCheckProvider(ctx context.Context, req healthChe
 	return healthData, nil
 }
 
-func writeProviderResult(w http.ResponseWriter, requestID string, data any, svcErr *providerServiceError) {
-	if svcErr != nil {
-		shared.WriteError(w, svcErr.statusCode, svcErr.code, svcErr.message, requestID)
-		return
-	}
-
-	shared.WriteOK(w, data, requestID)
-}
-
 func providerInvalidRequest(message string) *providerServiceError {
 	return &providerServiceError{statusCode: http.StatusBadRequest, code: model.CodeInvalidRequest, message: message}
 }
@@ -499,22 +459,7 @@ func encodeQueryValues(query map[string]any) url.Values {
 	return values
 }
 
-func decodeUpstreamBody(body []byte, contentType string) any {
-	if len(body) == 0 {
-		return map[string]any{}
-	}
-
-	if strings.Contains(strings.ToLower(contentType), "json") || json.Valid(body) {
-		var payload any
-		if err := json.Unmarshal(body, &payload); err == nil {
-			return payload
-		}
-	}
-
-	return string(body)
-}
-
-func providerLogResponseFields(body []byte, contentType string, includeBody bool) map[string]any {
+func providerLogResponseFields(body []byte, contentType string, includePreview bool) map[string]any {
 	fields := map[string]any{
 		"upstream_response_bytes": len(body),
 	}
@@ -523,33 +468,116 @@ func providerLogResponseFields(body []byte, contentType string, includeBody bool
 		fields["upstream_content_type"] = trimmedContentType
 	}
 
-	if includeBody {
-		if responseBody := providerLogResponseBody(body, contentType); responseBody != "" {
-			fields["upstream_response"] = responseBody
+	if includePreview {
+		preview, truncated, redacted := providerLogResponsePreview(body, contentType)
+		if preview != "" {
+			fields["upstream_response_preview"] = preview
+			if truncated {
+				fields["upstream_response_truncated"] = true
+			}
+			if redacted {
+				fields["upstream_response_redacted"] = true
+			}
 		}
 	}
 
 	return fields
 }
 
-func providerLogResponseBody(body []byte, contentType string) string {
+func providerLogResponsePreview(body []byte, contentType string) (string, bool, bool) {
 	trimmedBody := bytes.TrimSpace(body)
 	if len(trimmedBody) == 0 {
-		return ""
+		return "", false, false
 	}
 
 	logBody := trimmedBody
+	redacted := false
 	if strings.Contains(strings.ToLower(contentType), "json") || json.Valid(trimmedBody) {
-		var compact bytes.Buffer
-		if err := json.Compact(&compact, trimmedBody); err == nil {
-			logBody = compact.Bytes()
+		sanitizedBody, sanitized := sanitizeProviderLogJSON(trimmedBody)
+		if len(sanitizedBody) > 0 {
+			logBody = sanitizedBody
+			redacted = sanitized
 		}
 	}
 
-	return string(logBody)
+	truncated := len(logBody) > maxUpstreamResponsePreviewBytes
+	if truncated {
+		logBody = logBody[:maxUpstreamResponsePreviewBytes]
+	}
+
+	return string(logBody), truncated, redacted
 }
 
-func shouldLogFullUpstreamResponse(upstreamStatusCode, normalizedStatusCode int, normalizedResultCode string) bool {
+func sanitizeProviderLogJSON(body []byte) ([]byte, bool) {
+	var payload any
+	if err := json.Unmarshal(body, &payload); err != nil {
+		return nil, false
+	}
+
+	redactedPayload, redacted := redactProviderLogValue(payload)
+	sanitizedBody, err := json.Marshal(redactedPayload)
+	if err != nil {
+		return nil, redacted
+	}
+	return sanitizedBody, redacted
+}
+
+func redactProviderLogValue(value any) (any, bool) {
+	switch typed := value.(type) {
+	case map[string]any:
+		result := make(map[string]any, len(typed))
+		redacted := false
+		for key, item := range typed {
+			if isSensitiveProviderLogKey(key) {
+				result[key] = "[REDACTED]"
+				redacted = true
+				continue
+			}
+			redactedValue, childRedacted := redactProviderLogValue(item)
+			result[key] = redactedValue
+			if childRedacted {
+				redacted = true
+			}
+		}
+		return result, redacted
+	case []any:
+		result := make([]any, 0, len(typed))
+		redacted := false
+		for _, item := range typed {
+			redactedValue, childRedacted := redactProviderLogValue(item)
+			result = append(result, redactedValue)
+			if childRedacted {
+				redacted = true
+			}
+		}
+		return result, redacted
+	default:
+		return value, false
+	}
+}
+
+func isSensitiveProviderLogKey(key string) bool {
+	normalized := strings.ToLower(strings.TrimSpace(key))
+	normalized = strings.NewReplacer("-", "", "_", "").Replace(normalized)
+	sensitiveMarkers := []string{
+		"token",
+		"secret",
+		"password",
+		"authorization",
+		"cookie",
+		"apikey",
+		"csrf",
+		"ct0",
+	}
+	for _, marker := range sensitiveMarkers {
+		if strings.Contains(normalized, marker) {
+			return true
+		}
+	}
+	return false
+}
+
+func shouldLogUpstreamResponsePreview(upstreamStatusCode, normalizedStatusCode int, normalizedResultCode string) bool {
 	return upstreamStatusCode >= http.StatusInternalServerError ||
 		normalizedStatusCode >= http.StatusInternalServerError ||
 		normalizedResultCode == "UPSTREAM_APPLICATION_ERROR"
@@ -587,42 +615,6 @@ func normalizeUpstreamPayloadRaw(statusCode int, body []byte, contentType string
 	return statusCode, resultCode, cloneRawJSON(trimmedBody)
 }
 
-func normalizeUpstreamPayload(statusCode int, payload any) (int, string, any) {
-	resultCode := upstreamResultCode(statusCode)
-
-	if statusCode >= http.StatusOK && statusCode < http.StatusMultipleChoices {
-		envelope, ok := payload.(map[string]any)
-		if !ok {
-			return statusCode, resultCode, payload
-		}
-		if errorBody := upstreamApplicationErrorBody(envelope); errorBody != nil {
-			return http.StatusBadGateway, "UPSTREAM_APPLICATION_ERROR", errorBody
-		}
-		if data, exists := envelope["data"]; exists {
-			return statusCode, resultCode, data
-		}
-		return statusCode, resultCode, payload
-	}
-
-	if isPlaceholderUpstreamErrorPayload(payload) {
-		return statusCode, resultCode, nil
-	}
-
-	return statusCode, resultCode, payload
-}
-
-func isPlaceholderUpstreamErrorPayload(payload any) bool {
-	body, ok := payload.(map[string]any)
-	if !ok {
-		return false
-	}
-	if len(body) != 1 {
-		return false
-	}
-	_, exists := body["additionalProp"]
-	return exists
-}
-
 func isPlaceholderUpstreamErrorPayloadRaw(payload json.RawMessage) bool {
 	body, ok := rawJSONObject(payload)
 	if !ok {
@@ -633,45 +625,6 @@ func isPlaceholderUpstreamErrorPayloadRaw(payload json.RawMessage) bool {
 	}
 	_, exists := body["additionalProp"]
 	return exists
-}
-
-func upstreamApplicationErrorBody(envelope map[string]any) map[string]any {
-	dataValue, ok := envelope["data"].(string)
-	if ok {
-		dataValue = strings.TrimSpace(dataValue)
-		msgValue, _ := envelope["msg"].(string)
-		msgValue = strings.TrimSpace(msgValue)
-		if dataValue != "" && msgValue != "" && strings.EqualFold(dataValue, msgValue) && looksLikeUpstreamErrorText(dataValue) {
-			return map[string]any{"error": dataValue}
-		}
-	}
-
-	dataObject, ok := envelope["data"].(map[string]any)
-	if !ok {
-		return nil
-	}
-
-	rawErrors, ok := dataObject["errors"].([]any)
-	if !ok || len(rawErrors) == 0 {
-		return nil
-	}
-
-	errorMessage := "upstream returned application errors"
-	if firstError, ok := rawErrors[0].(map[string]any); ok {
-		if message, ok := firstError["message"].(string); ok && strings.TrimSpace(message) != "" {
-			errorMessage = strings.TrimSpace(message)
-		}
-	}
-
-	errorBody := map[string]any{
-		"error":  errorMessage,
-		"errors": rawErrors,
-	}
-	if nestedData, exists := dataObject["data"]; exists && !isEmptyObject(nestedData) {
-		errorBody["data"] = nestedData
-	}
-
-	return errorBody
 }
 
 func upstreamApplicationErrorBodyRaw(envelope map[string]json.RawMessage) json.RawMessage {
@@ -782,14 +735,6 @@ func isEmptyRawObject(value json.RawMessage) bool {
 
 func isNullRawJSON(value json.RawMessage) bool {
 	return string(bytes.TrimSpace(value)) == "null"
-}
-
-func isEmptyObject(value any) bool {
-	if value == nil {
-		return true
-	}
-	object, ok := value.(map[string]any)
-	return ok && len(object) == 0
 }
 
 func isEmptySearchResponse(body []byte) bool {

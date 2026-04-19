@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"os"
 	"path/filepath"
 	"strings"
 	"time"
@@ -44,6 +45,18 @@ type runExecutor interface {
 	Run(ctx context.Context, runID string) error
 }
 
+type runnerFlusher interface {
+	Flush() error
+}
+
+type runnerRecordWriter interface {
+	Append(record any) error
+	Flush() error
+	Commit() error
+	Close() error
+	beginBatchAppend(batchSize int) func()
+}
+
 type runner struct {
 	logger              *xlog.Logger
 	store               workerStore
@@ -54,6 +67,7 @@ type runner struct {
 	periodicRunMaxPages int64
 	ndjsonFlushEvery    int
 	ndjsonFsyncOnClose  bool
+	newWriter           func(finalPath string, flushEvery int, fsyncOnClose bool) (runnerRecordWriter, error)
 }
 
 type resolvedPolicy struct {
@@ -82,6 +96,12 @@ type collectorOutputRecord struct {
 	Raw       json.RawMessage `json:"raw"`
 }
 
+type pendingCollectedPost struct {
+	extractedPost
+	SeenAt     time.Time
+	UsageMonth string
+}
+
 func newRunner(cfg config.Config, logger *xlog.Logger, store workerStore, policyResolver policyResolver, providerExecutor providerExecutor, workerID string) *runner {
 	cfg = normalizeCollectorWorkerConfig(cfg)
 	if logger == nil {
@@ -101,6 +121,9 @@ func newRunner(cfg config.Config, logger *xlog.Logger, store workerStore, policy
 		periodicRunMaxPages: int64(cfg.PeriodicRunMaxPages),
 		ndjsonFlushEvery:    cfg.NDJSONFlushEveryRecords,
 		ndjsonFsyncOnClose:  cfg.NDJSONFsyncOnClose,
+		newWriter: func(finalPath string, flushEvery int, fsyncOnClose bool) (runnerRecordWriter, error) {
+			return newNDJSONWriter(finalPath, flushEvery, fsyncOnClose)
+		},
 	}
 }
 
@@ -112,19 +135,8 @@ func (r *runner) run(ctx context.Context, runID string) error {
 	if r == nil || r.store == nil {
 		return errors.New("runner store is not configured")
 	}
-	if r.policyResolver == nil {
-		return errors.New("policy resolver is not configured")
-	}
-	if r.providerExecutor == nil {
-		return errors.New("provider executor is not configured")
-	}
 
 	view, err := r.store.LoadRunTask(ctx, strings.TrimSpace(runID))
-	if err != nil {
-		return err
-	}
-
-	policy, err := r.resolvePolicy(ctx)
 	if err != nil {
 		return err
 	}
@@ -135,7 +147,40 @@ func (r *runner) run(ctx context.Context, runID string) error {
 		startedAt = view.Run.StartedAt.UTC()
 	}
 
-	writer, err := newNDJSONWriter(outputPath, r.ndjsonFlushEvery, r.ndjsonFsyncOnClose)
+	requiredCount := int64(0)
+	if view.Task.RequiredCount != nil && *view.Task.RequiredCount > 0 {
+		requiredCount = *view.Task.RequiredCount
+	}
+	perRunCount := int64(0)
+	if view.Task.PerRunCount != nil && *view.Task.PerRunCount > 0 {
+		perRunCount = *view.Task.PerRunCount
+	}
+
+	if committedOutput, err := committedRunOutputExists(outputPath); err != nil {
+		return err
+	} else if committedOutput {
+		if runAlreadyFinished(view.Run) {
+			return nil
+		}
+		return r.finishCommittedRunRecovery(ctx, view, outputPath, requiredCount, perRunCount)
+	}
+
+	if r.policyResolver == nil {
+		return errors.New("policy resolver is not configured")
+	}
+	if r.providerExecutor == nil {
+		return errors.New("provider executor is not configured")
+	}
+	if r.newWriter == nil {
+		return errors.New("runner writer is not configured")
+	}
+
+	policy, err := r.resolvePolicy(ctx)
+	if err != nil {
+		return err
+	}
+
+	writer, err := r.newWriter(outputPath, r.ndjsonFlushEvery, r.ndjsonFsyncOnClose)
 	if err != nil {
 		return err
 	}
@@ -155,7 +200,7 @@ func (r *runner) run(ctx context.Context, runID string) error {
 	resumeCursor, resumeOffset := initialResumeState(view)
 	updateResume := view.Task.TaskType == TaskTypePeriodic
 
-	if err := r.store.UpdateRunProgress(ctx, updateRunProgressParams{
+	if err := r.persistRunProgress(ctx, writer, updateRunProgressParams{
 		RunID:          view.Run.RunID,
 		Status:         RunStatusRunning,
 		StartedAt:      &startedAt,
@@ -173,14 +218,6 @@ func (r *runner) run(ctx context.Context, runID string) error {
 	}
 
 	stopReason := ""
-	requiredCount := int64(0)
-	if view.Task.RequiredCount != nil && *view.Task.RequiredCount > 0 {
-		requiredCount = *view.Task.RequiredCount
-	}
-	perRunCount := int64(0)
-	if view.Task.PerRunCount != nil && *view.Task.PerRunCount > 0 {
-		perRunCount = *view.Task.PerRunCount
-	}
 	taskStatusOverride := ""
 	for {
 		latestView, err := r.store.LoadRunTask(ctx, view.Run.RunID)
@@ -229,7 +266,7 @@ func (r *runner) run(ctx context.Context, runID string) error {
 			} else {
 				stopReason = stopReasonEmptyPage
 			}
-			if err := r.store.UpdateRunProgress(ctx, updateRunProgressParams{
+			if err := r.persistRunProgress(ctx, writer, updateRunProgressParams{
 				RunID:          view.Run.RunID,
 				Status:         RunStatusRunning,
 				StartedAt:      &startedAt,
@@ -251,7 +288,7 @@ func (r *runner) run(ctx context.Context, runID string) error {
 		if currentOffset >= pageSize {
 			resumeCursor = nextCursor
 			resumeOffset = 0
-			if err := r.store.UpdateRunProgress(ctx, updateRunProgressParams{
+			if err := r.persistRunProgress(ctx, writer, updateRunProgressParams{
 				RunID:          view.Run.RunID,
 				Status:         RunStatusRunning,
 				StartedAt:      &startedAt,
@@ -277,47 +314,26 @@ func (r *runner) run(ctx context.Context, runID string) error {
 			continue
 		}
 
-		seenAt := time.Now().UTC()
-		usageMonth := time.Date(seenAt.Year(), seenAt.Month(), 1, 0, 0, 0, 0, time.UTC).Format("2006-01-02")
-		requiredReached := false
-		processedOffset := currentOffset
-		for _, post := range page.Posts[int(currentOffset):] {
-			processedOffset++
-			if _, err := r.store.RecordKeywordMonthlyUsage(ctx, view.Task.Keyword, usageMonth, post.PostID, view.Task.TaskID, seenAt); err != nil {
-				return err
-			}
-
-			firstSeen, err := r.store.RecordTaskSeenPost(ctx, view.Task.TaskID, post.PostID, view.Run.RunID, seenAt)
-			if err != nil {
-				return err
-			}
-			if !firstSeen {
-				duplicateCount++
-				continue
-			}
-
-			newCount++
-			if err := writer.Append(collectorOutputRecord{
-				TaskID:    view.Task.TaskID,
-				RunID:     view.Run.RunID,
-				Keyword:   view.Task.Keyword,
-				PostID:    post.PostID,
-				WorkerID:  r.workerID,
-				Collected: seenAt.Format(time.RFC3339Nano),
-				Raw:       post.RawPayload,
-			}); err != nil {
-				return err
-			}
+		requiredRemaining := remainingCount(requiredCount, view.Task.CompletedCount+newCount)
+		perRunRemaining := remainingCount(perRunCount, newCount)
+		pending, processedOffset, duplicateDelta, requiredReached, err := r.collectPendingPosts(ctx, view, page.Posts, currentOffset, requiredRemaining, perRunRemaining)
+		if err != nil {
+			return err
+		}
+		if err := r.appendAndFlushPendingPosts(writer, view, pending); err != nil {
+			return err
+		}
+		if err := r.commitPendingPosts(ctx, view, pending); err != nil {
+			return err
+		}
+		newCount += int64(len(pending))
+		duplicateCount += duplicateDelta
+		if requiredReached {
 			if requiredCount > 0 && view.Task.CompletedCount+newCount >= requiredCount {
 				stopReason = stopReasonRequired
 				taskStatusOverride = TaskStatusSucceeded
-				requiredReached = true
-				break
-			}
-			if perRunCount > 0 && newCount >= perRunCount {
+			} else if perRunCount > 0 && newCount >= perRunCount {
 				stopReason = stopReasonPerRun
-				requiredReached = true
-				break
 			}
 		}
 
@@ -333,7 +349,7 @@ func (r *runner) run(ctx context.Context, runID string) error {
 			resumeCursor = nextCursor
 			resumeOffset = 0
 		}
-		if err := r.store.UpdateRunProgress(ctx, updateRunProgressParams{
+		if err := r.persistRunProgress(ctx, writer, updateRunProgressParams{
 			RunID:          view.Run.RunID,
 			Status:         RunStatusRunning,
 			StartedAt:      &startedAt,
@@ -367,12 +383,7 @@ func (r *runner) run(ctx context.Context, runID string) error {
 	}
 	committed = true
 
-	taskStatus := TaskStatusSucceeded
-	if taskStatusOverride != "" {
-		taskStatus = taskStatusOverride
-	} else if view.Task.TaskType == TaskTypePeriodic && stopReason != stopReasonRequired {
-		taskStatus = TaskStatusPending
-	}
+	taskStatus := finalTaskStatus(view.Task, stopReason, taskStatusOverride)
 	completedCount := view.Task.CompletedCount + newCount
 	if err := r.store.MarkRunFinished(ctx, finishRunParams{
 		RunID:          view.Run.RunID,
@@ -399,6 +410,9 @@ func (r *runner) run(ctx context.Context, runID string) error {
 }
 
 func (r *runner) resolvePolicy(ctx context.Context) (resolvedPolicy, error) {
+	// Keep policy freshness centralized in policy-rpc. The worker must not add
+	// a second process-local TTL cache here, otherwise policy publishes cannot
+	// take effect immediately for routing or provider credential rotation.
 	resp, err := r.policyResolver.ResolvePolicy(ctx, &policyservice.ResolvePolicyRequest{
 		Path:   collectorPolicyPath,
 		Method: collectorPolicyMethod,
@@ -421,6 +435,234 @@ func (r *runner) resolvePolicy(ctx context.Context) (resolvedPolicy, error) {
 		return resolvedPolicy{}, errors.New("policy response is missing upstream route")
 	}
 	return policy, nil
+}
+
+func committedRunOutputExists(outputPath string) (bool, error) {
+	outputPath = filepath.Clean(strings.TrimSpace(outputPath))
+	if outputPath == "" {
+		return false, nil
+	}
+
+	partPath := outputPath + ".part"
+	if _, err := os.Stat(partPath); err == nil {
+		return false, nil
+	} else if !os.IsNotExist(err) {
+		return false, err
+	}
+
+	if _, err := os.Stat(outputPath); err == nil {
+		return true, nil
+	} else if os.IsNotExist(err) {
+		return false, nil
+	} else {
+		return false, err
+	}
+}
+
+func runAlreadyFinished(run workerRun) bool {
+	if run.EndedAt != nil {
+		return true
+	}
+	return strings.TrimSpace(run.Status) == RunStatusSucceeded
+}
+
+func (r *runner) finishCommittedRunRecovery(ctx context.Context, view runTaskView, outputPath string, requiredCount, perRunCount int64) error {
+	stopReason, taskStatusOverride := r.deriveCommittedRunOutcome(view, requiredCount, perRunCount)
+	taskStatus := finalTaskStatus(view.Task, stopReason, taskStatusOverride)
+	completedCount := view.Task.CompletedCount + view.Run.NewCount
+
+	return r.store.MarkRunFinished(ctx, finishRunParams{
+		RunID:          view.Run.RunID,
+		TaskID:         view.Task.TaskID,
+		RunStatus:      RunStatusSucceeded,
+		TaskStatus:     taskStatus,
+		StopReason:     stopReason,
+		OutputPath:     outputPath,
+		PageCount:      view.Run.PageCount,
+		FetchedCount:   view.Run.FetchedCount,
+		NewCount:       view.Run.NewCount,
+		DuplicateCount: view.Run.DuplicateCount,
+		NextCursor:     view.Run.NextCursor,
+		ResumeCursor:   view.Run.ResumeCursor,
+		ResumeOffset:   view.Run.ResumeOffset,
+		UpdateResume:   view.Task.TaskType == TaskTypePeriodic,
+		EndedAt:        time.Now().UTC(),
+		CompletedCount: &completedCount,
+	})
+}
+
+func (r *runner) deriveCommittedRunOutcome(view runTaskView, requiredCount, perRunCount int64) (string, string) {
+	if requiredCount > 0 && view.Task.CompletedCount+view.Run.NewCount >= requiredCount {
+		return stopReasonRequired, TaskStatusSucceeded
+	}
+	if perRunCount > 0 && view.Run.NewCount >= perRunCount {
+		return stopReasonPerRun, ""
+	}
+	if overrideStatus, overrideReason := inactiveTaskState(view.Task.Status); overrideStatus != "" {
+		return overrideReason, overrideStatus
+	}
+	if view.Task.TaskType == TaskTypePeriodic && view.Run.PageCount >= r.periodicRunMaxPages {
+		return stopReasonPageLimit, ""
+	}
+	if strings.TrimSpace(view.Run.NextCursor) != "" && strings.TrimSpace(view.Run.ResumeCursor) == "" && view.Run.ResumeOffset == 0 {
+		if view.Task.TaskType == TaskTypePeriodic {
+			return stopReasonEmptyCursor, TaskStatusPaused
+		}
+		return stopReasonEmptyPage, ""
+	}
+	if view.Run.PageCount > 0 && view.Run.FetchedCount == 0 {
+		return stopReasonEmptyPage, ""
+	}
+	return strings.TrimSpace(view.Run.StopReason), ""
+}
+
+func finalTaskStatus(task workerTask, stopReason, taskStatusOverride string) string {
+	if taskStatusOverride != "" {
+		return taskStatusOverride
+	}
+	if task.TaskType == TaskTypePeriodic && stopReason != stopReasonRequired {
+		return TaskStatusPending
+	}
+	return TaskStatusSucceeded
+}
+
+func (r *runner) collectPendingPosts(ctx context.Context, view runTaskView, posts []extractedPost, currentOffset, requiredRemaining, perRunRemaining int64) ([]pendingCollectedPost, int64, int64, bool, error) {
+	if currentOffset >= int64(len(posts)) {
+		return nil, currentOffset, 0, false, nil
+	}
+
+	postIDs := make([]string, 0, len(posts)-int(currentOffset))
+	for _, post := range posts[int(currentOffset):] {
+		postIDs = append(postIDs, post.PostID)
+	}
+
+	historicalSeen, err := r.store.ListTaskSeenPosts(ctx, view.Task.TaskID, postIDs)
+	if err != nil {
+		return nil, currentOffset, 0, false, err
+	}
+
+	pageSeen := make(map[string]struct{}, len(postIDs))
+	pending := make([]pendingCollectedPost, 0, len(postIDs))
+	processedOffset := currentOffset
+	duplicateCountDelta := int64(0)
+	limit := firstPositiveLimit(requiredRemaining, perRunRemaining)
+	limitReached := false
+
+	for _, post := range posts[int(currentOffset):] {
+		processedOffset++
+		postID := strings.TrimSpace(post.PostID)
+		if historicalSeen[postID] {
+			duplicateCountDelta++
+			continue
+		}
+		if _, exists := pageSeen[postID]; exists {
+			duplicateCountDelta++
+			continue
+		}
+		pageSeen[postID] = struct{}{}
+
+		seenAt := time.Now().UTC()
+		pending = append(pending, pendingCollectedPost{
+			extractedPost: post,
+			SeenAt:        seenAt,
+			UsageMonth:    time.Date(seenAt.Year(), seenAt.Month(), 1, 0, 0, 0, 0, time.UTC).Format("2006-01-02"),
+		})
+
+		if limit > 0 && int64(len(pending)) >= limit {
+			limitReached = true
+			break
+		}
+	}
+
+	return pending, processedOffset, duplicateCountDelta, limitReached, nil
+}
+
+func (r *runner) appendAndFlushPendingPosts(writer runnerRecordWriter, view runTaskView, pending []pendingCollectedPost) error {
+	if len(pending) == 0 {
+		return nil
+	}
+
+	restoreBatch := writer.beginBatchAppend(len(pending))
+
+	for _, post := range pending {
+		if err := writer.Append(collectorOutputRecord{
+			TaskID:    view.Task.TaskID,
+			RunID:     view.Run.RunID,
+			Keyword:   view.Task.Keyword,
+			PostID:    post.PostID,
+			WorkerID:  r.workerID,
+			Collected: post.SeenAt.Format(time.RFC3339Nano),
+			Raw:       post.RawPayload,
+		}); err != nil {
+			restoreBatch()
+			return err
+		}
+	}
+
+	restoreBatch()
+	return writer.Flush()
+}
+
+func (r *runner) commitPendingPosts(ctx context.Context, view runTaskView, pending []pendingCollectedPost) error {
+	for _, post := range pending {
+		if _, err := r.store.RecordKeywordMonthlyUsage(ctx, view.Task.Keyword, post.UsageMonth, post.PostID, view.Task.TaskID, post.SeenAt); err != nil {
+			return err
+		}
+		if _, err := r.store.RecordTaskSeenPost(ctx, view.Task.TaskID, post.PostID, view.Run.RunID, post.SeenAt); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (r *runner) persistRunProgress(ctx context.Context, writer runnerFlusher, params updateRunProgressParams) error {
+	if writer != nil {
+		if err := writer.Flush(); err != nil {
+			return err
+		}
+	}
+	return r.store.UpdateRunProgress(ctx, params)
+}
+
+func remainingCount(limit, used int64) int64 {
+	if limit <= 0 {
+		return 0
+	}
+	if used >= limit {
+		return 0
+	}
+	return limit - used
+}
+
+func firstPositiveLimit(values ...int64) int64 {
+	limit := int64(0)
+	for _, value := range values {
+		if value <= 0 {
+			continue
+		}
+		if limit == 0 || value < limit {
+			limit = value
+		}
+	}
+	return limit
+}
+
+func (w *ndjsonWriter) beginBatchAppend(batchSize int) func() {
+	if w == nil || batchSize <= 0 {
+		return func() {}
+	}
+
+	previousFlushEvery := w.flushEvery
+	safeFlushEvery := previousFlushEvery
+	requiredFlushEvery := w.pendingLines + batchSize + 1
+	if requiredFlushEvery > safeFlushEvery {
+		safeFlushEvery = requiredFlushEvery
+	}
+	w.flushEvery = safeFlushEvery
+
+	return func() {
+		w.flushEvery = previousFlushEvery
+	}
 }
 
 func (r *runner) fetchPage(ctx context.Context, policy resolvedPolicy, task workerTask, cursor string) (providerExecutionPayload, error) {

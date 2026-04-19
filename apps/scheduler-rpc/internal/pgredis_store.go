@@ -224,11 +224,17 @@ func (s *pgRedisStore) TryBecomeLeader(ctx context.Context, owner string, ttl ti
 	}
 	ttl = normalizeLeaderTTL(ttl)
 
-	acquired, err := s.redis.SetNX(ctx, collector.SchedulerLeaderLockKey(), owner, ttl).Result()
+	result, err := s.redis.SetArgs(ctx, collector.SchedulerLeaderLockKey(), owner, redis.SetArgs{
+		Mode: "NX",
+		TTL:  ttl,
+	}).Result()
 	if err != nil {
+		if errors.Is(err, redis.Nil) {
+			return false, nil
+		}
 		return false, err
 	}
-	return acquired, nil
+	return result == "OK", nil
 }
 
 func (s *pgRedisStore) ReleaseLeader(ctx context.Context, owner string) error {
@@ -271,12 +277,12 @@ func (s *pgRedisStore) CreateTask(ctx context.Context, item *task) (*task, *serv
 	return created, nil
 }
 
-func (s *pgRedisStore) GetTask(ctx context.Context, taskID string) (*task, *serviceError) {
+func (s *pgRedisStore) GetTask(ctx context.Context, taskID, createdBy string) (*task, *serviceError) {
 	if s == nil || s.db == nil {
 		return nil, internalSchedulerError("scheduler database is not configured")
 	}
 
-	row := s.db.QueryRow(ctx, schedulerGetTaskSQL, strings.TrimSpace(taskID))
+	row := s.db.QueryRow(ctx, schedulerGetTaskSQL, strings.TrimSpace(taskID), strings.TrimSpace(createdBy))
 	item, err := scanTaskRow(row)
 	if err != nil {
 		return nil, schedulerServiceErrorFromErr(err)
@@ -284,7 +290,7 @@ func (s *pgRedisStore) GetTask(ctx context.Context, taskID string) (*task, *serv
 	return item, nil
 }
 
-func (s *pgRedisStore) ListTaskRuns(ctx context.Context, taskID string, limit int) ([]taskRun, *serviceError) {
+func (s *pgRedisStore) ListTaskRuns(ctx context.Context, taskID, createdBy string, limit int) ([]taskRun, *serviceError) {
 	if s == nil || s.db == nil {
 		return nil, internalSchedulerError("scheduler database is not configured")
 	}
@@ -292,7 +298,7 @@ func (s *pgRedisStore) ListTaskRuns(ctx context.Context, taskID string, limit in
 		limit = defaultListTaskRunsDefaultLimit
 	}
 
-	rows, err := s.db.Query(ctx, schedulerListTaskRunsSQL, strings.TrimSpace(taskID), limit)
+	rows, err := s.db.Query(ctx, schedulerListTaskRunsSQL, strings.TrimSpace(taskID), strings.TrimSpace(createdBy), limit)
 	if err != nil {
 		return nil, schedulerServiceErrorFromErr(err)
 	}
@@ -312,12 +318,12 @@ func (s *pgRedisStore) ListTaskRuns(ctx context.Context, taskID string, limit in
 	return items, nil
 }
 
-func (s *pgRedisStore) StopTask(ctx context.Context, taskID string) (*task, *serviceError) {
+func (s *pgRedisStore) StopTask(ctx context.Context, taskID, createdBy string) (*task, *serviceError) {
 	if s == nil || s.db == nil {
 		return nil, internalSchedulerError("scheduler database is not configured")
 	}
 
-	row := s.db.QueryRow(ctx, schedulerStopTaskSQL, strings.TrimSpace(taskID))
+	row := s.db.QueryRow(ctx, schedulerStopTaskSQL, strings.TrimSpace(taskID), strings.TrimSpace(createdBy))
 	item, err := scanTaskRow(row)
 	if err != nil {
 		return nil, schedulerServiceErrorFromErr(err)
@@ -458,7 +464,7 @@ func (s *pgRedisStore) MarkTaskRunning(ctx context.Context, taskID, runID string
 			return item, nil
 		}
 		if errors.Is(err, pgx.ErrNoRows) {
-			if _, taskErr := s.GetTask(ctx, taskID); taskErr != nil {
+			if _, taskErr := s.GetTask(ctx, taskID, ""); taskErr != nil {
 				return nil, taskErr
 			}
 			return nil, schedulerNotFound("run not found")
@@ -725,6 +731,7 @@ SELECT
     updated_at
 FROM collector.tasks
 WHERE task_id = $1
+  AND ($2 = '' OR created_by = $2)
 `
 
 const schedulerListTaskRunsSQL = `
@@ -748,8 +755,14 @@ SELECT
     error_message
 FROM collector.task_runs
 WHERE task_id = $1
+  AND EXISTS (
+      SELECT 1
+      FROM collector.tasks
+      WHERE task_id = $1
+        AND ($2 = '' OR created_by = $2)
+  )
 ORDER BY run_no DESC, run_id DESC
-LIMIT $2
+LIMIT $3
 `
 
 const schedulerListDueTasksSQL = `
@@ -860,6 +873,7 @@ SET status = $2,
     next_run_at = COALESCE($3::timestamptz, next_run_at),
     updated_at = NOW()
 WHERE task_id = $1
+  AND ($2 = '' OR created_by = $2)
 RETURNING
     task_id,
     task_type,

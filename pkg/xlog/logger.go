@@ -38,14 +38,23 @@ func NewWithOptions(service, logDir string, options Options) (*Logger, error) {
 		return NewWithWriter(service, options.Stdout), nil
 	}
 
-	if err := os.MkdirAll(logDir, 0o755); err != nil {
+	if err := os.MkdirAll(logDir, 0o750); err != nil {
 		return NewWithWriter(service, options.Stdout), fmt.Errorf("create log dir: %w", err)
+	}
+	// #nosec G302 -- log directories intentionally allow group read/execute access.
+	if err := os.Chmod(logDir, 0o750); err != nil {
+		return NewWithWriter(service, options.Stdout), fmt.Errorf("set log dir permissions: %w", err)
 	}
 
 	logPath := filepath.Join(logDir, service+".log")
-	file, err := os.OpenFile(logPath, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o644)
+	// #nosec G304 -- logPath is derived from the configured local log directory and service name.
+	file, err := os.OpenFile(logPath, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o600)
 	if err != nil {
 		return NewWithWriter(service, options.Stdout), fmt.Errorf("open log file: %w", err)
+	}
+	if err := file.Chmod(0o600); err != nil {
+		_ = file.Close()
+		return NewWithWriter(service, options.Stdout), fmt.Errorf("set log file permissions: %w", err)
 	}
 
 	return &Logger{
@@ -150,8 +159,13 @@ func (l *Logger) rotateIfNeeded(incomingBytes int64) error {
 		return err
 	}
 
-	file, err := os.OpenFile(l.filePath, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o644)
+	// #nosec G304 -- rotated log files stay under the configured local log directory.
+	file, err := os.OpenFile(l.filePath, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o600)
 	if err != nil {
+		return err
+	}
+	if err := file.Chmod(0o600); err != nil {
+		_ = file.Close()
 		return err
 	}
 	l.file = file

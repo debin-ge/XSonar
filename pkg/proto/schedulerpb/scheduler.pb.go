@@ -201,6 +201,7 @@ func (x *CreateTaskRequest) GetPerRunCount() int64 {
 type GetTaskRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	TaskId        string                 `protobuf:"bytes,1,opt,name=task_id,json=taskId,proto3" json:"task_id,omitempty"`
+	CreatedBy     string                 `protobuf:"bytes,2,opt,name=created_by,json=createdBy,proto3" json:"created_by,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -242,9 +243,17 @@ func (x *GetTaskRequest) GetTaskId() string {
 	return ""
 }
 
+func (x *GetTaskRequest) GetCreatedBy() string {
+	if x != nil {
+		return x.CreatedBy
+	}
+	return ""
+}
+
 type ListTaskRunsRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	TaskId        string                 `protobuf:"bytes,1,opt,name=task_id,json=taskId,proto3" json:"task_id,omitempty"`
+	CreatedBy     string                 `protobuf:"bytes,2,opt,name=created_by,json=createdBy,proto3" json:"created_by,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -286,9 +295,17 @@ func (x *ListTaskRunsRequest) GetTaskId() string {
 	return ""
 }
 
+func (x *ListTaskRunsRequest) GetCreatedBy() string {
+	if x != nil {
+		return x.CreatedBy
+	}
+	return ""
+}
+
 type StopTaskRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	TaskId        string                 `protobuf:"bytes,1,opt,name=task_id,json=taskId,proto3" json:"task_id,omitempty"`
+	CreatedBy     string                 `protobuf:"bytes,2,opt,name=created_by,json=createdBy,proto3" json:"created_by,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -330,6 +347,13 @@ func (x *StopTaskRequest) GetTaskId() string {
 	return ""
 }
 
+func (x *StopTaskRequest) GetCreatedBy() string {
+	if x != nil {
+		return x.CreatedBy
+	}
+	return ""
+}
+
 var File_apps_scheduler_rpc_scheduler_proto protoreflect.FileDescriptor
 
 const file_apps_scheduler_rpc_scheduler_proto_rawDesc = "" +
@@ -354,13 +378,19 @@ const file_apps_scheduler_rpc_scheduler_proto_rawDesc = "" +
 	" \x01(\x03H\x02R\vperRunCount\x88\x01\x01B\x14\n" +
 	"\x12_frequency_secondsB\x11\n" +
 	"\x0f_required_countB\x10\n" +
-	"\x0e_per_run_count\")\n" +
+	"\x0e_per_run_count\"H\n" +
 	"\x0eGetTaskRequest\x12\x17\n" +
-	"\atask_id\x18\x01 \x01(\tR\x06taskId\".\n" +
+	"\atask_id\x18\x01 \x01(\tR\x06taskId\x12\x1d\n" +
+	"\n" +
+	"created_by\x18\x02 \x01(\tR\tcreatedBy\"M\n" +
 	"\x13ListTaskRunsRequest\x12\x17\n" +
-	"\atask_id\x18\x01 \x01(\tR\x06taskId\"*\n" +
+	"\atask_id\x18\x01 \x01(\tR\x06taskId\x12\x1d\n" +
+	"\n" +
+	"created_by\x18\x02 \x01(\tR\tcreatedBy\"I\n" +
 	"\x0fStopTaskRequest\x12\x17\n" +
-	"\atask_id\x18\x01 \x01(\tR\x06taskId2\xf0\x02\n" +
+	"\atask_id\x18\x01 \x01(\tR\x06taskId\x12\x1d\n" +
+	"\n" +
+	"created_by\x18\x02 \x01(\tR\tcreatedBy2\xf0\x02\n" +
 	"\x10SchedulerService\x12W\n" +
 	"\n" +
 	"CreateTask\x12&.xsonar.scheduler.v1.CreateTaskRequest\x1a!.xsonar.scheduler.v1.JsonResponse\x12Q\n" +
@@ -375,6 +405,7 @@ var (
 
 func file_apps_scheduler_rpc_scheduler_proto_rawDescGZIP() []byte {
 	file_apps_scheduler_rpc_scheduler_proto_rawDescOnce.Do(func() {
+		// #nosec G103 -- generated protobuf code uses unsafe in the protobuf runtime.
 		file_apps_scheduler_rpc_scheduler_proto_rawDescData = protoimpl.X.CompressGZIP(unsafe.Slice(unsafe.StringData(file_apps_scheduler_rpc_scheduler_proto_rawDesc), len(file_apps_scheduler_rpc_scheduler_proto_rawDesc)))
 	})
 	return file_apps_scheduler_rpc_scheduler_proto_rawDescData
@@ -414,6 +445,7 @@ func file_apps_scheduler_rpc_scheduler_proto_init() {
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
+			// #nosec G103 -- generated protobuf code uses unsafe in the protobuf runtime.
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_apps_scheduler_rpc_scheduler_proto_rawDesc), len(file_apps_scheduler_rpc_scheduler_proto_rawDesc)),
 			NumEnums:      0,
 			NumMessages:   5,

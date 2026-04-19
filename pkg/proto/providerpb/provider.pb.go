@@ -250,6 +250,7 @@ var (
 
 func file_apps_provider_rpc_provider_proto_rawDescGZIP() []byte {
 	file_apps_provider_rpc_provider_proto_rawDescOnce.Do(func() {
+		// #nosec G103 -- generated protobuf code uses unsafe in the protobuf runtime.
 		file_apps_provider_rpc_provider_proto_rawDescData = protoimpl.X.CompressGZIP(unsafe.Slice(unsafe.StringData(file_apps_provider_rpc_provider_proto_rawDesc), len(file_apps_provider_rpc_provider_proto_rawDesc)))
 	})
 	return file_apps_provider_rpc_provider_proto_rawDescData
@@ -282,6 +283,7 @@ func file_apps_provider_rpc_provider_proto_init() {
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
+			// #nosec G103 -- generated protobuf code uses unsafe in the protobuf runtime.
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_apps_provider_rpc_provider_proto_rawDesc), len(file_apps_provider_rpc_provider_proto_rawDesc)),
 			NumEnums:      0,
 			NumMessages:   3,

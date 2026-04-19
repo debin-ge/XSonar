@@ -413,14 +413,14 @@ func TestExecutePolicyOmitsUpstreamResponsePreviewOnSuccess(t *testing.T) {
 	}
 }
 
-func TestExecutePolicyLogsFullUpstreamBodyForApplicationErrors(t *testing.T) {
+func TestExecutePolicyLogsSanitizedUpstreamPreviewForApplicationErrors(t *testing.T) {
 	cfg := config.ProviderConfig{
 		BaseURL:   "https://provider.example/api",
 		TimeoutMS: 1000,
 	}
 
 	var logs bytes.Buffer
-	const upstreamBody = `{"code":1,"data":{"data":{},"errors":[{"message":"strconv.ParseInt: parsing \"\": invalid syntax","path":["threaded_conversation_with_injections_v2","focal_tweet_id"]}]},"msg":"SUCCESS","result":null}`
+	upstreamBody := `{"code":1,"data":{"authToken":"secret-token","data":{"trace":"` + strings.Repeat("x", 512) + `"},"errors":[{"message":"strconv.ParseInt: parsing \"\": invalid syntax","path":["threaded_conversation_with_injections_v2","focal_tweet_id"]}]},"msg":"SUCCESS","result":null}`
 	client := &http.Client{
 		Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
 			return jsonHTTPResponse(http.StatusOK, upstreamBody), nil
@@ -454,11 +454,24 @@ func TestExecutePolicyLogsFullUpstreamBodyForApplicationErrors(t *testing.T) {
 	if entry["upstream_response_bytes"] != float64(len(upstreamBody)) {
 		t.Fatalf("expected upstream_response_bytes to be logged, got %#v", entry)
 	}
-	if entry["upstream_response"] != upstreamBody {
-		t.Fatalf("expected full upstream_response to be logged for application errors, got %#v", entry)
+	if _, exists := entry["upstream_response"]; exists {
+		t.Fatalf("expected full upstream_response to stay disabled, got %#v", entry)
 	}
-	if _, exists := entry["upstream_response_preview"]; exists {
-		t.Fatalf("expected upstream_response_preview to be omitted, got %#v", entry)
+	preview, ok := entry["upstream_response_preview"].(string)
+	if !ok || preview == "" {
+		t.Fatalf("expected sanitized upstream_response_preview, got %#v", entry)
+	}
+	if strings.Contains(preview, "secret-token") {
+		t.Fatalf("expected preview to redact secrets, got %q", preview)
+	}
+	if !strings.Contains(preview, "[REDACTED]") {
+		t.Fatalf("expected preview to mark redacted fields, got %q", preview)
+	}
+	if len(preview) >= len(upstreamBody) {
+		t.Fatalf("expected preview to be size-limited, got len=%d original=%d", len(preview), len(upstreamBody))
+	}
+	if entry["upstream_response_truncated"] != true {
+		t.Fatalf("expected truncation flag, got %#v", entry)
 	}
 }
 

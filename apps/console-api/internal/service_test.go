@@ -428,6 +428,18 @@ func TestConsoleRequiresAdminToken(t *testing.T) {
 	}
 }
 
+func TestConsoleServiceHealthRequiresAdminToken(t *testing.T) {
+	svc := newConsoleServiceWithConfigAndAllClients(testConsoleConfig(), xlog.NewStdout("console-test"), stubJSONClient{}, stubJSONClient{}, stubJSONClient{})
+	req := httptest.NewRequest(http.MethodGet, "/admin/v1/health/services", nil)
+	rec := httptest.NewRecorder()
+
+	svc.handleServiceHealth(rec, req)
+
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("expected 401, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
 func TestConsoleServiceHealthIncludesProviderAndUpstream(t *testing.T) {
 	svc := newConsoleServiceWithConfigAndAllClients(
 		testConsoleConfig(),
@@ -476,6 +488,7 @@ func TestConsoleServiceHealthIncludesProviderAndUpstream(t *testing.T) {
 	)
 
 	req := httptest.NewRequest(http.MethodGet, "/admin/v1/health/services", nil)
+	req.Header.Set("Authorization", "Bearer "+mustAdminToken(t))
 	rec := httptest.NewRecorder()
 
 	svc.handleServiceHealth(rec, req)

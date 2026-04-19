@@ -6,6 +6,7 @@ import (
 
 	"xsonar/pkg/model"
 	"xsonar/pkg/proto/accesspb"
+	"xsonar/pkg/shared"
 	"xsonar/pkg/xlog"
 )
 
@@ -133,8 +134,12 @@ func (b *Bridge) CheckIPBan(ctx context.Context, in *accesspb.CheckIpBanRequest)
 
 func encodeAccessResponse(data any, svcErr *serviceError) *accesspb.JsonResponse {
 	if svcErr != nil {
+		code, err := shared.Int32FromInt(svcErr.code)
+		if err != nil {
+			code = model.CodeInternalError
+		}
 		return &accesspb.JsonResponse{
-			Code:    int32(svcErr.code),
+			Code:    code,
 			Message: svcErr.message,
 		}
 	}

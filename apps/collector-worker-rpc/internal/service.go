@@ -291,8 +291,12 @@ func (r *workerRunner) snapshot() map[string]any {
 
 func encodeCollectorWorkerResponse(data any, svcErr *serviceError) *collectorworkerpb.JsonResponse {
 	if svcErr != nil {
+		code, err := shared.Int32FromInt(svcErr.code)
+		if err != nil {
+			code = model.CodeInternalError
+		}
 		return &collectorworkerpb.JsonResponse{
-			Code:    int32(svcErr.code),
+			Code:    code,
 			Message: svcErr.message,
 		}
 	}
@@ -307,14 +311,6 @@ func encodeCollectorWorkerResponse(data any, svcErr *serviceError) *collectorwor
 
 func EncodeCollectorWorkerResponse(data any, svcErr *serviceError) *collectorworkerpb.JsonResponse {
 	return encodeCollectorWorkerResponse(data, svcErr)
-}
-
-func collectorWorkerInvalidRequest(message string) *serviceError {
-	return &serviceError{
-		statusCode: http.StatusBadRequest,
-		code:       model.CodeInvalidRequest,
-		message:    message,
-	}
 }
 
 func collectorWorkerNotFound(message string) *serviceError {

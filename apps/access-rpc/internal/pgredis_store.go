@@ -506,11 +506,17 @@ func (s *pgRedisStore) checkReplay(ctx context.Context, req checkReplayRequest) 
 	}
 
 	key := fmt.Sprintf("replay:%s:%s", req.AppID, req.Nonce)
-	ok, err := s.redis.SetNX(ctx, key, "1", replayWindow).Result()
+	result, err := s.redis.SetArgs(ctx, key, "1", redis.SetArgs{
+		Mode: "NX",
+		TTL:  replayWindow,
+	}).Result()
 	if err != nil {
+		if errors.Is(err, redis.Nil) {
+			return nil, conflict("nonce already used")
+		}
 		return nil, internalError("check replay failed")
 	}
-	if !ok {
+	if result != "OK" {
 		return nil, conflict("nonce already used")
 	}
 
@@ -905,20 +911,28 @@ func (s *pgRedisStore) flushDueUsageStats(ctx context.Context, now time.Time) er
 	}
 
 	lockToken := shared.NewSecret("usage_flush_lock")
-	locked, err := s.redis.SetNX(ctx, usageStatsFlushLockKey, lockToken, usageStatsFlushLockTTL).Result()
+	lockResult, err := s.redis.SetArgs(ctx, usageStatsFlushLockKey, lockToken, redis.SetArgs{
+		Mode: "NX",
+		TTL:  usageStatsFlushLockTTL,
+	}).Result()
 	if err != nil {
+		if errors.Is(err, redis.Nil) {
+			return nil
+		}
 		return fmt.Errorf("acquire usage stats flush lock: %w", err)
 	}
-	if !locked {
+	if lockResult != "OK" {
 		return nil
 	}
 	defer func() {
 		_ = releaseUsageStatsFlushLock(ctx, s.redis, lockToken)
 	}()
 
-	members, err := s.redis.ZRangeByScore(ctx, usageStatsPendingSetKey, &redis.ZRangeBy{
-		Min: "-inf",
-		Max: strconv.FormatInt(cutoffUnix, 10),
+	members, err := s.redis.ZRangeArgs(ctx, redis.ZRangeArgs{
+		Key:     usageStatsPendingSetKey,
+		Start:   "-inf",
+		Stop:    strconv.FormatInt(cutoffUnix, 10),
+		ByScore: true,
 	}).Result()
 	if err != nil {
 		return fmt.Errorf("list pending usage stats: %w", err)
@@ -1000,15 +1014,17 @@ func (s *pgRedisStore) loadPendingUsageStats(ctx context.Context, req queryUsage
 		return []usageStat{}, nil
 	}
 
-	rangeBy := &redis.ZRangeBy{
-		Min: strconv.FormatInt(minUnix, 10),
-		Max: "+inf",
+	rangeBy := redis.ZRangeArgs{
+		Key:     usageStatsPendingSetKey,
+		Start:   strconv.FormatInt(minUnix, 10),
+		Stop:    "+inf",
+		ByScore: true,
 	}
 	if req.EndUnix > 0 {
-		rangeBy.Max = strconv.FormatInt(req.EndUnix, 10)
+		rangeBy.Stop = strconv.FormatInt(req.EndUnix, 10)
 	}
 
-	members, err := s.redis.ZRangeByScore(ctx, usageStatsPendingSetKey, rangeBy).Result()
+	members, err := s.redis.ZRangeArgs(ctx, rangeBy).Result()
 	if err != nil {
 		return nil, internalError("query pending usage stats failed")
 	}
