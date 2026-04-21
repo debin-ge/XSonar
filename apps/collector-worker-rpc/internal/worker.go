@@ -38,8 +38,8 @@ type worker struct {
 	runLeaseTTL   time.Duration
 	renewInterval time.Duration
 
-	ensureGroupOnce sync.Once
-	ensureGroupErr  error
+	ensureGroupMu sync.Mutex
+	groupReady    bool
 }
 
 type redisRunQueue struct {
@@ -172,15 +172,15 @@ func (w *worker) processOnce(ctx context.Context) error {
 		return err
 	}
 
-	messages, err := w.queue.Read(ctx, w.queueStream, w.queueGroup, w.workerID, w.queueBlock, 1)
+	messages, err := w.readMessages(ctx)
+	if isRunQueueNoGroupError(err) {
+		if recoverErr := w.recoverGroup(ctx); recoverErr != nil {
+			return fmt.Errorf("recover run queue consumer group after NOGROUP: %w", recoverErr)
+		}
+		messages, err = w.readMessages(ctx)
+	}
 	if err != nil {
 		return err
-	}
-	if len(messages) == 0 {
-		messages, err = w.queue.ClaimStale(ctx, w.queueStream, w.queueGroup, w.workerID, w.runLeaseTTL, 1)
-		if err != nil {
-			return err
-		}
 	}
 	if len(messages) == 0 {
 		return nil
@@ -194,11 +194,40 @@ func (w *worker) processOnce(ctx context.Context) error {
 	return nil
 }
 
+func (w *worker) readMessages(ctx context.Context) ([]runQueueMessage, error) {
+	messages, err := w.queue.Read(ctx, w.queueStream, w.queueGroup, w.workerID, w.queueBlock, 1)
+	if err != nil || len(messages) > 0 {
+		return messages, err
+	}
+	return w.queue.ClaimStale(ctx, w.queueStream, w.queueGroup, w.workerID, w.runLeaseTTL, 1)
+}
+
 func (w *worker) ensureGroup(ctx context.Context) error {
-	w.ensureGroupOnce.Do(func() {
-		w.ensureGroupErr = w.queue.EnsureGroup(ctx)
-	})
-	return w.ensureGroupErr
+	w.ensureGroupMu.Lock()
+	defer w.ensureGroupMu.Unlock()
+	if w.groupReady {
+		return nil
+	}
+	if err := w.queue.EnsureGroup(ctx); err != nil {
+		return err
+	}
+	w.groupReady = true
+	return nil
+}
+
+func (w *worker) recoverGroup(ctx context.Context) error {
+	w.ensureGroupMu.Lock()
+	defer w.ensureGroupMu.Unlock()
+	w.groupReady = false
+	if err := w.queue.EnsureGroup(ctx); err != nil {
+		return err
+	}
+	w.groupReady = true
+	return nil
+}
+
+func isRunQueueNoGroupError(err error) bool {
+	return err != nil && strings.Contains(strings.ToUpper(err.Error()), "NOGROUP")
 }
 
 func (w *worker) handleMessage(ctx context.Context, message runQueueMessage) error {
